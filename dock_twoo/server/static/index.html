@@ -423,75 +423,226 @@
         <!-- Page 6: Brain Voice Agent Settings -->
         <div class="page-view" id="page-brain">
           <div class="page-header">
-            <h2>Brain Voice Assistant</h2>
-            <p>Voice standby model, wake word, interactive visualizer orb, and speech settings</p>
+            <h2>Brain Voice Assistant & Mini Agent</h2>
+            <p>Voice-assisted AI system: model profile routing, credentials, voice persona, robot animations, and storage</p>
           </div>
 
+          <!-- Live Mini Agent Quick Bar -->
+          <div class="settings-card highlight-card">
+            <div class="card-header-flex">
+              <div>
+                <h3 class="card-subheading">Mini Agent Desktop Status</h3>
+                <p class="field-desc">The floating desktop robotic companion operates hands-free with voice and gestures</p>
+              </div>
+              <span class="badge" id="brainAgentStatusBadge">Online · Ready</span>
+            </div>
+            <div class="action-btn-row">
+              <button type="button" id="brainSummonBtn" class="btn btn-primary">
+                <span>✨ Summon Mini Agent</span>
+              </button>
+              <button type="button" id="brainTalkBtn" class="btn btn-secondary">
+                <span>🎤 Talk to Brain</span>
+              </button>
+              <button type="button" id="brainLoopAnimBtn" class="btn btn-secondary">
+                <span>🎭 Play Animations</span>
+              </button>
+              <button type="button" id="brainHideBtn" class="btn btn-secondary">
+                <span>✕ Hide Mini Agent</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Model Profiles & Modality Routing -->
           <div class="settings-card">
+            <h3 class="card-subheading">Model Profile & LLM Routing</h3>
+            <p class="field-desc">Select active brain profile and manage API credentials directly</p>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="brainActiveProfile">Active Model Profile</label>
+                <select id="brainActiveProfile" class="select-input">
+                  <option value="gemini_default">Google Gemini (Recommended)</option>
+                  <option value="local_ollama">Local Ollama (100% Offline)</option>
+                  <option value="openrouter_default">OpenRouter Multi-Model</option>
+                </select>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="brainProvider">Provider</label>
+                <select id="brainProvider" class="select-input">
+                  <option value="gemini">Google Gemini</option>
+                  <option value="local">Local (Ollama / Llama.cpp)</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic Claude</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="brainModelId">Model Identifier</label>
+                <input type="text" id="brainModelId" class="text-input" value="gemini-2.0-flash" placeholder="e.g. gemini-2.0-flash, llama3.2:latest">
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="brainBaseUrl">Endpoint / Base URL</label>
+                <input type="text" id="brainBaseUrl" class="text-input" placeholder="Default provider URL or http://127.0.0.1:11434/v1">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="brainApiKey">Provider API Key</label>
+              <div class="input-with-button">
+                <input type="password" id="brainApiKey" class="text-input" placeholder="Enter API Key (stored securely in local Brain vault)">
+                <button type="button" id="brainSaveKeyBtn" class="btn btn-secondary">Save Key</button>
+              </div>
+              <span class="field-hint" id="brainKeyStatusHint">Saved keys are kept encrypted in local machine storage</span>
+            </div>
+
             <div class="toggle-card-item">
               <div>
-                <label class="toggle-title">Voice Wake Word Activation</label>
-                <p class="field-desc">Trigger the assistant hands-free when speaking the wake phrase</p>
+                <label class="toggle-title">Strict 100% Local Offline Mode</label>
+                <p class="field-desc">Never route queries or speech to external cloud APIs</p>
+              </div>
+              <input type="checkbox" id="brainLocalOnlyToggle" class="modern-toggle">
+            </div>
+          </div>
+
+          <!-- Voice Persona & Audio Settings -->
+          <div class="settings-card">
+            <h3 class="card-subheading">Voice Persona & Speech Output</h3>
+            <p class="field-desc">Speech synthesis persona, natural pacing, and robot mouth synchronization</p>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="brainVoiceName">Voice Persona</label>
+                <select id="brainVoiceName" class="select-input">
+                  <option value="Aoede">Aoede (Warm & Natural)</option>
+                  <option value="Puck">Puck (Friendly & Playful)</option>
+                  <option value="Charon">Charon (Deep & Thoughtful)</option>
+                  <option value="Fenrir">Fenrir (Clear & Confident)</option>
+                  <option value="Kore">Kore (Calm & Expressive)</option>
+                  <option value="System">System Native Voice</option>
+                </select>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="brainSpeechRate">Speech Playback Rate</label>
+                <div class="slider-group-inline">
+                  <input type="range" id="brainSpeechRate" min="75" max="150" value="100">
+                  <span class="value-badge" id="brainSpeechRateVal">1.0x</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="brainVoiceStyle">Voice Personality Prompt</label>
+              <input type="text" id="brainVoiceStyle" class="text-input" value="Warm, natural and conversational, with gentle expression and clear pacing.">
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Speak Answers Aloud</label>
+                <p class="field-desc">Play speech audio with synchronized robot mouth animation</p>
+              </div>
+              <input type="checkbox" id="brainSpeakRepliesToggle" checked class="modern-toggle">
+            </div>
+          </div>
+
+          <!-- Mini Agent Desktop Behavior -->
+          <div class="settings-card">
+            <h3 class="card-subheading">Mini Agent Desktop Behavior</h3>
+            <p class="field-desc">Draggable positioning, idle animations, and desktop roaming</p>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Roaming on Desktop</label>
+                <p class="field-desc">Periodically walk or climb across desktop work area when idle</p>
+              </div>
+              <input type="checkbox" id="brainRoamingToggle" class="modern-toggle">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="brainMascotPose">Default Idle Pose</label>
+                <select id="brainMascotPose" class="select-input">
+                  <option value="stand">Standing Alert</option>
+                  <option value="sit">Sitting on Stool</option>
+                </select>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="brainMascotCorner">Resting Desktop Corner</label>
+                <select id="brainMascotCorner" class="select-input">
+                  <option value="bottom_right">Bottom Right Corner</option>
+                  <option value="bottom_left">Bottom Left Corner</option>
+                  <option value="top_right">Top Right Corner</option>
+                  <option value="top_left">Top Left Corner</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Reduce Motion</label>
+                <p class="field-desc">Disable complex travel and fast gestures for minimal desktop movement</p>
+              </div>
+              <input type="checkbox" id="brainReduceMotionToggle" class="modern-toggle">
+            </div>
+          </div>
+
+          <!-- Hands-Free Wake Word -->
+          <div class="settings-card">
+            <h3 class="card-subheading">Voice Wake Word Activation</h3>
+            <p class="field-desc">Hands-free voice detection for instant summoning</p>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Enable Wake Word Detection</label>
+                <p class="field-desc">Trigger Brain automatically when speaking the wake phrase</p>
               </div>
               <input type="checkbox" id="brainWakeWordToggle" checked class="modern-toggle">
             </div>
 
             <div class="form-group">
-              <label for="brainWakeWord">Custom Wake Word</label>
+              <label for="brainWakeWord">Custom Wake Phrase</label>
               <input type="text" id="brainWakeWord" class="text-input" value="Hey Brain">
+            </div>
+          </div>
+
+          <!-- Model Storage & Memory Vault -->
+          <div class="settings-card">
+            <h3 class="card-subheading">Brain Memory & Storage</h3>
+            <p class="field-desc">Local encrypted memory vault and retention management</p>
+
+            <div class="info-box">
+              <div class="info-box-icon">🧠</div>
+              <div class="info-box-content">
+                <strong>Brain Vault Location:</strong> <code>~/.dock_twoo/brain/</code>
+                <p>Voice preferences, model profiles, conversation memory, and encryption keys are stored locally on your machine.</p>
+              </div>
             </div>
 
             <div class="form-row">
               <div class="form-group flex-1">
-                <label for="brainVoiceGender">Voice Persona & Gender</label>
-                <select id="brainVoiceGender" class="select-input">
-                  <option value="neutral">Neutral Assistant</option>
-                  <option value="female">Natural Female Voice</option>
-                  <option value="male">Natural Male Voice</option>
+                <label for="brainRetentionDays">Conversation Retention</label>
+                <select id="brainRetentionDays" class="select-input">
+                  <option value="7">7 Days</option>
+                  <option value="30" selected>30 Days</option>
+                  <option value="90">90 Days</option>
+                  <option value="0">Indefinite (No Auto-Clean)</option>
                 </select>
               </div>
 
               <div class="form-group flex-1">
-                <label for="brainOrbTheme">Visualizer Orb Theme</label>
-                <select id="brainOrbTheme" class="select-input">
-                  <option value="neon_cyan">Neon Cyan Pulse</option>
-                  <option value="aurora_purple">Aurora Purple</option>
-                  <option value="emerald_pulse">Emerald Energy</option>
-                  <option value="solar_flare">Solar Flare</option>
+                <label for="brainRetentionMb">Max Storage Cap</label>
+                <select id="brainRetentionMb" class="select-input">
+                  <option value="512">512 MB</option>
+                  <option value="1024" selected>1024 MB (1 GB)</option>
+                  <option value="4096">4096 MB (4 GB)</option>
                 </select>
               </div>
-            </div>
-
-            <div class="slider-group">
-              <div class="slider-header">
-                <label for="brainSpeechRate">Speech Playback Rate</label>
-                <span class="value-badge" id="brainSpeechRateVal">1.0x</span>
-              </div>
-              <input type="range" id="brainSpeechRate" min="75" max="150" value="100">
-            </div>
-
-            <div class="toggle-card-item">
-              <div>
-                <label class="toggle-title">Auto-Listen When Drawer Opens</label>
-                <p class="field-desc">Instantly activate microphone listening whenever clicking the Brain icon</p>
-              </div>
-              <input type="checkbox" id="brainAutoListenToggle" class="modern-toggle">
-            </div>
-
-            <div class="toggle-card-item">
-              <div>
-                <label class="toggle-title">Keep Conversation History</label>
-                <p class="field-desc">Preserve transcript history across drawer opens</p>
-              </div>
-              <input type="checkbox" id="brainHistoryToggle" checked class="modern-toggle">
-            </div>
-
-            <div class="slider-group">
-              <div class="slider-header">
-                <label for="brainMicSensitivity">Microphone Sensitivity</label>
-                <span class="value-badge" id="brainMicSensitivityVal">75%</span>
-              </div>
-              <input type="range" id="brainMicSensitivity" min="20" max="100" value="75">
             </div>
           </div>
         </div>

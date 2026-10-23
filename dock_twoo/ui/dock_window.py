@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from dock_twoo.brain import get_brain_manager
 from dock_twoo.config import ConfigManager, DockAppItem, DockConfig
 from dock_twoo.icons import IconManager
 from dock_twoo.os_integration.margin_manager import DesktopMarginManager
@@ -169,6 +170,7 @@ class DockWindow(QWidget):
         self._icon_buttons: Dict[str, DockIconButton] = {}
         self.attached_window = AttachedWindow(self.config)
         self.attached_window.window_closed.connect(self._on_attached_closed)
+        self.brain_manager = get_brain_manager()
 
         # Margin Manager ensures other application windows stop at Dock 2 and don't slide behind it
         self.margin_manager = DesktopMarginManager(self.config, self)
@@ -276,6 +278,7 @@ class DockWindow(QWidget):
 
             btn = DockIconButton(item, self.config, self.icons_container)
             btn.clicked.connect(self._handle_icon_click)
+            btn.right_clicked.connect(self._handle_icon_right_click)
             self._icon_buttons[item.id] = btn
             self.icons_layout.addWidget(btn)
 
@@ -292,6 +295,7 @@ class DockWindow(QWidget):
 
             btn = DockIconButton(item, self.config, self.bottom_container)
             btn.clicked.connect(self._handle_icon_click)
+            btn.right_clicked.connect(self._handle_icon_right_click)
             self._icon_buttons[item.id] = btn
             self.bottom_layout.addWidget(btn)
 
@@ -303,8 +307,24 @@ class DockWindow(QWidget):
             webbrowser.open(url)
             return
 
+        # Click on Brain summons or activates the desktop robot mini agent directly
+        if app_id in ("brain",):
+            self.attached_window.hide_window()
+            self.brain_manager.toggle_mini_agent()
+            self._set_active_icon("brain" if self.brain_manager.is_mini_agent_visible() else None)
+            return
+
         anchor = icon_center_global.x() if self.config.edge in ("top", "bottom") else icon_center_global.y()
         self._toggle_attached_window(app_id, anchor)
+
+    def _handle_icon_right_click(self, app_id: str, global_pos: QPoint) -> None:
+        """Handle right-click context menu on a dock icon button."""
+        if app_id == "brain":
+            self.brain_manager.show_context_menu(global_pos)
+            self._set_active_icon("brain" if self.brain_manager.is_mini_agent_visible() else None)
+        elif app_id in ("settings", "console"):
+            url = f"http://{self.config.server_host}:{self.config.server_port}"
+            webbrowser.open(url)
 
     def _toggle_attached_window(self, app_id: str, icon_anchor: int) -> None:
         """Toggle or switch attached companion window."""

@@ -17,6 +17,7 @@ class DockIconButton(QWidget):
     """Uniform icon button that renders vector SVGs with strict standard sizing."""
 
     clicked = Signal(str, QPoint)  # app_id, global_center_point
+    right_clicked = Signal(str, QPoint)  # app_id, global_mouse_pos
 
     def __init__(
         self,
@@ -81,6 +82,8 @@ class DockIconButton(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             center_global = self.mapToGlobal(QPoint(self.width() // 2, self.height() // 2))
             self.clicked.emit(self.item.id, center_global)
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.right_clicked.emit(self.item.id, event.globalPosition().toPoint())
         super().mousePressEvent(event)
 
     def paintEvent(self, event) -> None:

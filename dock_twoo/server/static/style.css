@@ -1095,3 +1095,56 @@ input:checked + .slider-switch:before {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Brain Console Extensions */
+.highlight-card {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.08) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.card-header-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-subheading {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 4px 0;
+}
+
+.action-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-button .text-input {
+  flex: 1;
+}
+
+.slider-group-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slider-group-inline input[type="range"] {
+  flex: 1;
+}
+
+.field-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 5px;
+}

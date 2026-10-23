@@ -58,7 +58,7 @@ def main() -> int:
     # Hide from macOS default bottom dock panel (top bar & floating dock only)
     ScreenManager.configure_macos_accessory()
 
-    # Initialize configuration
+    # Initialize configuration and pre-instantiate BrainManager on main GUI thread
     config_mgr = ConfigManager()
     if args.reset:
         config_mgr.update(config_mgr.config.__class__().to_dict())
@@ -66,6 +66,9 @@ def main() -> int:
         config_mgr.update({"edge": args.edge})
     if args.theme:
         config_mgr.update({"theme_mode": args.theme})
+
+    from dock_twoo.brain import get_brain_manager
+    get_brain_manager()
 
     # Start Web Console Server
     web_server = WebConsoleServer(config_mgr)

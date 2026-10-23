@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from dock_twoo.brain import get_brain_manager
 from dock_twoo.config import ConfigManager, DockConfig
 
 
@@ -66,6 +67,23 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             }
             self._set_headers(HTTPStatus.OK, "application/json")
             self.wfile.write(json.dumps(status_data).encode("utf-8"))
+            return
+
+        if path == "/api/brain/status":
+            bm = get_brain_manager()
+            self._set_headers(HTTPStatus.OK, "application/json")
+            self.wfile.write(json.dumps(bm.get_status()).encode("utf-8"))
+            return
+
+        if path == "/api/brain/profiles":
+            bm = get_brain_manager()
+            self._set_headers(HTTPStatus.OK, "application/json")
+            self.wfile.write(
+                json.dumps({
+                    "profiles": bm.profile_mgr.get_profiles(),
+                    "active": bm.profile_mgr.get_active_profile(),
+                }).encode("utf-8")
+            )
             return
 
         # Serve static files
@@ -135,6 +153,83 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR, "application/json")
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
             return
+
+        if path == "/api/brain/activate-profile":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                bm = get_brain_manager()
+                success = bm.profile_mgr.activate_profile(body.get("profile_id", ""))
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(
+                    json.dumps({"success": success, "active": bm.profile_mgr.get_active_profile()}).encode("utf-8")
+                )
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
+        if path == "/api/brain/profile":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                bm = get_brain_manager()
+                saved = bm.profile_mgr.save_profile(body)
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({"success": True, "profile": saved}).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
+        if path == "/api/brain/settings":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                bm = get_brain_manager()
+                updated = bm.store.update_settings(body)
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({"success": True, "settings": updated}).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
+        if path == "/api/brain/key":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                bm = get_brain_manager()
+                bm.profile_mgr.set_key(body.get("provider", "gemini"), body.get("key", ""))
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
+        if path == "/api/brain/action":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                bm = get_brain_manager()
+                action = body.get("action")
+                if action == "summon":
+                    bm.show_mini_agent()
+                elif action == "hide":
+                    bm.hide_mini_agent()
+                elif action == "talk":
+                    bm.start_talking()
+                elif action == "animation":
+                    anim_name = body.get("name", "wave")
+                    bm.action_requested.emit(anim_name)
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({"success": True, "action": action}).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
 
         self._set_headers(HTTPStatus.NOT_FOUND, "text/plain")
         self.wfile.write(b"404 Not Found")

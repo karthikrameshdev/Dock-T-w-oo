@@ -877,3 +877,230 @@ function showToast(msg, isError = false) {
 
 // Initial Load
 loadConfig();
+initBrainConsole();
+
+// Brain Voice Assistant Console Module
+async function initBrainConsole() {
+  const agentStatusBadge = document.getElementById('brainAgentStatusBadge');
+  const summonBtn = document.getElementById('brainSummonBtn');
+  const hideBtn = document.getElementById('brainHideBtn');
+  const talkBtn = document.getElementById('brainTalkBtn');
+  const loopAnimBtn = document.getElementById('brainLoopAnimBtn');
+  const activeProfileSel = document.getElementById('brainActiveProfile');
+  const providerSel = document.getElementById('brainProvider');
+  const modelIdInput = document.getElementById('brainModelId');
+  const baseUrlInput = document.getElementById('brainBaseUrl');
+  const apiKeyInput = document.getElementById('brainApiKey');
+  const saveKeyBtn = document.getElementById('brainSaveKeyBtn');
+  const keyStatusHint = document.getElementById('brainKeyStatusHint');
+  const localOnlyToggle = document.getElementById('brainLocalOnlyToggle');
+  const voiceNameSel = document.getElementById('brainVoiceName');
+  const speechRateSlider = document.getElementById('brainSpeechRate');
+  const speechRateVal = document.getElementById('brainSpeechRateVal');
+  const voiceStyleInput = document.getElementById('brainVoiceStyle');
+  const speakRepliesToggle = document.getElementById('brainSpeakRepliesToggle');
+  const roamingToggle = document.getElementById('brainRoamingToggle');
+  const mascotPoseSel = document.getElementById('brainMascotPose');
+  const mascotCornerSel = document.getElementById('brainMascotCorner');
+  const reduceMotionToggle = document.getElementById('brainReduceMotionToggle');
+  const wakeWordToggle = document.getElementById('brainWakeWordToggle');
+  const wakeWordInput = document.getElementById('brainWakeWord');
+  const retentionDaysSel = document.getElementById('brainRetentionDays');
+  const retentionMbSel = document.getElementById('brainRetentionMb');
+
+  // Quick Action Buttons
+  if (summonBtn) {
+    summonBtn.addEventListener('click', async () => {
+      await fetch('/api/brain/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'summon' }),
+      });
+      showToast('Summoned Mini Agent on desktop');
+      loadBrainStatus();
+    });
+  }
+
+  if (hideBtn) {
+    hideBtn.addEventListener('click', async () => {
+      await fetch('/api/brain/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'hide' }),
+      });
+      showToast('Mini Agent hidden');
+      loadBrainStatus();
+    });
+  }
+
+  if (talkBtn) {
+    talkBtn.addEventListener('click', async () => {
+      await fetch('/api/brain/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'talk' }),
+      });
+      showToast('Listening for speech turn…');
+      loadBrainStatus();
+    });
+  }
+
+  if (loopAnimBtn) {
+    loopAnimBtn.addEventListener('click', async () => {
+      await fetch('/api/brain/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'animation', name: 'loop' }),
+      });
+      showToast('Playing animation sequence');
+    });
+  }
+
+  if (speechRateSlider && speechRateVal) {
+    speechRateSlider.addEventListener('input', () => {
+      const val = (speechRateSlider.value / 100).toFixed(1);
+      speechRateVal.textContent = `${val}x`;
+      saveBrainSettings({ speech_rate: parseFloat(val) });
+    });
+  }
+
+  if (saveKeyBtn && apiKeyInput) {
+    saveKeyBtn.addEventListener('click', async () => {
+      const provider = providerSel ? providerSel.value : 'gemini';
+      const keyVal = apiKeyInput.value.trim();
+      if (!keyVal) {
+        showToast('Please enter an API Key', true);
+        return;
+      }
+      try {
+        const res = await fetch('/api/brain/key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider, key: keyVal }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`${provider.toUpperCase()} API Key saved`);
+          if (keyStatusHint) keyStatusHint.textContent = `Key configured for ${provider}`;
+          apiKeyInput.value = '';
+        }
+      } catch (err) {
+        showToast('Failed to save API key', true);
+      }
+    });
+  }
+
+  // Auto-save listeners on change
+  [
+    [speakRepliesToggle, 'voice_reply', (el) => el.checked],
+    [roamingToggle, 'roaming', (el) => el.checked],
+    [reduceMotionToggle, 'reduced_motion', (el) => el.checked],
+    [wakeWordToggle, 'wake_word_enabled', (el) => el.checked],
+    [wakeWordInput, 'wake_word', (el) => el.value],
+    [voiceNameSel, 'voice_name', (el) => el.value],
+    [voiceStyleInput, 'voice_style', (el) => el.value],
+    [mascotPoseSel, 'mascot_pose', (el) => el.value],
+    [mascotCornerSel, 'mascot_corner', (el) => el.value],
+    [retentionDaysSel, 'retention_days', (el) => parseInt(el.value, 10)],
+    [retentionMbSel, 'retention_max_mb', (el) => parseInt(el.value, 10)],
+  ].forEach(([el, key, getter]) => {
+    if (!el) return;
+    el.addEventListener('change', () => {
+      const update = {};
+      update[key] = getter(el);
+      saveBrainSettings(update);
+    });
+  });
+
+  if (activeProfileSel) {
+    activeProfileSel.addEventListener('change', async () => {
+      try {
+        const res = await fetch('/api/brain/activate-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_id: activeProfileSel.value }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Active profile set to: ${data.active.name}`);
+          loadBrainStatus();
+        }
+      } catch (err) {
+        showToast('Failed to switch profile', true);
+      }
+    });
+  }
+
+  async function loadBrainStatus() {
+    try {
+      const res = await fetch('/api/brain/status');
+      const data = await res.json();
+      if (!data) return;
+
+      if (agentStatusBadge) {
+        agentStatusBadge.textContent = data.is_mini_agent_visible
+          ? `Mini Agent Active (${data.activity})`
+          : 'Mini Agent Docked';
+        agentStatusBadge.style.background = data.is_mini_agent_visible ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.08)';
+        agentStatusBadge.style.color = data.is_mini_agent_visible ? '#34d399' : '#94a3b8';
+      }
+
+      const s = data.settings || {};
+      if (speakRepliesToggle) speakRepliesToggle.checked = s.voice_reply !== false;
+      if (roamingToggle) roamingToggle.checked = !!s.roaming;
+      if (reduceMotionToggle) reduceMotionToggle.checked = !!s.reduced_motion;
+      if (wakeWordToggle) wakeWordToggle.checked = s.wake_word_enabled !== false;
+      if (wakeWordInput && s.wake_word) wakeWordInput.value = s.wake_word;
+      if (voiceNameSel && s.voice_name) voiceNameSel.value = s.voice_name;
+      if (voiceStyleInput && s.voice_style) voiceStyleInput.value = s.voice_style;
+      if (mascotPoseSel && s.mascot_pose) mascotPoseSel.value = s.mascot_pose;
+      if (mascotCornerSel && s.mascot_corner) mascotCornerSel.value = s.mascot_corner;
+      if (retentionDaysSel && s.retention_days !== undefined) retentionDaysSel.value = String(s.retention_days);
+      if (retentionMbSel && s.retention_max_mb !== undefined) retentionMbSel.value = String(s.retention_max_mb);
+
+      if (speechRateSlider && s.speech_rate) {
+        speechRateSlider.value = Math.round(s.speech_rate * 100);
+        if (speechRateVal) speechRateVal.textContent = `${s.speech_rate.toFixed(1)}x`;
+      }
+
+      // Populate Profiles
+      if (activeProfileSel && data.profiles) {
+        activeProfileSel.innerHTML = '';
+        data.profiles.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.name + (p.local_only ? ' (100% Local)' : '');
+          if (p.id === data.active_profile.id) opt.selected = true;
+          activeProfileSel.appendChild(opt);
+        });
+      }
+
+      // Populate Active Profile fields
+      const ap = data.active_profile || {};
+      if (providerSel && ap.provider) providerSel.value = ap.provider;
+      if (modelIdInput && ap.model) modelIdInput.value = ap.model;
+      if (baseUrlInput) baseUrlInput.value = ap.base_url || '';
+      if (localOnlyToggle) localOnlyToggle.checked = !!ap.local_only;
+    } catch (err) {
+      console.warn('Could not load brain status:', err);
+    }
+  }
+
+  async function saveBrainSettings(settingsObj) {
+    try {
+      const res = await fetch('/api/brain/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsObj),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Brain setting updated');
+      }
+    } catch (err) {
+      showToast('Error updating Brain setting', true);
+    }
+  }
+
+  loadBrainStatus();
+}
