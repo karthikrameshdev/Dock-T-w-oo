@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -30,6 +31,7 @@ from PySide6.QtWidgets import (
 from dock_twoo.config import DockConfig
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
 from dock_twoo.ui.theme import create_app_font, get_scrollbar_style, get_theme_tokens
+from dock_twoo.vault.auth import VaultAuthManager
 from dock_twoo.vault.models import CustomField, VaultItem, VaultStore
 from dock_twoo.vault.storage import VaultStorageManager
 
@@ -892,16 +894,425 @@ class VaultFormWidget(QWidget):
         """
 
 
+class VaultLockScreen(QWidget):
+    """Secure lock screen supporting 4-digit PIN setup/unlock, Touch ID / Machine Auth, and numeric keypad."""
+
+    unlocked = Signal()
+
+    def __init__(self, auth_mgr: VaultAuthManager, config: DockConfig, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.auth_mgr = auth_mgr
+        self.config = config
+
+        self._entered_pin: str = ""
+        self._setup_step: int = 1
+        self._first_pin: str = ""
+        self._is_setup_mode: bool = False
+
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._setup_ui()
+        self.refresh_view_mode()
+
+    def _setup_ui(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+
+        # 1. Lock Icon Badge
+        self.icon_badge = QLabel("🔒", self)
+        self.icon_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_badge.setFixedSize(50, 50)
+        self.icon_badge.setStyleSheet("""
+            QLabel {
+                font-size: 24px;
+                background: rgba(59, 130, 246, 0.12);
+                border: 1px solid rgba(59, 130, 246, 0.35);
+                border-radius: 25px;
+            }
+        """)
+        layout.addWidget(self.icon_badge, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # 2. Title & Subtitle
+        self.title_lbl = QLabel("Vault is Locked", self)
+        self.title_lbl.setFont(create_app_font(self.config, size=15, weight=QFont.Weight.DemiBold))
+        self.title_lbl.setStyleSheet(f"color: {tokens.text_primary};")
+        self.title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.title_lbl)
+
+        self.subtitle_lbl = QLabel("Enter your 4-digit PIN to access credentials", self)
+        self.subtitle_lbl.setFont(create_app_font(self.config, size=11, weight=QFont.Weight.Normal))
+        self.subtitle_lbl.setStyleSheet(f"color: {tokens.text_secondary};")
+        self.subtitle_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.subtitle_lbl)
+
+        layout.addSpacing(2)
+
+        # 3. 4 PIN Dots Indicator
+        dots_row = QHBoxLayout()
+        dots_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        dots_row.setSpacing(16)
+        self.dots: List[QLabel] = []
+        for _ in range(4):
+            dot = QLabel(self)
+            dot.setFixedSize(14, 14)
+            self._set_dot_style(dot, filled=False)
+            dots_row.addWidget(dot)
+            self.dots.append(dot)
+        layout.addLayout(dots_row)
+
+        layout.addSpacing(2)
+
+        # 4. Touch ID / Machine Auth Button
+        self.btn_biometrics = QPushButton("👆 Unlock with Touch ID", self)
+        self.btn_biometrics.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_biometrics.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(255, 255, 255, 0.08);
+                color: {tokens.text_primary};
+                border: 1px solid {tokens.border_color};
+                border-radius: 8px;
+                padding: 6px 14px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background: rgba(59, 130, 246, 0.2);
+                border-color: {tokens.accent_color};
+            }}
+        """)
+        self.btn_biometrics.clicked.connect(self._evaluate_touch_id)
+        layout.addWidget(self.btn_biometrics, 0, Qt.AlignmentFlag.AlignCenter)
+
+        # 5. Keypad Grid (3 columns x 4 rows)
+        keypad_layout = QVBoxLayout()
+        keypad_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        keypad_layout.setSpacing(8)
+
+        grid = [
+            ["1", "2", "3"],
+            ["4", "5", "6"],
+            ["7", "8", "9"],
+            ["C", "0", "⌫"],
+        ]
+
+        for row in grid:
+            r_box = QHBoxLayout()
+            r_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            r_box.setSpacing(10)
+            for key in row:
+                btn = QPushButton(key, self)
+                btn.setFixedSize(58, 38)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.setFont(create_app_font(self.config, size=14, weight=QFont.Weight.DemiBold))
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: rgba(255, 255, 255, 0.06);
+                        color: {tokens.text_primary};
+                        border: 1px solid rgba(255, 255, 255, 0.08);
+                        border-radius: 8px;
+                    }}
+                    QPushButton:hover {{
+                        background: rgba(255, 255, 255, 0.14);
+                        border-color: {tokens.accent_color};
+                    }}
+                    QPushButton:pressed {{
+                        background: {tokens.accent_color};
+                        color: #ffffff;
+                    }}
+                """)
+                btn.clicked.connect(lambda checked=False, k=key: self._handle_keypad_press(k))
+                r_box.addWidget(btn)
+            keypad_layout.addLayout(r_box)
+
+        layout.addLayout(keypad_layout)
+
+    def _set_dot_style(self, dot: QLabel, filled: bool, error: bool = False, success: bool = False) -> None:
+        tokens = get_theme_tokens(self.config)
+        is_dark = self.config.get_effective_theme() == "dark"
+        if error:
+            bg = "#ef4444"
+            border = "#dc2626"
+        elif success:
+            bg = "#10b981"
+            border = "#059669"
+        elif filled:
+            bg = tokens.accent_color
+            border = tokens.accent_color
+        else:
+            bg = "transparent"
+            border = "rgba(255, 255, 255, 0.28)" if is_dark else "rgba(0, 0, 0, 0.25)"
+
+        dot.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg};
+                border: 1.5px solid {border};
+                border-radius: 7px;
+            }}
+        """)
+
+    def _update_dots(self) -> None:
+        for i, dot in enumerate(self.dots):
+            self._set_dot_style(dot, filled=(i < len(self._entered_pin)))
+
+    def keyPressEvent(self, event) -> None:
+        text = event.text()
+        if text.isdigit() and len(text) == 1:
+            self._append_digit(text)
+        elif event.key() in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+            self._backspace()
+        elif event.key() == Qt.Key.Key_Escape:
+            self._clear_pin()
+        else:
+            super().keyPressEvent(event)
+
+    def _handle_keypad_press(self, key: str) -> None:
+        if key.isdigit():
+            self._append_digit(key)
+        elif key == "C":
+            self._clear_pin()
+        elif key == "⌫":
+            self._backspace()
+
+    def _append_digit(self, digit: str) -> None:
+        if len(self._entered_pin) >= 4:
+            return
+        self._entered_pin += digit
+        self._update_dots()
+
+        if len(self._entered_pin) == 4:
+            QTimer.singleShot(80, self._process_complete_pin)
+
+    def _backspace(self) -> None:
+        if self._entered_pin:
+            self._entered_pin = self._entered_pin[:-1]
+            self._update_dots()
+
+    def _clear_pin(self) -> None:
+        self._entered_pin = ""
+        self._update_dots()
+
+    def _process_complete_pin(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        if self._is_setup_mode:
+            if self._setup_step == 1:
+                self._first_pin = self._entered_pin
+                self._entered_pin = ""
+                self._setup_step = 2
+                self.title_lbl.setText("Confirm Your PIN")
+                self.subtitle_lbl.setText("Re-enter the 4-digit PIN to confirm")
+                self.subtitle_lbl.setStyleSheet(f"color: {tokens.text_secondary};")
+                self._update_dots()
+            else:
+                if self._entered_pin == self._first_pin:
+                    for dot in self.dots:
+                        self._set_dot_style(dot, filled=True, success=True)
+                    self.auth_mgr.set_pin(self._first_pin)
+                    self._entered_pin = ""
+                    self._first_pin = ""
+                    self._is_setup_mode = False
+                    QTimer.singleShot(250, self.unlocked.emit)
+                else:
+                    for dot in self.dots:
+                        self._set_dot_style(dot, filled=True, error=True)
+                    self.subtitle_lbl.setText("PINs did not match. Please try again.")
+                    self.subtitle_lbl.setStyleSheet("color: #ef4444; font-size: 11px;")
+                    self._entered_pin = ""
+                    self._first_pin = ""
+                    self._setup_step = 1
+                    self.title_lbl.setText("Set 4-Digit Vault PIN")
+                    QTimer.singleShot(450, self._update_dots)
+        else:
+            if self.auth_mgr.verify_pin(self._entered_pin):
+                for dot in self.dots:
+                    self._set_dot_style(dot, filled=True, success=True)
+                self._entered_pin = ""
+                QTimer.singleShot(180, self.unlocked.emit)
+            else:
+                for dot in self.dots:
+                    self._set_dot_style(dot, filled=True, error=True)
+                self.subtitle_lbl.setText("Incorrect PIN. Please try again.")
+                self.subtitle_lbl.setStyleSheet("color: #ef4444; font-size: 11px;")
+                self._entered_pin = ""
+                QTimer.singleShot(450, self._update_dots)
+
+    def _evaluate_touch_id(self) -> None:
+        def run_auth():
+            return self.auth_mgr.evaluate_biometrics()
+
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(run_auth)
+            success = fut.result()
+
+        if success:
+            for dot in self.dots:
+                self._set_dot_style(dot, filled=True, success=True)
+            self._entered_pin = ""
+            QTimer.singleShot(150, self.unlocked.emit)
+        else:
+            self.subtitle_lbl.setText("Touch ID was cancelled or failed.")
+            self.subtitle_lbl.setStyleSheet("color: #ef4444; font-size: 11px;")
+
+    def refresh_view_mode(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        self._entered_pin = ""
+        self._first_pin = ""
+        self._setup_step = 1
+
+        has_bio = self.auth_mgr.is_biometrics_available()
+        self.btn_biometrics.setVisible(has_bio)
+
+        if not self.auth_mgr.is_pin_set():
+            self._is_setup_mode = True
+            self.icon_badge.setText("🛡️")
+            self.title_lbl.setText("Set 4-Digit Vault PIN")
+            self.subtitle_lbl.setText("Create a 4-digit security PIN to protect credentials")
+            self.subtitle_lbl.setStyleSheet(f"color: {tokens.text_secondary};")
+        else:
+            self._is_setup_mode = False
+            self.icon_badge.setText("🔒")
+            self.title_lbl.setText("Vault is Locked")
+            desc = "Enter your 4-digit PIN or use Touch ID" if has_bio else "Enter your 4-digit PIN"
+            self.subtitle_lbl.setText(desc)
+            self.subtitle_lbl.setStyleSheet(f"color: {tokens.text_secondary};")
+
+        self._update_dots()
+        self.setFocus()
+
+
+class VaultChangePinDialog(QDialog):
+    """Modal dialog to securely change the 4-digit Vault PIN."""
+
+    def __init__(self, auth_mgr: VaultAuthManager, config: DockConfig, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.auth_mgr = auth_mgr
+        self.config = config
+        self.setWindowTitle("Change Vault PIN")
+        self.setFixedSize(300, 260)
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(10)
+
+        title = QLabel("Change Security PIN", self)
+        title.setFont(create_app_font(self.config, size=14, weight=QFont.Weight.DemiBold))
+        title.setStyleSheet(f"color: {tokens.text_primary};")
+        layout.addWidget(title)
+
+        input_style = f"""
+            QLineEdit {{
+                background: rgba(0, 0, 0, 0.25);
+                color: {tokens.text_primary};
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+                letter-spacing: 4px;
+            }}
+            QLineEdit:focus {{
+                border-color: {tokens.accent_color};
+            }}
+        """
+
+        self.curr_pin = QLineEdit(self)
+        self.curr_pin.setPlaceholderText("Current 4-digit PIN")
+        self.curr_pin.setEchoMode(QLineEdit.EchoMode.Password)
+        self.curr_pin.setMaxLength(4)
+        self.curr_pin.setStyleSheet(input_style)
+        layout.addWidget(self.curr_pin)
+
+        self.new_pin = QLineEdit(self)
+        self.new_pin.setPlaceholderText("New 4-digit PIN")
+        self.new_pin.setEchoMode(QLineEdit.EchoMode.Password)
+        self.new_pin.setMaxLength(4)
+        self.new_pin.setStyleSheet(input_style)
+        layout.addWidget(self.new_pin)
+
+        self.confirm_pin = QLineEdit(self)
+        self.confirm_pin.setPlaceholderText("Confirm new 4-digit PIN")
+        self.confirm_pin.setEchoMode(QLineEdit.EchoMode.Password)
+        self.confirm_pin.setMaxLength(4)
+        self.confirm_pin.setStyleSheet(input_style)
+        layout.addWidget(self.confirm_pin)
+
+        self.err_lbl = QLabel("", self)
+        self.err_lbl.setStyleSheet("color: #ef4444; font-size: 11px;")
+        layout.addWidget(self.err_lbl)
+
+        btn_row = QHBoxLayout()
+        btn_cancel = QPushButton("Cancel", self)
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_save = QPushButton("Save PIN", self)
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background: {tokens.accent_color};
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+        """)
+        btn_save.clicked.connect(self._save)
+
+        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_save)
+        layout.addLayout(btn_row)
+
+    def _save(self) -> None:
+        curr = self.curr_pin.text().strip()
+        new_p = self.new_pin.text().strip()
+        conf = self.confirm_pin.text().strip()
+
+        if not self.auth_mgr.verify_pin(curr):
+            self.err_lbl.setText("Current PIN is incorrect.")
+            self.curr_pin.setFocus()
+            return
+
+        if len(new_p) != 4 or not new_p.isdigit():
+            self.err_lbl.setText("New PIN must be exactly 4 digits.")
+            self.new_pin.setFocus()
+            return
+
+        if new_p != conf:
+            self.err_lbl.setText("New PINs do not match.")
+            self.confirm_pin.setFocus()
+            return
+
+        if self.auth_mgr.change_pin(curr, new_p):
+            self.accept()
+        else:
+            self.err_lbl.setText("Failed to update PIN.")
+
+
 class VaultAppWidget(BaseAttachedApp):
     """Vault application drawer providing zero-knowledge encrypted credential management."""
 
-    def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        config: DockConfig,
+        parent: Optional[QWidget] = None,
+        auth_mgr: Optional[VaultAuthManager] = None,
+        storage: Optional[VaultStorageManager] = None,
+    ):
         super().__init__("vault", "Vault", config, parent)
-        self.storage = VaultStorageManager()
+        self.auth_mgr = auth_mgr if auth_mgr is not None else VaultAuthManager()
+        self.storage = storage if storage is not None else VaultStorageManager()
         self.store = self.storage.load_vault()
 
         self._cards: List[VaultCard] = []
-        self._is_locked: bool = False
+        self._is_locked: bool = True
         self._active_form: Optional[VaultFormWidget] = None
 
         # Clipboard auto-clear timer
@@ -917,6 +1328,7 @@ class VaultAppWidget(BaseAttachedApp):
 
         self._init_vault_ui()
         self._reset_inactivity_timer()
+        self.lock_vault()
 
     def _init_vault_ui(self) -> None:
         tokens = get_theme_tokens(self.config)
@@ -985,6 +1397,45 @@ class VaultAppWidget(BaseAttachedApp):
         )
         toolbar.addWidget(self.badge_count)
 
+        self.btn_lock = QPushButton("🔒", self.toolbar_widget)
+        self.btn_lock.setToolTip("Lock Vault now")
+        self.btn_lock.setFixedSize(28, 28)
+        self.btn_lock.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_lock.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.08);
+                color: #e2e8f0;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background: rgba(239, 68, 68, 0.25);
+                border-color: #ef4444;
+            }
+        """)
+        self.btn_lock.clicked.connect(self.lock_vault)
+        toolbar.addWidget(self.btn_lock)
+
+        self.btn_change_pin = QPushButton("🔑", self.toolbar_widget)
+        self.btn_change_pin.setToolTip("Change Security PIN")
+        self.btn_change_pin.setFixedSize(28, 28)
+        self.btn_change_pin.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_change_pin.setStyleSheet("""
+            QPushButton {
+                background: rgba(255, 255, 255, 0.08);
+                color: #e2e8f0;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.16);
+            }
+        """)
+        self.btn_change_pin.clicked.connect(self._open_change_pin_dialog)
+        toolbar.addWidget(self.btn_change_pin)
+
         self.content_layout.addWidget(self.toolbar_widget)
 
         # 2. Main Stack (List View vs Form View vs Locked View)
@@ -1012,55 +1463,16 @@ class VaultAppWidget(BaseAttachedApp):
         self.form_layout.setContentsMargins(0, 0, 0, 0)
         self.view_stack.addWidget(self.form_host)
 
-        # Page 2: Locked View
+        # Page 2: Locked View with VaultLockScreen
         self.locked_host = QWidget(self.view_stack)
-        self._build_locked_view()
+        locked_host_layout = QVBoxLayout(self.locked_host)
+        locked_host_layout.setContentsMargins(0, 0, 0, 0)
+        self.lock_screen = VaultLockScreen(self.auth_mgr, self.config, self.locked_host)
+        self.lock_screen.unlocked.connect(self._unlock_vault)
+        locked_host_layout.addWidget(self.lock_screen)
         self.view_stack.addWidget(self.locked_host)
 
         self.refresh_cards()
-
-    def _build_locked_view(self) -> None:
-        tokens = get_theme_tokens(self.config)
-        layout = QVBoxLayout(self.locked_host)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(16)
-
-        icon_lbl = QLabel("🔒", self.locked_host)
-        icon_lbl.setStyleSheet("font-size: 42px;")
-        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(icon_lbl)
-
-        title_lbl = QLabel("Vault is Locked", self.locked_host)
-        title_lbl.setFont(create_app_font(self.config, size=15, weight=QFont.Weight.DemiBold))
-        title_lbl.setStyleSheet(f"color: {tokens.text_primary};")
-        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_lbl)
-
-        desc_lbl = QLabel("Inactivity timer expired. Unlock to access credentials.", self.locked_host)
-        desc_lbl.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 12px;")
-        desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(desc_lbl)
-
-        btn_unlock = QPushButton("Unlock Vault", self.locked_host)
-        btn_unlock.setFixedSize(140, 34)
-        btn_unlock.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_unlock.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: {tokens.accent_color};
-                color: #ffffff;
-                border: none;
-                border-radius: 8px;
-                font-size: 13px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                opacity: 0.9;
-            }}
-            """
-        )
-        btn_unlock.clicked.connect(self._unlock_vault)
-        layout.addWidget(btn_unlock, 0, Qt.AlignmentFlag.AlignCenter)
 
     def refresh_cards(self) -> None:
         """Rebuild card widgets from store."""
@@ -1194,6 +1606,7 @@ class VaultAppWidget(BaseAttachedApp):
     def lock_vault(self) -> None:
         self._is_locked = True
         self.toolbar_widget.setVisible(False)
+        self.lock_screen.refresh_view_mode()
         self.view_stack.setCurrentIndex(2)
 
     def _unlock_vault(self) -> None:
@@ -1202,6 +1615,14 @@ class VaultAppWidget(BaseAttachedApp):
         self.view_stack.setCurrentIndex(0)
         self._reset_inactivity_timer()
         self.toast.show_message("Vault Unlocked")
+
+    def _open_change_pin_dialog(self) -> None:
+        if not self.auth_mgr.is_pin_set():
+            self.lock_vault()
+            return
+        dlg = VaultChangePinDialog(self.auth_mgr, self.config, self)
+        if dlg.exec():
+            self.toast.show_message("Security PIN updated")
 
     def update_config(self, config: DockConfig) -> None:
         super().update_config(config)

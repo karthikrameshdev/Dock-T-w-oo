@@ -227,3 +227,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Native helper binaries
+dock_twoo/vault/touch_id_auth
+

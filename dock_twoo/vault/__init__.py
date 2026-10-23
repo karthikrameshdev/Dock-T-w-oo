@@ -11,6 +11,7 @@ from dock_twoo.vault.models import (
     VaultItem,
     VaultStore,
 )
+from dock_twoo.vault.auth import VaultAuthManager
 from dock_twoo.vault.storage import (
     VaultStorageManager,
     default_vault_data_dir,
@@ -26,4 +27,5 @@ __all__ = [
     "get_or_create_local_master_key",
     "VaultStorageManager",
     "default_vault_data_dir",
+    "VaultAuthManager",
 ]
