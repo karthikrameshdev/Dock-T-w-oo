@@ -50,6 +50,14 @@ class DockScrollArea(QScrollArea):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("background: transparent; border: none;")
 
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, 0)
+
+    def sizeHint(self) -> QSize:
+        if self.widget():
+            return self.widget().sizeHint()
+        return QSize(0, 0)
+
     def wheelEvent(self, event) -> None:
         if self.is_horizontal:
             delta_x = event.angleDelta().x()
@@ -275,10 +283,20 @@ class DockWindow(QWidget):
 
         # 3. Scrollable app icons container (Notes is the first app icon)
         self.scroll_area = DockScrollArea(is_horizontal=is_horizontal, parent=self)
-        self.scroll_area.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Preferred,
-        )
+        if is_horizontal:
+            dim = self.config.dock_width - (self.config.dock_padding_y * 2)
+            self.scroll_area.setFixedHeight(dim)
+            self.scroll_area.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+        else:
+            dim = self.config.dock_width - (self.config.dock_padding_x * 2)
+            self.scroll_area.setFixedWidth(dim)
+            self.scroll_area.setSizePolicy(
+                QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Expanding,
+            )
 
         self.icons_container = QWidget(self.scroll_area)
         self.icons_container.setStyleSheet("background: transparent;")
@@ -395,11 +413,36 @@ class DockWindow(QWidget):
         """Calculate screen edge position and update dock geometry."""
         geom = ScreenManager.calculate_dock_geometry(self.config)
         self.setGeometry(geom)
+
+        # Clamping guarantee: Ensure dock never extends beyond screen boundary on any edge
+        avail = ScreenManager.get_available_geometry(self.config.screen_index)
+        margin_x = self.config.edge_offset_x
+        eff_width = max(self.width(), self.minimumSizeHint().width())
+        eff_height = max(self.height(), self.minimumSizeHint().height())
+
+        if self.config.edge == "right":
+            max_right = avail.right() - margin_x
+            if self.geometry().right() > max_right or self.x() + eff_width > max_right:
+                self.move(max_right - eff_width + 1, self.y())
+        elif self.config.edge == "left":
+            min_left = avail.left() + margin_x
+            if self.geometry().left() < min_left:
+                self.move(min_left, self.y())
+        elif self.config.edge == "top":
+            min_top = avail.top() + margin_x
+            if self.geometry().top() < min_top:
+                self.move(self.x(), min_top)
+        elif self.config.edge == "bottom":
+            max_bottom = avail.bottom() - margin_x
+            if self.geometry().bottom() > max_bottom or self.y() + eff_height > max_bottom:
+                self.move(self.x(), max_bottom - eff_height + 1)
+
         if hasattr(self, "margin_manager"):
-            self.margin_manager.update_dock_geometry(geom)
+            self.margin_manager.update_dock_geometry(self.geometry())
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self.reposition_dock()
         ScreenManager.apply_window_levels(self)
         if hasattr(self, "attached_window"):
             ScreenManager.apply_window_levels(self.attached_window)
@@ -529,6 +572,25 @@ class DockWindow(QWidget):
             return
         self._is_collapsed = False
         target_geom = ScreenManager.calculate_dock_geometry(self.config)
+        avail = ScreenManager.get_available_geometry(self.config.screen_index)
+        margin_x = self.config.edge_offset_x
+        if self.config.edge == "right":
+            max_right = avail.right() - margin_x
+            if target_geom.left() + self.width() - 1 > max_right:
+                target_geom.moveLeft(max_right - self.width() + 1)
+        elif self.config.edge == "left":
+            min_left = avail.left() + margin_x
+            if target_geom.left() < min_left:
+                target_geom.moveLeft(min_left)
+        elif self.config.edge == "top":
+            min_top = avail.top() + margin_x
+            if target_geom.top() < min_top:
+                target_geom.moveTop(min_top)
+        elif self.config.edge == "bottom":
+            max_bottom = avail.bottom() - margin_x
+            if target_geom.top() + self.height() - 1 > max_bottom:
+                target_geom.moveTop(max_bottom - self.height() + 1)
+
         if self._anim:
             self._anim.stop()
         self._anim = QPropertyAnimation(self, b"geometry")

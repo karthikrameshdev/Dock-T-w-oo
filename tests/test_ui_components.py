@@ -330,6 +330,10 @@ def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
     assert dock.scroll_area.is_horizontal is False
 
     dock_geom = dock.geometry()
+    avail = ScreenManager.get_available_geometry(cfg_mgr.config.screen_index)
+    # Strict boundary guarantee: dock right edge never goes beyond the screen or window boundary
+    assert dock_geom.right() <= avail.right() - cfg_mgr.config.edge_offset_x
+
     dock.attached_window.show_app("vault", dock_geom, 300)
     att_geom = dock.attached_window.geometry()
     # Pinned to the left of the dock with gap
@@ -341,6 +345,9 @@ def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
     assert dock.scroll_area.is_horizontal is True
 
     dock_geom = dock.geometry()
+    # Strict boundary guarantee: dock top edge within available screen geometry
+    assert dock_geom.top() >= avail.top() + cfg_mgr.config.edge_offset_x
+
     dock.attached_window.show_app("vault", dock_geom, 500)
     att_geom = dock.attached_window.geometry()
     # Pinned below the dock with gap
