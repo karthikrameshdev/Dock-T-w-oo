@@ -59,3 +59,31 @@ def test_config_manager_updates_and_listeners(tmp_path: Path):
         saved = json.load(f)
     assert saved["edge"] == "left"
     assert saved["icon_size"] == 26
+
+
+def test_individual_app_settings(tmp_path: Path):
+    cfg = DockConfig()
+    assert "notes" in cfg.app_settings
+    assert "brain" in cfg.app_settings
+    assert "vault" in cfg.app_settings
+    assert cfg.app_settings["notes"]["default_title"] == "Untitled Note"
+    assert cfg.app_settings["brain"]["wake_word"] == "Hey Brain"
+
+    # Test update and persistence
+    config_file = tmp_path / "config.json"
+    mgr = ConfigManager(config_path=config_file)
+    mgr.update({
+        "app_settings": {
+            "notes": {"default_title": "Daily Scratchpad", "font_size": 15},
+            "brain": {"wake_word": "Hey Assistant", "speech_rate": 1.2},
+        }
+    })
+
+    assert mgr.config.app_settings["notes"]["default_title"] == "Daily Scratchpad"
+    assert mgr.config.app_settings["notes"]["font_size"] == 15
+    assert mgr.config.app_settings["brain"]["wake_word"] == "Hey Assistant"
+    assert mgr.config.app_settings["brain"]["speech_rate"] == 1.2
+    # Verify unedited fields retained defaults
+    assert mgr.config.app_settings["notes"]["auto_save_interval_sec"] == 1
+    assert mgr.config.app_settings["vault"]["auto_lock_minutes"] == 5
+

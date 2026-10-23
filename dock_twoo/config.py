@@ -121,10 +121,43 @@ def get_default_apps() -> List[DockAppItem]:
     ]
 
 
+def get_default_app_settings() -> Dict[str, Dict[str, Any]]:
+    """Default settings for individual dock applications."""
+    return {
+        "notes": {
+            "default_title": "Untitled Note",
+            "auto_save_interval_sec": 1,
+            "font_size": 13,
+            "line_numbers": False,
+            "spell_check": True,
+            "markdown_preview": True,
+            "sort_by": "updated_desc",
+        },
+        "brain": {
+            "wake_word_enabled": True,
+            "wake_word": "Hey Brain",
+            "voice_gender": "neutral",
+            "speech_rate": 1.0,
+            "speech_pitch": 1.0,
+            "orb_theme": "neon_cyan",
+            "auto_listen_on_open": False,
+            "keep_conversation_history": True,
+            "mic_sensitivity": 75,
+        },
+        "vault": {
+            "auto_lock_minutes": 5,
+            "clear_clipboard_seconds": 30,
+            "mask_passwords_by_default": True,
+            "biometric_unlock": True,
+            "encryption_algorithm": "AES-256-GCM",
+        },
+    }
+
+
 @dataclass
 class DockConfig:
     # Edge placement
-    edge: str = "right"  # "right", "left"
+    edge: str = "right"  # "right", "left", "top", "bottom"
     screen_index: int = 0
     edge_offset_x: int = 12
     offset_y: int = 0
@@ -187,6 +220,9 @@ class DockConfig:
     # App items
     apps: List[DockAppItem] = field(default_factory=get_default_apps)
 
+    # Individual application settings
+    app_settings: Dict[str, Dict[str, Any]] = field(default_factory=get_default_app_settings)
+
     def get_effective_theme(self) -> str:
         """Resolve theme mode to 'dark' or 'light'."""
         if self.theme_mode == "system":
@@ -236,6 +272,14 @@ class DockConfig:
                     elif isinstance(item, DockAppItem):
                         apps_list.append(item)
                 cfg.apps = apps_list
+            elif k == "app_settings" and isinstance(v, dict):
+                merged = get_default_app_settings()
+                for app_id, s in v.items():
+                    if isinstance(s, dict):
+                        if app_id not in merged:
+                            merged[app_id] = {}
+                        merged[app_id].update(s)
+                cfg.app_settings = merged
             elif hasattr(cfg, k):
                 setattr(cfg, k, v)
         return cfg
@@ -312,6 +356,14 @@ class ConfigManager(QObject):
                     if isinstance(item, dict):
                         apps_list.append(DockAppItem(**item))
                 self._config.apps = apps_list
+            elif k == "app_settings" and isinstance(v, dict):
+                if not hasattr(self._config, "app_settings") or not isinstance(self._config.app_settings, dict):
+                    self._config.app_settings = get_default_app_settings()
+                for app_key, app_dict in v.items():
+                    if isinstance(app_dict, dict):
+                        if app_key not in self._config.app_settings:
+                            self._config.app_settings[app_key] = {}
+                        self._config.app_settings[app_key].update(app_dict)
             elif hasattr(self._config, k):
                 # Ensure type conversion where appropriate
                 expected_type = type(getattr(self._config, k))

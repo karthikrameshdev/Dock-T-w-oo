@@ -9,13 +9,15 @@
 </head>
 <body class="theme-dark">
   <div class="app-layout">
-    <!-- Header -->
+
+    <!-- Top App Header -->
     <header class="app-header">
       <div class="brand">
         <div class="brand-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M14.5 3.5 L7.5 10.5 L10.5 13.5 L7 17 L10 20 L13.5 16.5 L16.5 19.5 L20.5 15.5 L14.5 9.5 L17.5 6.5 Z" />
-            <path d="M5 6 L10 3 L12 5 L7 8 Z" opacity="0.85" />
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+            <path d="M2 12h20"/>
           </svg>
         </div>
         <div class="brand-text">
@@ -23,42 +25,125 @@
           <span class="badge">Console v0.1.0</span>
         </div>
       </div>
+
+      <div class="header-center">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="settingsSearch" placeholder="Search settings & apps...">
+        </div>
+      </div>
+
       <div class="header-actions">
-        <button id="resetBtn" class="btn btn-secondary">
+        <button id="togglePreviewBtn" class="btn btn-secondary" title="Toggle Live Desktop Mockup Preview">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span class="btn-text">Live Preview</span>
+        </button>
+        <button id="resetBtn" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
             <path d="M3 3v5h5"/>
           </svg>
-          Reset Defaults
+          Reset
         </button>
         <button id="saveBtn" class="btn btn-primary">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
             <polyline points="17 21 17 13 7 13 7 21"/>
             <polyline points="7 3 7 8 15 8"/>
           </svg>
-          Save Changes
+          Save
         </button>
       </div>
     </header>
 
-    <!-- Main Content Grid -->
-    <main class="console-body">
-      <!-- Settings Column -->
-      <section class="settings-column">
+    <!-- Multi-Page Workspace Grid -->
+    <main class="console-body" id="consoleBody">
 
-        <!-- Edge Placement & Dimensions -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon">📍</div>
-            <div>
-              <h2>Screen Edge & Placement</h2>
-              <p>Position the dock along desktop edges with smart alignment</p>
-            </div>
+      <!-- Left Navigation Sidebar -->
+      <aside class="console-sidebar">
+        <nav class="sidebar-nav">
+
+          <div class="nav-group">
+            <span class="nav-group-title">Dock Settings</span>
+            <button class="nav-item active" data-page="page-placement">
+              <span class="nav-icon">📍</span>
+              <span class="nav-label">Placement & Sizing</span>
+            </button>
+            <button class="nav-item" data-page="page-appearance">
+              <span class="nav-icon">🎨</span>
+              <span class="nav-label">Appearance & Theme</span>
+            </button>
+            <button class="nav-item" data-page="page-desktop">
+              <span class="nav-icon">🪟</span>
+              <span class="nav-label">Desktop & Work Area</span>
+            </button>
+            <button class="nav-item" data-page="page-drawers">
+              <span class="nav-icon">📐</span>
+              <span class="nav-label">Companion Drawers</span>
+            </button>
           </div>
-          <div class="card-content">
+
+          <div class="nav-group">
+            <span class="nav-group-title">Individual Apps</span>
+            <button class="nav-item" data-page="page-notes">
+              <span class="nav-icon">📝</span>
+              <span class="nav-label">Notes</span>
+              <span class="nav-tag">Top App</span>
+            </button>
+            <button class="nav-item" data-page="page-brain">
+              <span class="nav-icon">🧠</span>
+              <span class="nav-label">Brain Voice Agent</span>
+              <span class="nav-tag">Assistant</span>
+            </button>
+            <button class="nav-item" data-page="page-vault">
+              <span class="nav-icon">🛡️</span>
+              <span class="nav-label">Vault Security</span>
+            </button>
+            <button class="nav-item" data-page="page-apps">
+              <span class="nav-icon">📱</span>
+              <span class="nav-label">Dock Apps Manager</span>
+            </button>
+          </div>
+
+          <div class="nav-group">
+            <span class="nav-group-title">System</span>
+            <button class="nav-item" data-page="page-about">
+              <span class="nav-icon">ℹ️</span>
+              <span class="nav-label">About & Status</span>
+            </button>
+          </div>
+
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="server-status">
+            <span class="status-indicator-dot"></span>
+            <span class="status-indicator-text">Dock Active (Port 28842)</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Dynamic Settings View Pane -->
+      <section class="console-main">
+
+        <!-- Page 1: Placement & Sizing -->
+        <div class="page-view active" id="page-placement">
+          <div class="page-header">
+            <h2>Placement & Sizing</h2>
+            <p>Configure screen edge anchoring, dock width, height modes, and screen positioning</p>
+          </div>
+
+          <div class="settings-card">
             <div class="form-group">
               <label>Dock Screen Edge</label>
+              <p class="field-desc">Choose which screen border Dock T(w)oo is pinned to</p>
               <div class="segmented-control" id="edgeControl">
                 <button type="button" class="segment" data-edge="left">Left</button>
                 <button type="button" class="segment active" data-edge="right">Right</button>
@@ -73,15 +158,25 @@
                 <span class="value-badge" id="dockWidthVal">60 px</span>
               </div>
               <input type="range" id="dockWidth" min="48" max="96" value="60">
+              <span class="help-text">Capsule cross-axis thickness along the screen edge</span>
             </div>
 
             <div class="form-group">
               <label>Dock Height Mode</label>
+              <p class="field-desc">Determines capsule lengthwise stretching behavior</p>
               <div class="segmented-control" id="heightModeControl">
                 <button type="button" class="segment active" data-mode="fill">Full Height (Pill)</button>
                 <button type="button" class="segment" data-mode="auto">Auto-Fit Content</button>
-                <button type="button" class="segment" data-mode="fixed">Fixed</button>
+                <button type="button" class="segment" data-mode="fixed">Fixed Dimension</button>
               </div>
+            </div>
+
+            <div class="slider-group" id="fixedHeightGroup" style="display: none;">
+              <div class="slider-header">
+                <label for="dockHeightFixed">Fixed Length</label>
+                <span class="value-badge" id="dockHeightFixedVal">700 px</span>
+              </div>
+              <input type="range" id="dockHeightFixed" min="400" max="1200" value="700">
             </div>
 
             <div class="slider-group">
@@ -89,96 +184,30 @@
                 <label for="dockRadius">Dock Corner Radius</label>
                 <span class="value-badge" id="dockRadiusVal">28 px</span>
               </div>
-              <input type="range" id="dockRadius" min="14" max="40" value="28">
-            </div>
-          </div>
-        </div>
-
-        <!-- Desktop Space Reservation & Visibility -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon">🪟</div>
-            <div>
-              <h2>Desktop Space & Visibility</h2>
-              <p>Reserve desktop edge work area and control dock persistence</p>
-            </div>
-          </div>
-          <div class="card-content">
-            <div class="form-group toggle-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-              <div>
-                <label style="margin: 0; font-weight: 500;">Reserve Desktop Space</label>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-secondary);">Prevent other application windows from sliding behind Dock T(w)oo when maximized</p>
-              </div>
-              <input type="checkbox" id="reserveSpaceToggle" checked style="width: 20px; height: 20px; accent-color: var(--accent);">
-            </div>
-
-            <div class="form-group toggle-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-              <div>
-                <label style="margin: 0; font-weight: 500;">Auto-Hide Dock</label>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-secondary);">Automatically collapse dock when mouse leaves (unchecked = permanently visible)</p>
-              </div>
-              <input type="checkbox" id="autoHideToggle" style="width: 20px; height: 20px; accent-color: var(--accent);">
-            </div>
-
-            <div class="form-group toggle-group" style="display: flex; justify-content: space-between; align-items: center;">
-              <div>
-                <label style="margin: 0; font-weight: 500;">Ambient Background Glow</label>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: var(--text-secondary);">Luminous halo and high-contrast glassmorphic border for crisp visibility</p>
-              </div>
-              <input type="checkbox" id="glowToggle" checked style="width: 20px; height: 20px; accent-color: var(--accent);">
-            </div>
-          </div>
-        </div>
-
-        <!-- Icon Sizing & Sizing Standardization -->
-        <div class="card highlight-card">
-          <div class="card-header">
-            <div class="card-icon">📐</div>
-            <div>
-              <h2>Standardized Icon Sizing</h2>
-              <p>All icons scale uniformly with precision vector SVG rendering</p>
-            </div>
-          </div>
-          <div class="card-content">
-            <div class="slider-group">
-              <div class="slider-header">
-                <label for="iconSize">Standard Icon Size</label>
-                <span class="value-badge accent" id="iconSizeVal">20 px</span>
-              </div>
-              <input type="range" id="iconSize" min="16" max="40" value="20">
-              <span class="help-text">Controls standard icon dimensions across all dock items</span>
+              <input type="range" id="dockRadius" min="14" max="44" value="28">
             </div>
 
             <div class="slider-group">
               <div class="slider-header">
-                <label for="iconSpacing">Icon Vertical Spacing</label>
-                <span class="value-badge" id="iconSpacingVal">10 px</span>
+                <label for="edgeOffsetX">Edge Inset Margin</label>
+                <span class="value-badge" id="edgeOffsetXVal">12 px</span>
               </div>
-              <input type="range" id="iconSpacing" min="4" max="24" value="10">
-            </div>
-
-            <div class="slider-group">
-              <div class="slider-header">
-                <label for="iconOpacity">Icon Opacity</label>
-                <span class="value-badge" id="iconOpacityVal">90%</span>
-              </div>
-              <input type="range" id="iconOpacity" min="20" max="100" value="90">
+              <input type="range" id="edgeOffsetX" min="0" max="40" value="12">
             </div>
           </div>
         </div>
 
-        <!-- Theme, Colors & Opacity -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon">🎨</div>
-            <div>
-              <h2>Theme & Color Customization</h2>
-              <p>Dynamic SVG tinting and acrylic backdrop styling</p>
-            </div>
+        <!-- Page 2: Appearance & Theme -->
+        <div class="page-view" id="page-appearance">
+          <div class="page-header">
+            <h2>Appearance & Theme</h2>
+            <p>Dynamic SVG vector tinting, acrylic backdrop styling, and visual glow</p>
           </div>
-          <div class="card-content">
+
+          <div class="settings-card">
             <div class="form-group">
               <label>Theme Style</label>
+              <p class="field-desc">Sync with system appearance or lock to dark/light</p>
               <div class="segmented-control" id="themeControl">
                 <button type="button" class="segment active" data-theme="system">System Default</button>
                 <button type="button" class="segment" data-theme="dark">Dark Theme</button>
@@ -210,22 +239,88 @@
               </div>
               <input type="range" id="dockOpacity" min="20" max="100" value="94">
             </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="iconSize">Standard Icon Size</label>
+                <span class="value-badge accent" id="iconSizeVal">20 px</span>
+              </div>
+              <input type="range" id="iconSize" min="16" max="40" value="20">
+              <span class="help-text">Uniform vector icon scaling across all dock items</span>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="iconSpacing">Icon Vertical Spacing</label>
+                <span class="value-badge" id="iconSpacingVal">6 px</span>
+              </div>
+              <input type="range" id="iconSpacing" min="4" max="24" value="6">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="iconOpacity">Icon Opacity</label>
+                <span class="value-badge" id="iconOpacityVal">90%</span>
+              </div>
+              <input type="range" id="iconOpacity" min="20" max="100" value="90">
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Ambient Background Glow</label>
+                <p class="field-desc">Multi-layer radiant halo and high-contrast glass border</p>
+              </div>
+              <input type="checkbox" id="glowToggle" checked class="modern-toggle">
+            </div>
           </div>
         </div>
 
-        <!-- Attached Window Geometry -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon">🪟</div>
-            <div>
-              <h2>Attached App Window Settings</h2>
-              <p>Dimensions and margins for the seamless companion drawers</p>
-            </div>
+        <!-- Page 3: Desktop & Work Area -->
+        <div class="page-view" id="page-desktop">
+          <div class="page-header">
+            <h2>Desktop Space & Work Area</h2>
+            <p>Control desktop edge reservations, window clamping, and auto-hide sliding behavior</p>
           </div>
-          <div class="card-content">
+
+          <div class="settings-card">
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Reserve Desktop Work Area</label>
+                <p class="field-desc">Prevent other maximized application windows (Safari, Chrome, VS Code, Postman) from sliding behind Dock T(w)oo</p>
+              </div>
+              <input type="checkbox" id="reserveSpaceToggle" checked class="modern-toggle">
+            </div>
+
             <div class="slider-group">
               <div class="slider-header">
-                <label for="attachedWidth">Window Width</label>
+                <label for="screenMarginGap">Window Edge Clearance Gap</label>
+                <span class="value-badge" id="screenMarginGapVal">8 px</span>
+              </div>
+              <input type="range" id="screenMarginGap" min="0" max="32" value="8">
+              <span class="help-text">Breathing room gap between external windows and Dock T(w)oo</span>
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Auto-Hide Dock</label>
+                <p class="field-desc">Smoothly slide dock out into screen edge when mouse leaves, and reveal when mouse touches screen edge</p>
+              </div>
+              <input type="checkbox" id="autoHideToggle" class="modern-toggle">
+            </div>
+          </div>
+        </div>
+
+        <!-- Page 4: Companion Drawers -->
+        <div class="page-view" id="page-drawers">
+          <div class="page-header">
+            <h2>Companion Drawers</h2>
+            <p>Customize the geometry and positioning of attached application windows</p>
+          </div>
+
+          <div class="settings-card">
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="attachedWidth">Drawer Width</label>
                 <span class="value-badge" id="attachedWidthVal">390 px</span>
               </div>
               <input type="range" id="attachedWidth" min="280" max="640" value="390">
@@ -233,42 +328,290 @@
 
             <div class="slider-group">
               <div class="slider-header">
-                <label for="attachedHeight">Window Height</label>
+                <label for="attachedHeight">Drawer Max Height</label>
                 <span class="value-badge" id="attachedHeightVal">620 px</span>
               </div>
               <input type="range" id="attachedHeight" min="360" max="840" value="620">
+              <span class="help-text">Used for top and bottom edge horizontal orientations</span>
             </div>
 
             <div class="slider-group">
               <div class="slider-header">
-                <label for="attachedGap">Dock Gap Spacing</label>
+                <label for="attachedGap">Dock Clearance Gap</label>
                 <span class="value-badge" id="attachedGapVal">12 px</span>
               </div>
               <input type="range" id="attachedGap" min="4" max="32" value="12">
             </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="attachedCornerRadius">Drawer Corner Radius</label>
+                <span class="value-badge" id="attachedCornerRadiusVal">20 px</span>
+              </div>
+              <input type="range" id="attachedCornerRadius" min="8" max="32" value="20">
+            </div>
           </div>
         </div>
 
-        <!-- Apps Toggle & Ordering -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon">📱</div>
-            <div>
-              <h2>Dock Applications</h2>
-              <p>Enable, disable, and manage apps shown in Dock T(w)oo</p>
+        <!-- Page 5: Notes App Settings -->
+        <div class="page-view" id="page-notes">
+          <div class="page-header">
+            <h2>Notes App Settings</h2>
+            <p>Manage default behavior, typography, sorting, and local storage for the Notes drawer</p>
+          </div>
+
+          <div class="settings-card">
+            <div class="form-group">
+              <label for="notesDefaultTitle">Default Note Title</label>
+              <input type="text" id="notesDefaultTitle" class="text-input" value="Untitled Note">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="notesAutoSave">Auto-Save Frequency</label>
+                <select id="notesAutoSave" class="select-input">
+                  <option value="1">Instant (1 second)</option>
+                  <option value="5">Every 5 seconds</option>
+                  <option value="30">Every 30 seconds</option>
+                </select>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="notesSortBy">Default Notes Ordering</label>
+                <select id="notesSortBy" class="select-input">
+                  <option value="updated_desc">Recently Modified</option>
+                  <option value="created_desc">Date Created</option>
+                  <option value="title_asc">Alphabetical (A - Z)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="notesFontSize">Editor Font Size</label>
+                <span class="value-badge" id="notesFontSizeVal">13 px</span>
+              </div>
+              <input type="range" id="notesFontSize" min="11" max="22" value="13">
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Markdown Preview Formatting</label>
+                <p class="field-desc">Format headers, bold, bullets, and links cleanly in note editor</p>
+              </div>
+              <input type="checkbox" id="notesMarkdownToggle" checked class="modern-toggle">
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Spellcheck & Autocorrect</label>
+                <p class="field-desc">Highlight typographical errors and enable native spelling</p>
+              </div>
+              <input type="checkbox" id="notesSpellcheckToggle" checked class="modern-toggle">
+            </div>
+
+            <div class="info-box">
+              <div class="info-box-icon">📁</div>
+              <div class="info-box-content">
+                <strong>Storage Location:</strong> <code>~/.dock_twoo/notes/</code>
+                <p>Notes are stored locally in standard JSON files. Fully private and offline.</p>
+              </div>
             </div>
           </div>
-          <div class="card-content">
+        </div>
+
+        <!-- Page 6: Brain Voice Agent Settings -->
+        <div class="page-view" id="page-brain">
+          <div class="page-header">
+            <h2>Brain Voice Assistant</h2>
+            <p>Voice standby model, wake word, interactive visualizer orb, and speech settings</p>
+          </div>
+
+          <div class="settings-card">
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Voice Wake Word Activation</label>
+                <p class="field-desc">Trigger the assistant hands-free when speaking the wake phrase</p>
+              </div>
+              <input type="checkbox" id="brainWakeWordToggle" checked class="modern-toggle">
+            </div>
+
+            <div class="form-group">
+              <label for="brainWakeWord">Custom Wake Word</label>
+              <input type="text" id="brainWakeWord" class="text-input" value="Hey Brain">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="brainVoiceGender">Voice Persona & Gender</label>
+                <select id="brainVoiceGender" class="select-input">
+                  <option value="neutral">Neutral Assistant</option>
+                  <option value="female">Natural Female Voice</option>
+                  <option value="male">Natural Male Voice</option>
+                </select>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="brainOrbTheme">Visualizer Orb Theme</label>
+                <select id="brainOrbTheme" class="select-input">
+                  <option value="neon_cyan">Neon Cyan Pulse</option>
+                  <option value="aurora_purple">Aurora Purple</option>
+                  <option value="emerald_pulse">Emerald Energy</option>
+                  <option value="solar_flare">Solar Flare</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="brainSpeechRate">Speech Playback Rate</label>
+                <span class="value-badge" id="brainSpeechRateVal">1.0x</span>
+              </div>
+              <input type="range" id="brainSpeechRate" min="75" max="150" value="100">
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Auto-Listen When Drawer Opens</label>
+                <p class="field-desc">Instantly activate microphone listening whenever clicking the Brain icon</p>
+              </div>
+              <input type="checkbox" id="brainAutoListenToggle" class="modern-toggle">
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Keep Conversation History</label>
+                <p class="field-desc">Preserve transcript history across drawer opens</p>
+              </div>
+              <input type="checkbox" id="brainHistoryToggle" checked class="modern-toggle">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="brainMicSensitivity">Microphone Sensitivity</label>
+                <span class="value-badge" id="brainMicSensitivityVal">75%</span>
+              </div>
+              <input type="range" id="brainMicSensitivity" min="20" max="100" value="75">
+            </div>
+          </div>
+        </div>
+
+        <!-- Page 7: Vault Security Settings -->
+        <div class="page-view" id="page-vault">
+          <div class="page-header">
+            <h2>Vault Security Settings</h2>
+            <p>Encrypted credentials, auto-lock timeouts, and hardware biometrics</p>
+          </div>
+
+          <div class="settings-card">
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="vaultAutoLock">Auto-Lock Inactivity Timeout</label>
+                <select id="vaultAutoLock" class="select-input">
+                  <option value="1">After 1 minute</option>
+                  <option value="5" selected>After 5 minutes</option>
+                  <option value="15">After 15 minutes</option>
+                  <option value="0">When Dock Hides</option>
+                </select>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="vaultClearClipboard">Clear Copied Secrets</label>
+                <select id="vaultClearClipboard" class="select-input">
+                  <option value="15">After 15 seconds</option>
+                  <option value="30" selected>After 30 seconds</option>
+                  <option value="60">After 60 seconds</option>
+                  <option value="0">Never auto-clear</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Mask Passwords by Default</label>
+                <p class="field-desc">Hide credential values until explicitly clicking reveal</p>
+              </div>
+              <input type="checkbox" id="vaultMaskToggle" checked class="modern-toggle">
+            </div>
+
+            <div class="toggle-card-item">
+              <div>
+                <label class="toggle-title">Biometric Touch ID / Windows Hello</label>
+                <p class="field-desc">Use system biometric sensors for fast drawer unlock</p>
+              </div>
+              <input type="checkbox" id="vaultBiometricToggle" checked class="modern-toggle">
+            </div>
+
+            <div class="info-box">
+              <div class="info-box-icon">🔐</div>
+              <div class="info-box-content">
+                <strong>Encryption Standard:</strong> <code>AES-256-GCM + Argon2id</code>
+                <p>Zero-knowledge cryptographic storage with PBKDF2 key stretching.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Page 8: Dock Apps Manager -->
+        <div class="page-view" id="page-apps">
+          <div class="page-header">
+            <h2>Dock Applications Manager</h2>
+            <p>Enable, disable, and order applications pinned to your Dock T(w)oo panel</p>
+          </div>
+
+          <div class="settings-card">
             <div id="appsList" class="apps-list">
-              <!-- Dynamically populated -->
+              <!-- Dynamically populated via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Page 9: About & Status -->
+        <div class="page-view" id="page-about">
+          <div class="page-header">
+            <h2>About & Diagnostics</h2>
+            <p>System runtime environment, API endpoints, and version information</p>
+          </div>
+
+          <div class="settings-card">
+            <div class="about-grid">
+              <div class="about-item">
+                <span class="about-label">Application</span>
+                <span class="about-val">Dock T(w)oo</span>
+              </div>
+              <div class="about-item">
+                <span class="about-label">Version</span>
+                <span class="about-val">0.1.0 (Developer Preview)</span>
+              </div>
+              <div class="about-item">
+                <span class="about-label">GUI Framework</span>
+                <span class="about-val">PySide6 (Qt 6.12.0)</span>
+              </div>
+              <div class="about-item">
+                <span class="about-label">Python Runtime</span>
+                <span class="about-val">Python 3.12 (macOS arm64)</span>
+              </div>
+              <div class="about-item">
+                <span class="about-label">Local Server</span>
+                <span class="about-val">http://127.0.0.1:28842</span>
+              </div>
+              <div class="about-item">
+                <span class="about-label">Repository</span>
+                <span class="about-val">github.com/karthikrameshdev/Dock-T-w-oo</span>
+              </div>
+            </div>
+
+            <div class="system-actions">
+              <button id="openNotesFolderBtn" class="btn btn-secondary">Open Notes Folder</button>
+              <button id="resetAllSettingsBtn" class="btn btn-danger">Reset All Settings to Factory Defaults</button>
             </div>
           </div>
         </div>
 
       </section>
 
-      <!-- Live Preview Column -->
-      <aside class="preview-column">
+      <!-- Right Interactive Live Desktop Mockup Column -->
+      <aside class="preview-column" id="previewColumn">
         <div class="preview-sticky">
           <div class="preview-card">
             <div class="preview-header">
@@ -276,7 +619,7 @@
               <h3>Live Desktop Mockup</h3>
               <span class="preview-edge-label" id="previewEdgeLabel">Right Edge</span>
             </div>
-            
+
             <div class="desktop-mockup" id="desktopMockup">
               <!-- Simulated Desktop Screen Area -->
               <div class="mockup-screen-bg"></div>
@@ -343,6 +686,7 @@
           </div>
         </div>
       </aside>
+
     </main>
 
     <!-- Notification Toast -->
