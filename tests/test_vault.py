@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import QPushButton
 
 from dock_twoo.config import DockConfig
 from dock_twoo.vault.crypto import (
@@ -251,5 +252,66 @@ def test_vault_app_widget_ui(qtbot, qapp, tmp_path: Path):
     # Save and verify
     form._save()
     assert widget.view_stack.currentIndex() == 0
+
+    widget.close()
+
+
+def test_dynamic_key_value_vault_form(qtbot, qapp, tmp_path: Path):
+    config = DockConfig()
+    widget = VaultAppWidget(config)
+    qtbot.addWidget(widget)
+    widget.show()
+
+    # 1. Open new form
+    widget.btn_new.click()
+    form = widget._active_form
+    assert form is not None
+    # Verify default has exactly 1 key and value input row ready for user
+    assert len(form.field_rows) == 1
+    k0, v0, row0 = form.field_rows[0]
+    assert k0.text() == ""
+    assert v0.text() == ""
+
+    # User decides key and value
+    form.edit_title.setText("Stripe Payments")
+    k0.setText("Webhook Secret")
+    v0.setText("whsec_test_secret_abc123")
+
+    # Add second custom field
+    entry1 = form._add_field_row("API Key", "")
+    assert len(form.field_rows) == 2
+    # Generate secure password for API Key
+    buttons = entry1[2].findChildren(QPushButton)
+    gen_btn = next(b for b in buttons if "⚡" in b.text())
+    eye_btn = next(b for b in buttons if "👁️" in b.text())
+    form._generate_row_password(entry1[1], eye_btn)
+    assert len(entry1[1].text()) == 20
+
+    # Save
+    form._save()
+    assert widget.view_stack.currentIndex() == 0
+
+    # Find the saved card
+    stripe_card = next(c for c in widget._cards if c.item.title == "Stripe Payments")
+    assert stripe_card is not None
+    assert len(stripe_card.item.custom_fields) == 2
+    assert stripe_card.item.custom_fields[0].key == "Webhook Secret"
+    assert stripe_card.item.custom_fields[0].value == "whsec_test_secret_abc123"
+
+    # Test removing fields in edit mode
+    widget._open_edit_form(stripe_card.item)
+    edit_form = widget._active_form
+    assert len(edit_form.field_rows) == 2
+
+    # Delete first row
+    del_btn0 = next(b for b in edit_form.field_rows[0][2].findChildren(QPushButton) if "✕" in b.text())
+    del_btn0.click()
+    assert len(edit_form.field_rows) == 1
+
+    # Delete the last remaining row - form automatically creates 1 clean row ready
+    del_btn1 = next(b for b in edit_form.field_rows[0][2].findChildren(QPushButton) if "✕" in b.text())
+    del_btn1.click()
+    assert len(edit_form.field_rows) == 1
+    assert edit_form.field_rows[0][0].text() == ""
 
     widget.close()

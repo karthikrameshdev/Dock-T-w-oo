@@ -36,7 +36,7 @@ class VaultItem:
     """A credential entry in Vault."""
 
     title: str
-    password: str
+    password: str = ""
     username: str = ""
     custom_fields: List[CustomField] = field(default_factory=list)
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -48,7 +48,7 @@ class VaultItem:
         """Validate required fields."""
         if not self.title.strip():
             raise ValueError("Title is required.")
-        if not self.password:
+        if not self.password and not self.custom_fields:
             raise ValueError("Password is required.")
 
     def matches_query(self, query: str) -> bool:

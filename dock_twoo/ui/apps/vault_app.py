@@ -145,8 +145,41 @@ class VaultCard(QFrame):
             """
         )
 
+    def _collect_display_fields(self) -> List[tuple[str, str, str]]:
+        """Collect all fields to display: list of (field_id, label, value)."""
+        fields: List[tuple[str, str, str]] = []
+        if self.item.custom_fields:
+            for idx, cf in enumerate(self.item.custom_fields):
+                fields.append((f"cf_{idx}", cf.key, cf.value))
+            # Include legacy fields if not already represented
+            has_user = any(cf.key.lower() in ("username", "user", "email") or (self.item.username and cf.value == self.item.username) for cf in self.item.custom_fields)
+            has_pass = any(cf.key.lower() in ("password", "pass") or (self.item.password and cf.value == self.item.password) for cf in self.item.custom_fields)
+            if self.item.username and not has_user:
+                fields.insert(0, ("username", "Username", self.item.username))
+            if self.item.password and not has_pass:
+                idx = 1 if (self.item.username and not has_user) else 0
+                fields.insert(idx, ("password", "Password", self.item.password))
+        else:
+            if self.item.username:
+                fields.append(("username", "Username", self.item.username))
+            if self.item.password:
+                fields.append(("password", "Password", self.item.password))
+        return fields
+
+    def _get_primary_secret(self, display_fields: List[tuple[str, str, str]]) -> tuple[str, str]:
+        """Find the most relevant secret/password for quick copy."""
+        for _, lbl, val in display_fields:
+            if any(term in lbl.lower() for term in ("pass", "secret", "token", "key", "pin")):
+                return val, lbl
+        if self.item.password:
+            return self.item.password, "Password"
+        if display_fields:
+            return display_fields[-1][2], display_fields[-1][1]
+        return "", "Secret"
+
     def _build_ui(self) -> None:
         tokens = get_theme_tokens(self.config)
+        display_fields = self._collect_display_fields()
 
         # 1. Header Bar Container (clickable to expand/collapse)
         self.header_widget = QWidget(self)
@@ -194,22 +227,34 @@ class VaultCard(QFrame):
 
         title_box.addLayout(title_line)
 
-        # If username exists and collapsed, show quick username preview
+        # Subtitle preview in collapsed mode
+        subtitle_text = ""
         if self.item.username:
-            self.user_subtitle = QLabel(self.item.username, self.header_widget)
+            subtitle_text = self.item.username
+        elif display_fields:
+            user_field = next((v for _, lbl, v in display_fields if lbl.lower() in ("user", "username", "email", "account", "login", "id")), None)
+            if user_field:
+                subtitle_text = user_field
+            else:
+                first_k, first_v = display_fields[0][1], display_fields[0][2]
+                subtitle_text = f"{first_k}: ••••••••" if len(first_v) > 0 else first_k
+
+        if subtitle_text:
+            self.user_subtitle = QLabel(subtitle_text, self.header_widget)
             self.user_subtitle.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 11px;")
             self.user_subtitle.setVisible(not self._is_expanded)
             title_box.addWidget(self.user_subtitle)
 
         header_row.addLayout(title_box, 1)
 
-        # Action button: Quick Copy Password (copies password immediately)
+        # Action button: Quick Copy Secret
+        primary_val, primary_lbl = self._get_primary_secret(display_fields)
         btn_quick_copy = QPushButton("📋", self.header_widget)
         btn_quick_copy.setFixedSize(26, 26)
         btn_quick_copy.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_quick_copy.setToolTip("Copy password to clipboard")
+        btn_quick_copy.setToolTip(f"Copy {primary_lbl.lower()} to clipboard")
         btn_quick_copy.setStyleSheet(self._icon_btn_style(tokens))
-        btn_quick_copy.clicked.connect(lambda: self._copy_to_clipboard(self.item.password, "Password"))
+        btn_quick_copy.clicked.connect(lambda v=primary_val, l=primary_lbl: self._copy_to_clipboard(v, l))
         header_row.addWidget(btn_quick_copy)
 
         # Action button: Edit
@@ -246,40 +291,17 @@ class VaultCard(QFrame):
         divider.setStyleSheet(f"background: {tokens.border_color}; max-height: 1px;")
         details_layout.addWidget(divider)
 
-        # Username Row (if present)
-        if self.item.username:
-            user_row = self._create_field_row(
-                label_text="USER",
-                display_text=self.item.username,
-                is_masked=False,
-                field_id="username",
-                can_reveal=False,
-            )
-            details_layout.addWidget(user_row)
-
-        # Password Row (Required)
-        pass_revealed = "password" in self._revealed_fields
-        pass_row = self._create_field_row(
-            label_text="PASS",
-            display_text=self.item.password,
-            is_masked=not pass_revealed,
-            field_id="password",
-            can_reveal=True,
-        )
-        details_layout.addWidget(pass_row)
-
-        # Custom Fields Rows
-        for idx, cf in enumerate(self.item.custom_fields):
-            field_id = f"custom_{idx}"
-            cf_revealed = field_id in self._revealed_fields
-            cf_row = self._create_field_row(
-                label_text=cf.key.upper()[:8],
-                display_text=cf.value,
-                is_masked=not cf_revealed,
+        # Dynamic Field Rows
+        for field_id, label, value in display_fields:
+            is_revealed = field_id in self._revealed_fields
+            row_w = self._create_field_row(
+                label_text=label,
+                display_text=value,
+                is_masked=not is_revealed,
                 field_id=field_id,
                 can_reveal=True,
             )
-            details_layout.addWidget(cf_row)
+            details_layout.addWidget(row_w)
 
         self.details_widget.setVisible(self._is_expanded)
         self.main_layout.addWidget(self.details_widget)
@@ -304,18 +326,19 @@ class VaultCard(QFrame):
         display_text: str,
         is_masked: bool,
         field_id: str,
-        can_reveal: bool = False,
+        can_reveal: bool = True,
     ) -> QWidget:
         tokens = get_theme_tokens(self.config)
 
         row_widget = QWidget(self.details_widget)
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 1, 0, 1)
-        row_layout.setSpacing(8)
+        row_layout.setSpacing(6)
 
         # Label badge
-        lbl = QLabel(label_text, row_widget)
-        lbl.setFixedWidth(54)
+        lbl = QLabel(label_text.upper()[:12], row_widget)
+        lbl.setFixedWidth(74)
+        lbl.setToolTip(label_text)
         lbl.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;")
         row_layout.addWidget(lbl)
 
@@ -335,9 +358,9 @@ class VaultCard(QFrame):
             eye_btn = QPushButton("👁️" if is_masked else "🙈", row_widget)
             eye_btn.setFixedSize(24, 22)
             eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            eye_btn.setToolTip("Show/hide value")
+            eye_btn.setToolTip("Show / hide value")
             eye_btn.setStyleSheet(self._icon_btn_style(tokens))
-            eye_btn.clicked.connect(lambda: self._toggle_reveal(field_id))
+            eye_btn.clicked.connect(lambda f=field_id: self._toggle_reveal(f))
             row_layout.addWidget(eye_btn)
 
         # Copy button
@@ -362,7 +385,7 @@ class VaultCard(QFrame):
             }}
             """
         )
-        copy_btn.clicked.connect(lambda: self._copy_to_clipboard(display_text, label_text))
+        copy_btn.clicked.connect(lambda v=display_text, l=label_text: self._copy_to_clipboard(v, l))
         row_layout.addWidget(copy_btn)
 
         return row_widget
@@ -415,7 +438,7 @@ class VaultCard(QFrame):
 
 
 class VaultFormWidget(QWidget):
-    """Clean, space-efficient form for creating or editing vault credentials."""
+    """Clean, space-efficient form for creating or editing vault credentials with dynamic key-value fields."""
 
     save_requested = Signal(VaultItem)
     cancel_requested = Signal()
@@ -430,7 +453,7 @@ class VaultFormWidget(QWidget):
         super().__init__(parent)
         self.config = config
         self.editing_item = item
-        self.custom_rows: List[tuple[QLineEdit, QLineEdit, QWidget]] = []
+        self.field_rows: List[tuple[QLineEdit, QLineEdit, QWidget]] = []
         self.empty_custom_lbl: Optional[QLabel] = None
 
         self.main_layout = QVBoxLayout(self)
@@ -438,6 +461,42 @@ class VaultFormWidget(QWidget):
         self.main_layout.setSpacing(0)
 
         self._build_form()
+
+    @property
+    def custom_rows(self) -> List[tuple[QLineEdit, QLineEdit, QWidget]]:
+        """Backward-compatibility alias for test assertions and legacy callers."""
+        return self.field_rows
+
+    @property
+    def edit_username(self) -> QLineEdit:
+        """Backward-compatibility property for legacy tests/callers."""
+        for k, v, _ in self.field_rows:
+            if k.text().strip().lower() in ("username", "user", "email"):
+                return v
+        # If the first row is completely blank, use it as Username
+        if self.field_rows and not self.field_rows[0][0].text() and not self.field_rows[0][1].text():
+            self.field_rows[0][0].setText("Username")
+            return self.field_rows[0][1]
+        entry = self._add_field_row("Username", "")
+        return entry[1]
+
+    @property
+    def edit_password(self) -> QLineEdit:
+        """Backward-compatibility property for legacy tests/callers."""
+        for k, v, _ in self.field_rows:
+            if k.text().strip().lower() in ("password", "pass"):
+                return v
+        for k, v, _ in self.field_rows:
+            if not v.text() and k.text().strip().lower() not in ("username", "user", "email"):
+                if not k.text().strip():
+                    k.setText("Password")
+                return v
+        entry = self._add_field_row("Password", "")
+        return entry[1]
+
+    def _add_custom_row(self, key: str, val: str) -> tuple[QLineEdit, QLineEdit, QWidget]:
+        """Backward-compatibility alias for _add_field_row."""
+        return self._add_field_row(key, val)
 
     def _build_form(self) -> None:
         tokens = get_theme_tokens(self.config)
@@ -464,101 +523,35 @@ class VaultFormWidget(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(10)
 
-        # Helper to group label and input tightly with 0 margin
-        def make_field(label_str: str, input_widget: QWidget) -> QWidget:
-            box = QWidget(self.form_body)
-            b_layout = QVBoxLayout(box)
-            b_layout.setContentsMargins(0, 0, 0, 0)
-            b_layout.setSpacing(4)
-            lbl = QLabel(label_str, box)
-            lbl.setStyleSheet(self._label_style(tokens))
-            b_layout.addWidget(lbl)
-            b_layout.addWidget(input_widget)
-            return box
-
         # Field 1: Title
-        self.edit_title = QLineEdit(self.form_body)
+        title_box = QWidget(self.form_body)
+        t_layout = QVBoxLayout(title_box)
+        t_layout.setContentsMargins(0, 0, 0, 0)
+        t_layout.setSpacing(4)
+        lbl_title = QLabel("Title *", title_box)
+        lbl_title.setStyleSheet(self._label_style(tokens))
+        t_layout.addWidget(lbl_title)
+
+        self.edit_title = QLineEdit(title_box)
         self.edit_title.setFixedHeight(32)
         self.edit_title.setPlaceholderText("e.g. AWS Production, GitHub Enterprise, Google")
         self.edit_title.setStyleSheet(self._input_style(tokens))
         if self.editing_item:
             self.edit_title.setText(self.editing_item.title)
-        body_layout.addWidget(make_field("Title *", self.edit_title))
+        t_layout.addWidget(self.edit_title)
+        body_layout.addWidget(title_box)
 
-        # Field 2: Username / Email
-        self.edit_username = QLineEdit(self.form_body)
-        self.edit_username.setFixedHeight(32)
-        self.edit_username.setPlaceholderText("e.g. admin@company.com or username")
-        self.edit_username.setStyleSheet(self._input_style(tokens))
-        if self.editing_item:
-            self.edit_username.setText(self.editing_item.username)
-        body_layout.addWidget(make_field("Username / Email", self.edit_username))
+        # Field 2: Dynamic Keys & Values Section
+        hdr_row = QHBoxLayout()
+        hdr_row.setContentsMargins(0, 4, 0, 2)
+        hdr_row.setSpacing(6)
+        hdr_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        # Field 3: Password + Generator
-        pass_row = QWidget(self.form_body)
-        pass_layout = QHBoxLayout(pass_row)
-        pass_layout.setContentsMargins(0, 0, 0, 0)
-        pass_layout.setSpacing(6)
+        lbl_fields = QLabel("Fields", self.form_body)
+        lbl_fields.setStyleSheet(self._label_style(tokens))
+        hdr_row.addWidget(lbl_fields, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self.edit_password = QLineEdit(pass_row)
-        self.edit_password.setFixedHeight(32)
-        self.edit_password.setEchoMode(QLineEdit.EchoMode.Password)
-        self.edit_password.setPlaceholderText("Enter or generate password")
-        self.edit_password.setStyleSheet(self._input_style(tokens))
-        if self.editing_item:
-            self.edit_password.setText(self.editing_item.password)
-        pass_layout.addWidget(self.edit_password, 1)
-
-        self.btn_eye = QPushButton("👁️", pass_row)
-        self.btn_eye.setFixedSize(32, 32)
-        self.btn_eye.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_eye.setToolTip("Show / hide password")
-        self.btn_eye.setStyleSheet(self._action_btn_style(tokens))
-        self.btn_eye.clicked.connect(self._toggle_pass_echo)
-        pass_layout.addWidget(self.btn_eye)
-
-        btn_gen = QPushButton("⚡ Gen", pass_row)
-        btn_gen.setFixedSize(62, 32)
-        btn_gen.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_gen.setToolTip("Generate secure 20-character password")
-        btn_gen.setStyleSheet(
-            """
-            QPushButton {
-                background: rgba(16, 185, 129, 0.18);
-                color: #34d399;
-                border: 1px solid rgba(16, 185, 129, 0.35);
-                border-radius: 6px;
-                padding: 4px 8px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background: #10b981;
-                color: #ffffff;
-            }
-            """
-        )
-        btn_gen.clicked.connect(self._generate_password)
-        pass_layout.addWidget(btn_gen)
-
-        body_layout.addWidget(make_field("Password *", pass_row))
-
-        self.gen_notice = QLabel(self.form_body)
-        self.gen_notice.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 500; background: transparent; border: none; padding-left: 2px;")
-        self.gen_notice.setVisible(False)
-        body_layout.addWidget(self.gen_notice)
-
-        # Field 4: Custom Fields (Scrollable naturally if keys grow!)
-        custom_hdr_row = QHBoxLayout()
-        custom_hdr_row.setContentsMargins(0, 4, 0, 2)
-        custom_hdr_row.setSpacing(6)
-        custom_hdr_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        lbl_custom = QLabel("Custom Fields", self.form_body)
-        lbl_custom.setStyleSheet(self._label_style(tokens))
-        custom_hdr_row.addWidget(lbl_custom, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        custom_hdr_row.addStretch()
+        hdr_row.addStretch()
 
         btn_add_field = QPushButton("+ Add Field", self.form_body)
         btn_add_field.setFixedHeight(24)
@@ -580,24 +573,46 @@ class VaultFormWidget(QWidget):
             }}
             """
         )
-        btn_add_field.clicked.connect(lambda: self._add_custom_row("", ""))
-        custom_hdr_row.addWidget(btn_add_field, 0, Qt.AlignmentFlag.AlignVCenter)
+        btn_add_field.clicked.connect(lambda: self._add_field_row("", ""))
+        hdr_row.addWidget(btn_add_field, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        body_layout.addLayout(custom_hdr_row)
+        body_layout.addLayout(hdr_row)
 
-        # Custom Fields Rows Container
-        self.custom_container = QWidget(self.form_body)
-        self.custom_layout = QVBoxLayout(self.custom_container)
-        self.custom_layout.setContentsMargins(0, 0, 0, 0)
-        self.custom_layout.setSpacing(6)
+        # Fields Rows Container
+        self.fields_container = QWidget(self.form_body)
+        self.fields_layout = QVBoxLayout(self.fields_container)
+        self.fields_layout.setContentsMargins(0, 0, 0, 0)
+        self.fields_layout.setSpacing(6)
 
-        if self.editing_item and self.editing_item.custom_fields:
-            for cf in self.editing_item.custom_fields:
-                self._add_custom_row(cf.key, cf.value)
+        # Populate fields
+        if self.editing_item:
+            existing_fields: List[tuple[str, str]] = []
+            if self.editing_item.custom_fields:
+                for cf in self.editing_item.custom_fields:
+                    existing_fields.append((cf.key, cf.value))
+                has_user = any(k.lower() in ("username", "user", "email") or (self.editing_item.username and v == self.editing_item.username) for k, v in existing_fields)
+                has_pass = any(k.lower() in ("password", "pass") or (self.editing_item.password and v == self.editing_item.password) for k, v in existing_fields)
+                if self.editing_item.username and not has_user:
+                    existing_fields.insert(0, ("Username", self.editing_item.username))
+                if self.editing_item.password and not has_pass:
+                    idx = 1 if (self.editing_item.username and not has_user) else 0
+                    existing_fields.insert(idx, ("Password", self.editing_item.password))
+            else:
+                if self.editing_item.username:
+                    existing_fields.append(("Username", self.editing_item.username))
+                if self.editing_item.password:
+                    existing_fields.append(("Password", self.editing_item.password))
+
+            if existing_fields:
+                for k, v in existing_fields:
+                    self._add_field_row(k, v)
+            else:
+                self._add_field_row("", "")
         else:
-            self._show_empty_custom_hint()
+            # By default 1 key and value input box ready for the user
+            self._add_field_row("", "")
 
-        body_layout.addWidget(self.custom_container)
+        body_layout.addWidget(self.fields_container)
 
         # 3. Action Buttons placed directly with the form
         body_layout.addSpacing(6)
@@ -676,66 +691,71 @@ class VaultFormWidget(QWidget):
 
         body_layout.addLayout(actions_bar)
 
-        # Add vertical stretch to pin everything snugly (clean space below form)
+        # Snug stretch at bottom so form doesn't float awkwardly
         body_layout.addStretch(1)
 
         self.scroll.setWidget(self.form_body)
         self.main_layout.addWidget(self.scroll, 1)
 
-    def _show_empty_custom_hint(self) -> None:
-        tokens = get_theme_tokens(self.config)
-        self.empty_custom_lbl = QLabel(
-            "No custom fields yet. Click '+ Add Field' to add keys, PINs, or tokens.",
-            self.custom_container,
-        )
-        self.empty_custom_lbl.setWordWrap(True)
-        self.empty_custom_lbl.setStyleSheet(
-            f"color: {tokens.text_secondary}; font-size: 11px; font-style: italic; background: transparent; border: none; padding: 2px 0;"
-        )
-        self.custom_layout.addWidget(self.empty_custom_lbl)
-
-    def _add_custom_row(self, key: str, val: str) -> None:
-        if self.empty_custom_lbl:
-            self.empty_custom_lbl.deleteLater()
-            self.empty_custom_lbl = None
-
+    def _add_field_row(self, key: str = "", val: str = "") -> tuple[QLineEdit, QLineEdit, QWidget]:
         tokens = get_theme_tokens(self.config)
 
-        row_widget = QWidget(self.custom_container)
+        row_widget = QWidget(self.fields_container)
         row_layout = QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(6)
+        row_layout.setSpacing(5)
 
         k_edit = QLineEdit(key, row_widget)
-        k_edit.setFixedHeight(28)
-        k_edit.setPlaceholderText("Key (e.g. PIN)")
+        k_edit.setFixedHeight(30)
+        k_edit.setPlaceholderText("Key")
         k_edit.setFixedWidth(100)
         k_edit.setStyleSheet(self._input_style(tokens, font_size=11, padding="3px 6px"))
 
         v_edit = QLineEdit(val, row_widget)
-        v_edit.setFixedHeight(28)
+        v_edit.setFixedHeight(30)
         v_edit.setEchoMode(QLineEdit.EchoMode.Password)
         v_edit.setPlaceholderText("Value / Secret")
         v_edit.setStyleSheet(self._input_style(tokens, font_size=11, padding="3px 6px"))
 
-        btn_eye_row = QPushButton("👁️", row_widget)
-        btn_eye_row.setFixedSize(26, 28)
-        btn_eye_row.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_eye_row.setToolTip("Show / hide value")
-        btn_eye_row.setStyleSheet(self._action_btn_style(tokens))
-        btn_eye_row.clicked.connect(lambda: self._toggle_row_echo(v_edit, btn_eye_row))
+        btn_eye = QPushButton("👁️", row_widget)
+        btn_eye.setFixedSize(26, 30)
+        btn_eye.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_eye.setToolTip("Show / hide value")
+        btn_eye.setStyleSheet(self._action_btn_style(tokens))
+        btn_eye.clicked.connect(lambda: self._toggle_row_echo(v_edit, btn_eye))
+
+        btn_gen = QPushButton("⚡", row_widget)
+        btn_gen.setFixedSize(26, 30)
+        btn_gen.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_gen.setToolTip("Generate secure password")
+        btn_gen.setStyleSheet(
+            """
+            QPushButton {
+                background: rgba(16, 185, 129, 0.15);
+                color: #34d399;
+                border: 1px solid rgba(16, 185, 129, 0.35);
+                border-radius: 6px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background: #10b981;
+                color: #ffffff;
+            }
+            """
+        )
+        btn_gen.clicked.connect(lambda: self._generate_row_password(v_edit, btn_eye))
 
         btn_del = QPushButton("✕", row_widget)
-        btn_del.setFixedSize(26, 28)
+        btn_del.setFixedSize(24, 30)
         btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_del.setToolTip("Remove custom field")
+        btn_del.setToolTip("Remove field")
         btn_del.setStyleSheet(
             """
             QPushButton {
-                background: rgba(239, 68, 68, 0.15);
+                background: rgba(239, 68, 68, 0.12);
                 color: #f87171;
-                border: none;
-                border-radius: 4px;
+                border: 1px solid rgba(239, 68, 68, 0.25);
+                border-radius: 6px;
                 font-weight: bold;
                 font-size: 11px;
             }
@@ -747,23 +767,26 @@ class VaultFormWidget(QWidget):
         )
 
         entry = (k_edit, v_edit, row_widget)
-        self.custom_rows.append(entry)
+        self.field_rows.append(entry)
 
         def remove_row():
-            if entry in self.custom_rows:
-                self.custom_rows.remove(entry)
+            if entry in self.field_rows:
+                self.field_rows.remove(entry)
             row_widget.deleteLater()
-            if not self.custom_rows:
-                self._show_empty_custom_hint()
+            # If all rows removed, keep 1 clean row ready
+            if not self.field_rows:
+                self._add_field_row("", "")
 
         btn_del.clicked.connect(remove_row)
 
         row_layout.addWidget(k_edit)
         row_layout.addWidget(v_edit, 1)
-        row_layout.addWidget(btn_eye_row)
+        row_layout.addWidget(btn_eye)
+        row_layout.addWidget(btn_gen)
         row_layout.addWidget(btn_del)
 
-        self.custom_layout.addWidget(row_widget)
+        self.fields_layout.addWidget(row_widget)
+        return entry
 
     def _toggle_row_echo(self, edit: QLineEdit, btn: QPushButton) -> None:
         if edit.echoMode() == QLineEdit.EchoMode.Password:
@@ -773,54 +796,61 @@ class VaultFormWidget(QWidget):
             edit.setEchoMode(QLineEdit.EchoMode.Password)
             btn.setText("👁️")
 
-    def _toggle_pass_echo(self) -> None:
-        if self.edit_password.echoMode() == QLineEdit.EchoMode.Password:
-            self.edit_password.setEchoMode(QLineEdit.EchoMode.Normal)
-            self.btn_eye.setText("🙈")
-        else:
-            self.edit_password.setEchoMode(QLineEdit.EchoMode.Password)
-            self.btn_eye.setText("👁️")
-
-    def _generate_password(self) -> None:
+    def _generate_row_password(self, edit: QLineEdit, btn: QPushButton) -> None:
         pwd = generate_secure_password(20)
-        self.edit_password.setText(pwd)
-        self.edit_password.setEchoMode(QLineEdit.EchoMode.Normal)
-        self.btn_eye.setText("🙈")
-        self.gen_notice.setText("✓ 20-character secure password generated")
-        self.gen_notice.setVisible(True)
+        edit.setText(pwd)
+        edit.setEchoMode(QLineEdit.EchoMode.Normal)
+        btn.setText("🙈")
+        edit.setFocus()
 
     def _save(self) -> None:
         title = self.edit_title.text().strip()
-        username = self.edit_username.text().strip()
-        password = self.edit_password.text()
-
         if not title:
             QMessageBox.warning(self, "Validation Error", "Title is required.")
             self.edit_title.setFocus()
             return
-        if not password:
-            QMessageBox.warning(self, "Validation Error", "Password is required.")
-            self.edit_password.setFocus()
-            return
 
         custom_fields: List[CustomField] = []
-        for k_edit, v_edit, _ in self.custom_rows:
+        for k_edit, v_edit, _ in self.field_rows:
             k = k_edit.text().strip()
             v = v_edit.text()
-            if k:
-                custom_fields.append(CustomField(key=k, value=v))
+            if k or v:
+                key_name = k if k else "Field"
+                custom_fields.append(CustomField(key=key_name, value=v))
+
+        if not custom_fields:
+            QMessageBox.warning(self, "Validation Error", "Please enter at least one key-value field.")
+            if self.field_rows:
+                self.field_rows[0][0].setFocus()
+            return
+
+        # Derive primary password and username for quick-copy, search, and legacy support
+        derived_password = ""
+        derived_username = ""
+
+        for cf in custom_fields:
+            if any(term in cf.key.lower() for term in ("pass", "secret", "token", "key", "pin")):
+                derived_password = cf.value
+                break
+        if not derived_password and custom_fields:
+            derived_password = custom_fields[-1].value if len(custom_fields) > 1 else custom_fields[0].value
+
+        for cf in custom_fields:
+            if any(term in cf.key.lower() for term in ("user", "email", "login", "account", "client")):
+                derived_username = cf.value
+                break
 
         if self.editing_item:
             item = self.editing_item
             item.title = title
-            item.username = username
-            item.password = password
+            item.username = derived_username
+            item.password = derived_password
             item.custom_fields = custom_fields
         else:
             item = VaultItem(
                 title=title,
-                username=username,
-                password=password,
+                username=derived_username,
+                password=derived_password,
                 custom_fields=custom_fields,
                 origin="user",
             )
