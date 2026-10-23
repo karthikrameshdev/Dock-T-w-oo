@@ -6,7 +6,7 @@ import pytest
 
 from dock_twoo.config import ConfigManager, DockAppItem, DockConfig
 from dock_twoo.os_integration.screen_manager import ScreenManager
-from dock_twoo.ui import AttachedWindow, DockIconButton, DockTooltip, DockWindow
+from dock_twoo.ui import AttachedWindow, DockIconButton, DockTooltip, DockWindow, DockTrayIcon
 from dock_twoo.ui.apps import NotesAppWidget, VaultAppWidget, BrainAppWidget
 
 
@@ -183,5 +183,43 @@ def test_dock_auto_hide_slide_mechanics(qtbot, qapp, tmp_path):
     dock._slide_in()
     assert dock._is_collapsed is False
 
+    dock.close()
+
+
+def test_dock_tray_icon_non_modal_menu(qtbot, qapp, tmp_path):
+    config_file = tmp_path / "config.json"
+    mgr = ConfigManager(config_path=config_file)
+
+    dock = DockWindow(mgr)
+    qtbot.addWidget(dock)
+    dock.show()
+
+    tray = DockTrayIcon(dock, mgr)
+
+    # 1. Ensure tray does NOT set a native blocking NSMenu (contextMenu is None)
+    assert tray.contextMenu() is None
+
+    # 2. Trigger menu presentation
+    from PySide6.QtWidgets import QSystemTrayIcon
+    tray._on_tray_activated(QSystemTrayIcon.ActivationReason.Trigger)
+
+    # 3. Dock must remain fully enabled and active while tray menu options are displayed
+    assert dock.isEnabled() is True
+    assert dock.isVisible() is True
+
+    # 4. Icon buttons remain clickable and interactive
+    notes_btn = dock._icon_buttons["notes"]
+    assert notes_btn.isEnabled() is True
+
+    # 5. Menu actions work as expected
+    assert tray.auto_hide_action.isChecked() is False
+    tray.auto_hide_action.setChecked(True)
+    assert mgr.config.auto_hide is True
+
+    tray.auto_hide_action.setChecked(False)
+    assert mgr.config.auto_hide is False
+
+    # Close menu and clean up
+    tray.menu.hide()
     dock.close()
 

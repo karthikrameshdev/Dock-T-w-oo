@@ -5,7 +5,8 @@ from __future__ import annotations
 import webbrowser
 from typing import Optional
 
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QAction, QCursor, QGuiApplication, QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 
 from dock_twoo.config import ConfigManager
@@ -30,6 +31,7 @@ class DockTrayIcon(QSystemTrayIcon):
         self.setToolTip("Dock T(w)oo")
 
         self.menu = QMenu()
+        self._apply_menu_style()
         self.menu.aboutToShow.connect(self._update_menu_states)
 
         self.toggle_action = QAction("Hide Dock" if self.dock_window.isVisible() else "Show Dock", self)
@@ -80,8 +82,104 @@ class DockTrayIcon(QSystemTrayIcon):
         quit_action.triggered.connect(self._quit_app)
         self.menu.addAction(quit_action)
 
-        self.setContextMenu(self.menu)
+        # Connect activation to non-modal popup presentation
+        # DO NOT call self.setContextMenu(self.menu):
+        # On macOS Cocoa, setContextMenu hands the QMenu to AppKit as a native NSMenu.
+        # When opened, Cocoa enters a modal tracking runloop (NSEventTrackingRunLoopMode).
+        # This pauses Qt's default runloop timers (stopping DockWindow's hover sensor),
+        # blocks mouse hover events, and causes macOS WindowServer to intercept all clicks
+        # outside the menu to dismiss it — freezing and disabling the dock window while the
+        # menu is open.
+        # By presenting the menu non-modally via popup(), Qt's event loop and timers continue
+        # running normally: hover highlights, tooltips, and pointing hand cursor remain fully
+        # active on the dock, and clicking an app immediately launches it.
         self.activated.connect(self._on_tray_activated)
+
+    def _apply_menu_style(self) -> None:
+        """Apply modern macOS glass style to the popup menu matching the app theme."""
+        is_dark = self.config_manager.config.get_effective_theme() == "dark"
+        if is_dark:
+            self.menu.setStyleSheet("""
+                QMenu {
+                    background-color: #161619;
+                    border: 1px solid rgba(255, 255, 255, 0.14);
+                    border-radius: 8px;
+                    padding: 5px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+                    font-size: 13px;
+                    color: #EDEDED;
+                }
+                QMenu::item {
+                    padding: 6px 24px 6px 14px;
+                    border-radius: 5px;
+                    margin: 1px 0px;
+                }
+                QMenu::item:selected {
+                    background-color: rgba(255, 255, 255, 0.12);
+                    color: #FFFFFF;
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background-color: rgba(255, 255, 255, 0.08);
+                    margin: 4px 6px;
+                }
+            """)
+        else:
+            self.menu.setStyleSheet("""
+                QMenu {
+                    background-color: #F8F8FA;
+                    border: 1px solid rgba(0, 0, 0, 0.12);
+                    border-radius: 8px;
+                    padding: 5px;
+                    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+                    font-size: 13px;
+                    color: #1A1A1D;
+                }
+                QMenu::item {
+                    padding: 6px 24px 6px 14px;
+                    border-radius: 5px;
+                    margin: 1px 0px;
+                }
+                QMenu::item:selected {
+                    background-color: rgba(0, 0, 0, 0.08);
+                    color: #000000;
+                }
+                QMenu::separator {
+                    height: 1px;
+                    background-color: rgba(0, 0, 0, 0.08);
+                    margin: 4px 6px;
+                }
+            """)
+
+    def _show_menu(self) -> None:
+        """Show the options menu non-modally below the tray icon / top bar."""
+        if self.menu.isVisible():
+            self.menu.hide()
+            return
+
+        self._apply_menu_style()
+        self._update_menu_states()
+
+        cursor = QCursor.pos()
+        screen = QGuiApplication.screenAt(cursor) or QGuiApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+
+        menu_size = self.menu.sizeHint()
+        menu_w = menu_size.width()
+        menu_h = menu_size.height()
+
+        x = cursor.x() - (menu_w // 2)
+        x = max(avail.left() + 8, min(x, avail.right() - menu_w - 8))
+
+        if cursor.y() < avail.center().y():
+            # Near top screen edge (macOS top menu bar)
+            y = max(cursor.y() + 14, avail.top() + 2)
+        else:
+            # Near bottom screen edge (e.g. Windows taskbar)
+            y = cursor.y() - menu_h - 4
+
+        y = max(avail.top() + 4, min(y, avail.bottom() - menu_h - 4))
+        self.menu.popup(QPoint(x, y))
 
     def _update_menu_states(self) -> None:
         cfg = self.config_manager.config
@@ -122,8 +220,12 @@ class DockTrayIcon(QSystemTrayIcon):
         self.config_manager.update({"edge": edge})
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self._toggle_dock()
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.Context,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self._show_menu()
 
     def _quit_app(self) -> None:
         from PySide6.QtWidgets import QApplication

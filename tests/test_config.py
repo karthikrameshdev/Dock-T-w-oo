@@ -11,7 +11,7 @@ def test_default_config_properties():
     assert cfg.edge == "right"
     assert cfg.dock_width == 60
     assert cfg.icon_size == 20
-    assert cfg.dock_corner_radius == 28
+    assert cfg.dock_corner_radius == 12
     assert cfg.dock_height_mode == "fill"
     assert cfg.theme_mode == "system"
     assert cfg.server_port == 28842

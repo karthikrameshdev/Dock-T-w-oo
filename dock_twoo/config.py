@@ -174,7 +174,7 @@ class DockConfig:
     dock_width: int = 60
     dock_height_mode: str = "fill"  # "fill" (pill taking ~90% height) or "auto" or "fixed"
     dock_height_fixed: int = 700
-    dock_corner_radius: int = 28
+    dock_corner_radius: int = 12
     dock_padding_y: int = 10
     dock_padding_x: int = 8
 
@@ -359,6 +359,10 @@ class ConfigManager(QObject):
                             else:
                                 app.name = app.name.replace(" T(w)oo", "").replace("T(w)oo", "").strip()
                                 app.tooltip = app.tooltip.replace(" T(w)oo", "").replace("T(w)oo", "").strip()
+                    if data.get("dock_corner_radius") == 28:
+                        self._config.dock_corner_radius = 12
+                        needs_save = True
+
                     if needs_save:
                         self.save()
                     return self._config
