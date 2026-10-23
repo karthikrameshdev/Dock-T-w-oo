@@ -28,6 +28,7 @@ from dock_twoo.ui.apps.vault_app import (
     VaultChangePinDialog,
     VaultFormWidget,
     VaultLockScreen,
+    format_vault_date,
     generate_secure_password,
 )
 
@@ -485,4 +486,112 @@ def test_dynamic_key_value_vault_form(qtbot, qapp, tmp_path: Path):
     assert edit_form.field_rows[0][0].text() == ""
 
     widget.close()
+
+
+def test_format_vault_date():
+    from datetime import datetime, timezone, timedelta
+
+    # None / empty
+    assert format_vault_date(None) == "Unknown"
+    assert format_vault_date("") == "Unknown"
+
+    # Today
+    now_utc = datetime.now(timezone.utc).isoformat()
+    assert "Today" in format_vault_date(now_utc)
+
+    # Specific past date (e.g. 2023-05-15)
+    past_iso = "2023-05-15T10:30:00+00:00"
+    res = format_vault_date(past_iso)
+    assert "2023" in res
+    assert "May 15" in res
+
+    # Unix timestamp
+    ts = datetime(2022, 8, 20, 14, 0, 0).timestamp()
+    res_ts = format_vault_date(ts)
+    assert "2022" in res_ts
+    assert "Aug 20" in res_ts
+
+
+def test_vault_card_created_and_modified_labels(qtbot):
+    config = DockConfig()
+    item = VaultItem(
+        title="Database Credentials",
+        password="super_secure_db_pass",
+        username="db_admin",
+        created_at="2024-06-10T12:00:00+00:00",
+        updated_at="2024-06-12T15:30:00+00:00",
+    )
+    card = VaultCard(item, config)
+    qtbot.addWidget(card)
+
+    # Verify created and modified labels exist at the bottom of the card
+    assert hasattr(card, "created_lbl")
+    assert hasattr(card, "modified_lbl")
+    assert card.created_lbl.text().startswith("Created:")
+    assert "2024" in card.created_lbl.text()
+    assert card.modified_lbl.text().startswith("Modified:")
+    assert "2024" in card.modified_lbl.text()
+
+    # Labels remain visible in both collapsed and expanded modes
+    assert card.created_lbl.isVisibleTo(card)
+    assert card.modified_lbl.isVisibleTo(card)
+
+    card.toggle_expand()
+    assert card._is_expanded is True
+    assert card.created_lbl.isVisibleTo(card)
+    assert card.modified_lbl.isVisibleTo(card)
+
+    # Toggle reveal also preserves created and modified labels
+    display_fields = card._collect_display_fields()
+    if display_fields:
+        card._toggle_reveal(display_fields[0][0])
+        assert card.created_lbl.text().startswith("Created:")
+        assert card.modified_lbl.text().startswith("Modified:")
+
+
+def test_vault_edit_preserves_created_and_updates_modified(qtbot, tmp_path: Path):
+    config = DockConfig()
+    data_dir = tmp_path / "dates_test"
+    storage = VaultStorageManager(data_dir=data_dir, iterations=1000)
+    auth_mgr = VaultAuthManager(data_dir=data_dir)
+
+    widget = VaultAppWidget(config, storage=storage, auth_mgr=auth_mgr)
+    qtbot.addWidget(widget)
+    widget.show()
+    widget._unlock_vault()
+
+    original_created = "2024-02-14T08:00:00+00:00"
+    item = VaultItem(
+        title="Old Server API",
+        password="old_api_token_123",
+        created_at=original_created,
+        updated_at=original_created,
+    )
+    widget.store.add(item)
+    widget.refresh_cards()
+
+    card = next(c for c in widget._cards if c.item.id == item.id)
+    assert "2024" in card.created_lbl.text()
+    assert "2024" in card.modified_lbl.text()
+
+    # Open edit form
+    widget._open_edit_form(item)
+    form = widget._active_form
+    assert form is not None
+    assert hasattr(form, "form_created_lbl")
+    assert hasattr(form, "form_modified_lbl")
+    assert "2024" in form.form_created_lbl.text()
+
+    # Edit password
+    form.edit_password.setText("brand_new_secret_token_456")
+    form._save()
+
+    # Verify updated card
+    updated_card = next(c for c in widget._cards if c.item.id == item.id)
+    assert updated_card.item.created_at == original_created
+    assert "2024" in updated_card.created_lbl.text()
+    assert "Today" in updated_card.modified_lbl.text()
+
+    widget.close()
+
 

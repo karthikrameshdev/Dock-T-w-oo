@@ -7,9 +7,10 @@ secure password generation, and clipboard auto-clearing.
 
 from __future__ import annotations
 
+from datetime import datetime
 import secrets
 import string
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
@@ -32,8 +33,45 @@ from dock_twoo.config import DockConfig
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
 from dock_twoo.ui.theme import create_app_font, get_scrollbar_style, get_theme_tokens
 from dock_twoo.vault.auth import VaultAuthManager
-from dock_twoo.vault.models import CustomField, VaultItem, VaultStore
+from dock_twoo.vault.models import CustomField, VaultItem, VaultStore, current_iso_time
 from dock_twoo.vault.storage import VaultStorageManager
+
+
+def format_vault_date(val: Any) -> str:
+    """Format an ISO 8601 date string, timestamp, or datetime into a clean, human-readable date string."""
+    if not val:
+        return "Unknown"
+    try:
+        if isinstance(val, (int, float)):
+            dt = datetime.fromtimestamp(val)
+        elif isinstance(val, datetime):
+            dt = val
+        elif isinstance(val, str):
+            try:
+                num = float(val)
+                dt = datetime.fromtimestamp(num)
+            except ValueError:
+                clean_val = val.replace("Z", "+00:00")
+                parsed_dt = datetime.fromisoformat(clean_val)
+                if parsed_dt.tzinfo is not None:
+                    dt = parsed_dt.astimezone().replace(tzinfo=None)
+                else:
+                    dt = parsed_dt
+        else:
+            return str(val)
+
+        now = datetime.now()
+        time_part = dt.strftime("%I:%M %p").lstrip("0")
+        if dt.date() == now.date():
+            return f"Today, {time_part}"
+        elif (now.date() - dt.date()).days == 1:
+            return f"Yesterday, {time_part}"
+        elif dt.year == now.year:
+            return f"{dt.strftime('%b %d')}, {time_part}"
+        else:
+            return f"{dt.strftime('%b %d, %Y')}, {time_part}"
+    except Exception:
+        return str(val)
 
 
 def generate_secure_password(length: int = 20) -> str:
@@ -307,6 +345,24 @@ class VaultCard(QFrame):
 
         self.details_widget.setVisible(self._is_expanded)
         self.main_layout.addWidget(self.details_widget)
+
+        # 3. Timestamps footer: Both Created Date and Modified Date at the bottom of the card
+        self.footer_widget = QWidget(self)
+        dates_layout = QVBoxLayout(self.footer_widget)
+        dates_layout.setContentsMargins(0, 4, 0, 0)
+        dates_layout.setSpacing(2)
+
+        self.created_lbl = QLabel(f"Created: {format_vault_date(self.item.created_at)}", self.footer_widget)
+        self.created_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
+        self.created_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent; border: none;")
+        dates_layout.addWidget(self.created_lbl)
+
+        self.modified_lbl = QLabel(f"Modified: {format_vault_date(self.item.updated_at)}", self.footer_widget)
+        self.modified_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
+        self.modified_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent; border: none;")
+        dates_layout.addWidget(self.modified_lbl)
+
+        self.main_layout.addWidget(self.footer_widget)
 
     def toggle_expand(self) -> None:
         """Toggle collapsed / expanded card state."""
@@ -616,6 +672,25 @@ class VaultFormWidget(QWidget):
 
         body_layout.addWidget(self.fields_container)
 
+        # Timestamps info when editing an existing credential
+        if self.editing_item:
+            dates_box = QWidget(self.form_body)
+            dates_layout = QVBoxLayout(dates_box)
+            dates_layout.setContentsMargins(0, 4, 0, 4)
+            dates_layout.setSpacing(2)
+
+            self.form_created_lbl = QLabel(f"Created: {format_vault_date(self.editing_item.created_at)}", dates_box)
+            self.form_created_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
+            self.form_created_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent;")
+            dates_layout.addWidget(self.form_created_lbl)
+
+            self.form_modified_lbl = QLabel(f"Modified: {format_vault_date(self.editing_item.updated_at)}", dates_box)
+            self.form_modified_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
+            self.form_modified_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent;")
+            dates_layout.addWidget(self.form_modified_lbl)
+
+            body_layout.addWidget(dates_box)
+
         # 3. Action Buttons placed directly with the form
         body_layout.addSpacing(6)
         actions_bar = QHBoxLayout()
@@ -848,6 +923,7 @@ class VaultFormWidget(QWidget):
             item.username = derived_username
             item.password = derived_password
             item.custom_fields = custom_fields
+            item.updated_at = current_iso_time()
         else:
             item = VaultItem(
                 title=title,

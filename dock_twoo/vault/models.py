@@ -129,6 +129,8 @@ class VaultStore:
         item.validate()
         for idx, existing in enumerate(self.items):
             if existing.id == item.id:
+                if not item.created_at:
+                    item.created_at = existing.created_at
                 item.updated_at = current_iso_time()
                 self.items[idx] = item
                 return True
