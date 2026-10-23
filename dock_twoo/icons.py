@@ -124,7 +124,16 @@ class IconManager:
         return pixmap
 
     def _tint_svg(self, svg: str, color: str, opacity: float, is_active: bool) -> str:
-        """Inject color and opacity into SVG text."""
+        """Inject color and opacity into SVG text, preserving multi-color gradient SVGs."""
+        if "<linearGradient" in svg or "<radialGradient" in svg:
+            # Preserve rich vibrant multi-color illustration (e.g. Brain robot)
+            if is_active:
+                return svg
+            effective_opacity = max(0.2, min(1.0, opacity))
+            if "<svg " in svg:
+                return svg.replace("<svg ", f'<svg style="opacity: {effective_opacity};" ', 1)
+            return svg
+
         effective_color = "#FFFFFF" if is_active else color
         effective_opacity = 1.0 if is_active else max(0.1, min(1.0, opacity))
 

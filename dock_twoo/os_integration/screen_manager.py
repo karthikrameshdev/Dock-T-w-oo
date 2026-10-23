@@ -74,7 +74,7 @@ class ScreenManager:
         """Compute attached window geometry pinned right next to the dock."""
         avail = ScreenManager.get_available_geometry(config.screen_index)
         width = config.attached_width
-        height = min(config.attached_height, avail.height() - 32)
+        height = dock_geom.height()
         gap = config.attached_gap
 
         if config.edge == "left":
@@ -84,15 +84,12 @@ class ScreenManager:
             # Pinned to the left of the dock
             x = dock_geom.left() - width - gap
 
-        # Vertical alignment: center around target_center_y if given, else align with dock
-        if target_center_y is not None:
-            y = target_center_y - (height // 2)
-        else:
-            y = dock_geom.top() + (dock_geom.height() - height) // 2
+        # Exact same top alignment and height as the dock
+        y = dock_geom.top()
 
         # Clamp within available screen area
-        y = max(avail.top() + 10, min(y, avail.bottom() - height - 10))
-        x = max(avail.left() + 10, min(x, avail.right() - width - 10))
+        y = max(avail.top() + 4, min(y, avail.bottom() - height - 4))
+        x = max(avail.left() + 4, min(x, avail.right() - width - 4))
 
         return QRect(x, y, width, height)
 

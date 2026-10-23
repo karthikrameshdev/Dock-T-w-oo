@@ -167,40 +167,84 @@ function updatePreview(cfg) {
   mockupDock.style.backgroundColor = cfg.dock_bg_color;
   mockupDock.style.opacity = cfg.dock_opacity;
 
-  // Attached window
+  // Attached window matches dock height
   mockupAttached.style.width = `${Math.min(260, Math.round(cfg.attached_width * 0.6))}px`;
-  mockupAttached.style.height = `${Math.min(380, Math.round(cfg.attached_height * 0.6))}px`;
+  mockupAttached.style.height = `94%`;
+  mockupAttached.style.top = `3%`;
 
   // Render dock mockup icons
   mockupIcons.innerHTML = '';
   const apps = cfg.apps || [];
-  apps.forEach((app) => {
-    if (!app.enabled) return;
 
-    if (app.is_separator) {
-      const sep = document.createElement('div');
-      sep.className = 'mockup-sep';
-      mockupIcons.appendChild(sep);
-      return;
-    }
-
-    if (app.is_bottom) return; // Rendered at the bottom
-
+  // Top icons (Notes)
+  const topApps = apps.filter(a => !a.is_bottom && a.enabled);
+  topApps.forEach(app => {
     const item = document.createElement('div');
-    item.className = 'mockup-icon-item';
+    item.className = 'mockup-icon-item active';
     item.title = app.name;
     item.style.color = cfg.icon_color;
     item.style.opacity = cfg.icon_opacity;
-
-    // Standardized SVG dimensions
     item.innerHTML = `
       <svg viewBox="0 0 24 24" style="width:${cfg.icon_size}px; height:${cfg.icon_size}px" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="4" y="4" width="16" height="16" rx="3" />
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
       </svg>
     `;
-
     mockupIcons.appendChild(item);
   });
+
+  // Bottom container in mockup
+  const bottomContainer = document.querySelector('.mockup-bottom');
+  if (bottomContainer) {
+    bottomContainer.innerHTML = '';
+    const bottomApps = apps.filter(a => a.is_bottom && a.enabled);
+    bottomApps.forEach(app => {
+      if (app.is_separator) {
+        const div = document.createElement('div');
+        div.className = 'mockup-dots-div';
+        div.style.cssText = 'color:' + cfg.icon_color + '; opacity:0.35; font-size:12px; letter-spacing:2px; line-height:1; user-select:none; margin:2px 0;';
+        div.textContent = '•••';
+        bottomContainer.appendChild(div);
+      } else if (app.id === 'settings') {
+        const item = document.createElement('div');
+        item.className = 'mockup-icon-item';
+        item.title = 'Settings & Console';
+        item.style.color = cfg.icon_color;
+        item.style.opacity = cfg.icon_opacity;
+        item.innerHTML = `
+          <svg viewBox="0 0 24 24" style="width:${cfg.icon_size}px; height:${cfg.icon_size}px" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
+            <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
+            <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" />
+          </svg>
+        `;
+        bottomContainer.appendChild(item);
+      } else if (app.id === 'brain') {
+        const item = document.createElement('div');
+        item.className = 'mockup-icon-item';
+        item.title = 'Brain Voice Assistant';
+        item.style.color = cfg.icon_color;
+        item.style.opacity = cfg.icon_opacity;
+        item.innerHTML = `
+          <svg viewBox="0 0 24 24" style="width:${cfg.icon_size}px; height:${cfg.icon_size}px" fill="none" stroke="currentColor" stroke-width="1.8">
+            <line x1="12" y1="2" x2="12" y2="4.5" />
+            <circle cx="12" cy="2" r="1" fill="currentColor" stroke="none" />
+            <rect x="1.5" y="10" width="2" height="6" rx="1" />
+            <rect x="20.5" y="10" width="2" height="6" rx="1" />
+            <rect x="3.5" y="4.5" width="17" height="15.5" rx="4.5" />
+            <rect x="6" y="7.5" width="12" height="10" rx="2.5" stroke-width="1.2" />
+            <circle cx="9" cy="12" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="12" r="1.2" fill="currentColor" stroke="none" />
+            <path d="M10.2 14.6 Q12 16.2 13.8 14.6" stroke-width="1.2" fill="none" />
+          </svg>
+        `;
+        bottomContainer.appendChild(item);
+      }
+    });
+  }
 }
 
 // Attach Event Listeners

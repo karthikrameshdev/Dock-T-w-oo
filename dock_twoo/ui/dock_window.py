@@ -5,7 +5,7 @@ from __future__ import annotations
 import webbrowser
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QFrame,
@@ -70,17 +70,30 @@ class LogoWidget(QWidget):
         painter.end()
 
 
-class SeparatorWidget(QWidget):
-    """Subtle separator line between icon groups."""
+class ThreeDotsDivider(QWidget):
+    """Subtle 3-dots divider looking like a divider, not as an icon."""
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setFixedHeight(8)
+        self.config = config
+        self.setFixedHeight(14)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
-        painter.setPen(QPen(QColor(255, 255, 255, 24), 1))
-        painter.drawLine(8, 4, self.width() - 8, 4)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        color = QColor(255, 255, 255, 45) if self.config.get_effective_theme() == "dark" else QColor(0, 0, 0, 45)
+        painter.setBrush(QBrush(color))
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        cx = self.width() / 2
+        cy = self.height() / 2
+        spacing = 5.5
+        r = 1.6
+        painter.drawEllipse(QPointF(cx - spacing, cy), r, r)
+        painter.drawEllipse(QPointF(cx, cy), r, r)
+        painter.drawEllipse(QPointF(cx + spacing, cy), r, r)
         painter.end()
 
 
@@ -115,15 +128,11 @@ class DockWindow(QWidget):
         self.main_layout.setSpacing(self.config.icon_spacing)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
-        # 1. Traffic light controls
+        # 1. Traffic light controls at top
         self.traffic_dots = TrafficDotsWidget(self)
         self.main_layout.addWidget(self.traffic_dots)
 
-        # 2. Brand logo
-        self.logo_widget = LogoWidget(self.config, self)
-        self.main_layout.addWidget(self.logo_widget)
-
-        # 3. Main apps icon list
+        # 2. Top apps container (Notes is the first icon on top)
         self.icons_container = QWidget(self)
         self.icons_layout = QVBoxLayout(self.icons_container)
         self.icons_layout.setContentsMargins(0, 0, 0, 0)
@@ -133,10 +142,10 @@ class DockWindow(QWidget):
         self._populate_icons()
         self.main_layout.addWidget(self.icons_container)
 
-        # 4. Flexible stretch spacer before bottom area
+        # 3. Flexible stretch spacer pushing remaining items down
         self.main_layout.addStretch(1)
 
-        # 5. Bottom items (More + Brain voice assistant avatar)
+        # 4. Bottom items: 3-dots divider -> Settings -> 3-dots divider -> Brain
         self.bottom_container = QWidget(self)
         self.bottom_layout = QVBoxLayout(self.bottom_container)
         self.bottom_layout.setContentsMargins(0, 0, 0, 0)
@@ -147,18 +156,15 @@ class DockWindow(QWidget):
         self.main_layout.addWidget(self.bottom_container)
 
     def _populate_icons(self) -> None:
-        """Populate upper and middle dock icons."""
+        """Populate top dock icons (Notes first)."""
         for item in self.config.apps:
-            if not item.enabled:
+            if not item.enabled or item.is_bottom:
                 continue
 
             if item.is_separator:
-                sep = SeparatorWidget(self.icons_container)
-                self.icons_layout.addWidget(sep)
+                div = ThreeDotsDivider(self.config, self.icons_container)
+                self.icons_layout.addWidget(div)
                 continue
-
-            if item.is_bottom:
-                continue  # Handled in _populate_bottom_items
 
             btn = DockIconButton(item, self.config, self.icons_container)
             btn.clicked.connect(self._handle_icon_click)
@@ -166,9 +172,16 @@ class DockWindow(QWidget):
             self.icons_layout.addWidget(btn)
 
     def _populate_bottom_items(self) -> None:
-        """Populate sticky bottom items (Brain voice assistant & More)."""
-        bottom_items = [item for item in self.config.apps if item.enabled and item.is_bottom]
-        for item in bottom_items:
+        """Populate sticky bottom items: 3-dots divider, Settings, 3-dots divider, Brain."""
+        for item in self.config.apps:
+            if not item.enabled or not item.is_bottom:
+                continue
+
+            if item.is_separator:
+                div = ThreeDotsDivider(self.config, self.bottom_container)
+                self.bottom_layout.addWidget(div)
+                continue
+
             btn = DockIconButton(item, self.config, self.bottom_container)
             btn.clicked.connect(self._handle_icon_click)
             self._icon_buttons[item.id] = btn
@@ -176,13 +189,10 @@ class DockWindow(QWidget):
 
     def _handle_icon_click(self, app_id: str, icon_center_global: QPoint) -> None:
         """Handle user clicking an icon button."""
-        # Check if clicking Web Console icon
-        if app_id == "console":
-            # Open browser console directly
+        # Click on Settings opens the browser Web Console directly
+        if app_id in ("settings", "console"):
             url = f"http://{self.config.server_host}:{self.config.server_port}"
             webbrowser.open(url)
-            # Also open quick settings attached drawer
-            self._toggle_attached_window("settings", icon_center_global.y())
             return
 
         self._toggle_attached_window(app_id, icon_center_global.y())

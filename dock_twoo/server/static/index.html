@@ -243,29 +243,31 @@
               <!-- Simulated Desktop Screen Area -->
               <div class="mockup-screen-bg"></div>
 
-              <!-- Attached Window Mockup -->
+              <!-- Attached Window Mockup (Same Height as Dock) -->
               <div class="mockup-attached" id="mockupAttached">
                 <div class="mockup-attached-header">
                   <div class="mockup-attached-icon">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
                     </svg>
                   </div>
-                  <span class="mockup-attached-title">Vault T(w)oo</span>
+                  <span class="mockup-attached-title">Notes T(w)oo</span>
                   <div class="mockup-close-dot"></div>
                 </div>
                 <div class="mockup-attached-body">
-                  <div class="mockup-search-bar">Search credentials...</div>
-                  <div class="mockup-card">Stripe API Secret</div>
-                  <div class="mockup-card">GitHub Personal Token</div>
-                  <div class="mockup-card">AWS Production Access</div>
+                  <div class="mockup-search-bar">Search notes...</div>
+                  <div class="mockup-card">Welcome to Notes T(w)oo</div>
+                  <div class="mockup-card">Architecture Scratchpad</div>
+                  <div class="mockup-card">Daily Standup Thoughts</div>
                 </div>
               </div>
 
               <!-- Pointed Callout Tooltip Mockup -->
               <div class="mockup-tooltip" id="mockupTooltip">
-                <span>Vault T(w)oo</span>
+                <span>Notes T(w)oo</span>
                 <div class="tooltip-pointer"></div>
               </div>
 
@@ -278,24 +280,14 @@
                   <span class="dot green"></span>
                 </div>
 
-                <!-- Brand logo -->
-                <div class="mockup-logo">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14.5 3.5 L7.5 10.5 L10.5 13.5 L7 17 L10 20 L13.5 16.5 L16.5 19.5 L20.5 15.5 L14.5 9.5 L17.5 6.5 Z" />
-                  </svg>
-                </div>
-
-                <!-- Icons container -->
+                <!-- Top Icons container (Notes first) -->
                 <div class="mockup-icons" id="mockupIcons">
                   <!-- Populated dynamically via JS -->
                 </div>
 
-                <!-- Bottom spacer & Brain agent -->
+                <!-- Bottom items: 3-dots divider, Settings, 3-dots divider, Brain -->
                 <div class="mockup-bottom">
-                  <div class="mockup-more">···</div>
-                  <div class="mockup-avatar" title="Brain Voice Agent">
-                    <div class="avatar-ring"></div>
-                  </div>
+                  <!-- Populated dynamically via JS -->
                 </div>
               </div>
             </div>

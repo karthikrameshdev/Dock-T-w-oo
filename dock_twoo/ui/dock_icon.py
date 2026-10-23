@@ -96,7 +96,7 @@ class DockIconButton(QWidget):
 
         # Render standardized vector SVG icon
         icon_mgr = IconManager.get_instance()
-        icon_name = "avatar" if self.item.id == "brain" else (self.item.icon or "logo")
+        icon_name = self.item.icon or self.item.id
         color = self.config.get_effective_icon_color()
         opacity = self.config.icon_opacity
 

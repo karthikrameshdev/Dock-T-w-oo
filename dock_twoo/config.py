@@ -71,32 +71,51 @@ class DockAppItem:
 
 
 def get_default_apps() -> List[DockAppItem]:
-    """Default dock app items following the design pattern."""
+    """Default dock app items: Notes at top, Settings and Brain at bottom with 3-dot dividers."""
     return [
-        DockAppItem(id="launcher", name="Apps", icon="apps", tooltip="App Launcher & Switcher"),
-        DockAppItem(id="calendar", name="Calendar", icon="calendar", tooltip="Calendar & Schedule"),
-        DockAppItem(id="star", name="Favorites", icon="star", tooltip="Starred Items & Quick Links"),
-        DockAppItem(id="weather", name="Weather", icon="weather", tooltip="Weather & Climate"),
-        DockAppItem(id="sep1", name="Separator", icon="", tooltip="", is_separator=True),
-        DockAppItem(id="vault", name="Vault", icon="vault", tooltip="Vault T(w)oo - Password Manager"),
-        DockAppItem(id="notes", name="Notes", icon="notes", tooltip="Notes T(w)oo - Quick Scratchpad"),
-        DockAppItem(id="checklist", name="Checklist", icon="checklist", tooltip="To-Do & Tasks"),
-        DockAppItem(id="team", name="Team", icon="team", tooltip="Contacts & Collaboration"),
-        DockAppItem(id="bookmark", name="Bookmarks", icon="bookmark", tooltip="Saved Articles & Links"),
-        DockAppItem(id="sep2", name="Separator", icon="", tooltip="", is_separator=True),
-        DockAppItem(id="notifications", name="Notifications", icon="bell", tooltip="System & App Alerts"),
-        DockAppItem(id="chat", name="Messages", icon="chat", tooltip="Quick Chat & Discussions"),
         DockAppItem(
-            id="console",
-            name="Web Console",
+            id="notes",
+            name="Notes",
+            icon="notes",
+            tooltip="Notes T(w)oo - Scratchpad",
+            enabled=True,
+            is_bottom=False,
+        ),
+        DockAppItem(
+            id="div_settings",
+            name="Divider",
+            icon="dots_divider",
+            tooltip="",
+            enabled=True,
+            is_separator=True,
+            is_bottom=True,
+        ),
+        DockAppItem(
+            id="settings",
+            name="Settings",
             icon="sliders",
-            tooltip="Dock T(w)oo Settings Console (Opens in Browser)",
+            tooltip="Console & Settings (Click to open)",
+            enabled=True,
+            is_bottom=True,
             action_type="url",
         ),
-        DockAppItem(id="headset", name="Audio / Help", icon="headset", tooltip="Audio & Assistance"),
-        DockAppItem(id="feedback", name="Feedback", icon="feedback", tooltip="Share Feedback"),
-        DockAppItem(id="more", name="More", icon="more", tooltip="More Options & Actions", is_bottom=True),
-        DockAppItem(id="brain", name="Brain", icon="brain", tooltip="Brain T(w)oo - Voice Agent", is_bottom=True),
+        DockAppItem(
+            id="div_brain",
+            name="Divider",
+            icon="dots_divider",
+            tooltip="",
+            enabled=True,
+            is_separator=True,
+            is_bottom=True,
+        ),
+        DockAppItem(
+            id="brain",
+            name="Brain",
+            icon="brain",
+            tooltip="Brain T(w)oo — Voice Assistant",
+            enabled=True,
+            is_bottom=True,
+        ),
     ]
 
 
@@ -228,6 +247,11 @@ class ConfigManager:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self._config = DockConfig.from_dict(data)
+                    # Migrate legacy configurations if they contain removed apps
+                    app_ids = {a.id for a in self._config.apps}
+                    if "launcher" in app_ids or "vault" in app_ids or "calendar" in app_ids or len(self._config.apps) > 5:
+                        self._config.apps = get_default_apps()
+                        self.save()
                     return self._config
             except Exception as e:
                 print(f"[Dock T(w)oo] Failed to load config from {self.config_path}: {e}")

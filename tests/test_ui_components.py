@@ -76,15 +76,14 @@ def test_attached_window_switching_apps(qtbot, qapp):
     assert window.is_showing_app("notes")
     assert isinstance(window.stack.currentWidget(), NotesAppWidget)
 
-    # Switch to Vault app
-    window.show_app("vault", dock_geom, icon_center_y=350)
-    assert window.is_showing_app("vault")
-    assert isinstance(window.stack.currentWidget(), VaultAppWidget)
+    # Attached window matches exact dock height
+    assert window.height() == dock_geom.height()
 
     # Switch to Brain app
     window.show_app("brain", dock_geom, icon_center_y=800)
     assert window.is_showing_app("brain")
     assert isinstance(window.stack.currentWidget(), BrainAppWidget)
+    assert window.height() == dock_geom.height()
 
     # Hide window
     window.hide_window()
@@ -101,8 +100,9 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
 
     assert dock.isVisible()
     assert "notes" in dock._icon_buttons
-    assert "vault" in dock._icon_buttons
+    assert "settings" in dock._icon_buttons
     assert "brain" in dock._icon_buttons
+    assert len(dock._icon_buttons) == 3
 
     # Simulate clicking notes icon
     notes_btn = dock._icon_buttons["notes"]
@@ -111,6 +111,7 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
     assert dock.attached_window.isVisible()
     assert dock.attached_window.is_showing_app("notes")
     assert notes_btn._is_active is True
+    assert dock.attached_window.height() == dock.height()
 
     # Clicking notes again toggles it off
     dock._handle_icon_click("notes", notes_btn.mapToGlobal(QPoint(10, 10)))

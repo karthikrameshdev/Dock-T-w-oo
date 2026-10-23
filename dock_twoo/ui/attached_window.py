@@ -18,13 +18,7 @@ from dock_twoo.os_integration.screen_manager import ScreenManager
 from dock_twoo.ui.apps import (
     BaseAttachedApp,
     BrainAppWidget,
-    CalendarAppWidget,
-    ChatAppWidget,
     NotesAppWidget,
-    NotificationsAppWidget,
-    SettingsAppWidget,
-    VaultAppWidget,
-    WeatherAppWidget,
 )
 from dock_twoo.ui.theme import get_theme_tokens
 
@@ -47,14 +41,14 @@ class AttachedWindow(QWidget):
 
     def _setup_ui(self) -> None:
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
 
         # Outer card container
         self.card_container = QFrame(self)
         self.card_layout = QVBoxLayout(self.card_container)
         self.card_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Stacked widget for all attached apps
+        # Stacked widget for attached apps
         self.stack = QStackedWidget(self.card_container)
         self.card_layout.addWidget(self.stack)
 
@@ -63,17 +57,10 @@ class AttachedWindow(QWidget):
         self._init_apps()
 
     def _init_apps(self) -> None:
-        """Instantiate all built-in companion apps."""
+        """Instantiate supported companion apps (Notes and Brain)."""
         app_classes = {
             "notes": NotesAppWidget,
-            "vault": VaultAppWidget,
             "brain": BrainAppWidget,
-            "calendar": CalendarAppWidget,
-            "weather": WeatherAppWidget,
-            "notifications": NotificationsAppWidget,
-            "chat": ChatAppWidget,
-            "settings": SettingsAppWidget,
-            "console": SettingsAppWidget,
         }
 
         for app_id, cls in app_classes.items():
