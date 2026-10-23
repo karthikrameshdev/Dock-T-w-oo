@@ -1,4 +1,4 @@
-"""Notes application attached drawer with two-page design, search, state persistence, and delete."""
+"""Notes application attached drawer with two-page design, search, state persistence, created/modified dates, and drag-and-drop reordering."""
 
 from __future__ import annotations
 
@@ -8,9 +8,10 @@ from pathlib import Path
 import time
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QMimeData, QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -28,6 +29,26 @@ from PySide6.QtWidgets import (
 from dock_twoo.config import DockConfig, get_default_config_dir
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
 from dock_twoo.ui.theme import create_app_font, get_scrollbar_style, get_theme_tokens
+
+
+def format_note_date(ts: float) -> str:
+    """Format timestamp into a clean, human-readable date string."""
+    if not ts:
+        return "Unknown"
+    try:
+        dt = datetime.datetime.fromtimestamp(ts)
+        now = datetime.datetime.now()
+        time_part = dt.strftime("%I:%M %p").lstrip("0")
+        if dt.date() == now.date():
+            return f"Today, {time_part}"
+        elif (now.date() - dt.date()).days == 1:
+            return f"Yesterday, {time_part}"
+        elif dt.year == now.year:
+            return f"{dt.strftime('%b %d')}, {time_part}"
+        else:
+            return f"{dt.strftime('%b %d, %Y')}, {time_part}"
+    except Exception:
+        return ""
 
 
 class NotesToast(QWidget):
@@ -78,7 +99,7 @@ class NotesToast(QWidget):
 
 
 class NoteCard(QFrame):
-    """Clean card representing a note in the list view with title, preview, date, and delete action."""
+    """Clean card representing a note in the list view with title, preview, created & modified dates, and drag-and-drop."""
 
     clicked = Signal(str)  # note_id
     delete_requested = Signal(str, str)  # note_id, title
@@ -90,6 +111,7 @@ class NoteCard(QFrame):
         body: str,
         updated_at: float,
         config: DockConfig,
+        created_at: Optional[float] = None,
         parent: Optional[QWidget] = None,
     ):
         super().__init__(parent)
@@ -97,7 +119,9 @@ class NoteCard(QFrame):
         self.title = title
         self.body = body
         self.updated_at = updated_at
+        self.created_at = created_at if created_at else updated_at
         self.config = config
+        self._drag_start_pos: Optional[QPoint] = None
 
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._setup_ui()
@@ -108,10 +132,17 @@ class NoteCard(QFrame):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(4)
 
-        # Header row: Title + Delete button
+        # Header row: Drag Grip + Title + Delete button
         header_row = QHBoxLayout()
         header_row.setContentsMargins(0, 0, 0, 0)
-        header_row.setSpacing(8)
+        header_row.setSpacing(6)
+
+        self.grip_lbl = QLabel("⋮⋮", self)
+        self.grip_lbl.setFont(create_app_font(self.config, size=11, weight=QFont.Weight.Bold))
+        self.grip_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.4); background: transparent; border: none;")
+        self.grip_lbl.setToolTip("Drag to reorder notes")
+        self.grip_lbl.setFixedWidth(14)
+        header_row.addWidget(self.grip_lbl)
 
         self.title_lbl = QLabel(self.title or "Untitled Note", self)
         self.title_lbl.setFont(create_app_font(self.config, size=13, weight=QFont.Weight.DemiBold))
@@ -152,29 +183,24 @@ class NoteCard(QFrame):
         self.snippet_lbl.setWordWrap(True)
         layout.addWidget(self.snippet_lbl)
 
-        # Timestamp footer
-        date_str = self._format_date(self.updated_at)
-        self.date_lbl = QLabel(date_str, self)
-        self.date_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
-        self.date_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.7); background: transparent; border: none;")
-        layout.addWidget(self.date_lbl)
+        # Timestamps footer: Both Created Date and Modified Date
+        dates_layout = QVBoxLayout()
+        dates_layout.setContentsMargins(0, 3, 0, 0)
+        dates_layout.setSpacing(2)
+
+        self.created_lbl = QLabel(f"Created: {format_note_date(self.created_at)}", self)
+        self.created_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
+        self.created_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent; border: none;")
+        dates_layout.addWidget(self.created_lbl)
+
+        self.modified_lbl = QLabel(f"Modified: {format_note_date(self.updated_at)}", self)
+        self.modified_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
+        self.modified_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent; border: none;")
+        dates_layout.addWidget(self.modified_lbl)
+
+        layout.addLayout(dates_layout)
 
         self._apply_frame_style(False)
-
-    def _format_date(self, ts: float) -> str:
-        if not ts:
-            return ""
-        try:
-            dt = datetime.datetime.fromtimestamp(ts)
-            now = datetime.datetime.now()
-            if dt.date() == now.date():
-                return f"Today, {dt.strftime('%I:%M %p')}"
-            elif (now.date() - dt.date()).days == 1:
-                return f"Yesterday, {dt.strftime('%I:%M %p')}"
-            else:
-                return dt.strftime("%b %d, %Y")
-        except Exception:
-            return ""
 
     def _apply_frame_style(self, hover: bool) -> None:
         tokens = get_theme_tokens(self.config)
@@ -182,9 +208,11 @@ class NoteCard(QFrame):
         if hover:
             bg = "rgba(255, 255, 255, 0.08)" if is_dark else "rgba(0, 0, 0, 0.06)"
             border = tokens.accent_color
+            grip_color = tokens.accent_color
         else:
             bg = "rgba(255, 255, 255, 0.04)" if is_dark else "rgba(0, 0, 0, 0.03)"
             border = "rgba(255, 255, 255, 0.08)" if is_dark else "rgba(0, 0, 0, 0.08)"
+            grip_color = "rgba(142, 142, 159, 0.4)"
 
         self.setStyleSheet(f"""
             NoteCard {{
@@ -193,6 +221,8 @@ class NoteCard(QFrame):
                 border-radius: 9px;
             }}
         """)
+        if hasattr(self, "grip_lbl"):
+            self.grip_lbl.setStyleSheet(f"color: {grip_color}; background: transparent; border: none;")
 
     def enterEvent(self, event) -> None:
         self._apply_frame_style(True)
@@ -204,15 +234,156 @@ class NoteCard(QFrame):
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit(self.note_id)
+            self._drag_start_pos = event.pos()
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if event.buttons() & Qt.MouseButton.LeftButton and self._drag_start_pos is not None:
+            if (event.pos() - self._drag_start_pos).manhattanLength() >= 8:
+                self._start_drag(event)
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._drag_start_pos is not None:
+            if (event.pos() - self._drag_start_pos).manhattanLength() < 8:
+                self.clicked.emit(self.note_id)
+            self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def _start_drag(self, event) -> None:
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setText(self.note_id)
+        mime.setData("application/x-note-id", self.note_id.encode("utf-8"))
+        drag.setMimeData(mime)
+
+        pixmap = self.grab()
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(event.pos())
+        self.setStyleSheet("""
+            NoteCard {
+                opacity: 0.35;
+                border: 1px dashed #3b82f6;
+                border-radius: 9px;
+            }
+        """)
+        drag.exec(Qt.DropAction.MoveAction)
+        self._drag_start_pos = None
+        self._apply_frame_style(False)
 
     def _on_delete_clicked(self) -> None:
         self.delete_requested.emit(self.note_id, self.title)
 
 
+class CardsContainerWidget(QWidget):
+    """Container holding note cards with drag-and-drop reordering and drop indicator."""
+
+    order_changed = Signal(list)  # list of note_ids
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self._drop_indicator_index: Optional[int] = None
+
+        self._indicator_line = QFrame(self)
+        self._indicator_line.setFrameShape(QFrame.Shape.HLine)
+        self._indicator_line.setFixedHeight(3)
+        self._indicator_line.setStyleSheet("background-color: #3b82f6; border-radius: 1px; border: none;")
+        self._indicator_line.hide()
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasFormat("application/x-note-id"):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if event.mimeData().hasFormat("application/x-note-id"):
+            pos = event.position().toPoint()
+            target_idx = self._get_drop_index(pos.y())
+            self._drop_indicator_index = target_idx
+            self._update_indicator_line(target_idx)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragLeaveEvent(self, event) -> None:
+        self._indicator_line.hide()
+        self._drop_indicator_index = None
+        event.accept()
+
+    def dropEvent(self, event) -> None:
+        self._indicator_line.hide()
+        if event.mimeData().hasFormat("application/x-note-id"):
+            dragged_id = event.mimeData().text()
+            target_idx = self._drop_indicator_index if self._drop_indicator_index is not None else -1
+            layout = self.layout()
+            if layout is None:
+                event.ignore()
+                return
+
+            cards: List[NoteCard] = []
+            for i in range(layout.count()):
+                w = layout.itemAt(i).widget()
+                if isinstance(w, NoteCard):
+                    cards.append(w)
+
+            dragged_card = next((c for c in cards if c.note_id == dragged_id), None)
+            if dragged_card:
+                cards.remove(dragged_card)
+                if target_idx < 0 or target_idx >= len(cards):
+                    cards.append(dragged_card)
+                else:
+                    cards.insert(target_idx, dragged_card)
+
+                for c in cards:
+                    layout.removeWidget(c)
+                for i, c in enumerate(cards):
+                    layout.insertWidget(i, c)
+
+                new_order = [c.note_id for c in cards]
+                self.order_changed.emit(new_order)
+
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _get_drop_index(self, y: int) -> int:
+        layout = self.layout()
+        if layout is None:
+            return 0
+        idx = 0
+        for i in range(layout.count()):
+            w = layout.itemAt(i).widget()
+            if isinstance(w, NoteCard):
+                mid_y = w.y() + w.height() // 2
+                if y > mid_y:
+                    idx = idx + 1
+        return idx
+
+    def _update_indicator_line(self, index: int) -> None:
+        layout = self.layout()
+        if layout is None:
+            self._indicator_line.hide()
+            return
+        cards = [layout.itemAt(i).widget() for i in range(layout.count()) if isinstance(layout.itemAt(i).widget(), NoteCard)]
+        if not cards:
+            self._indicator_line.hide()
+            return
+        if index <= 0:
+            top_y = cards[0].y() - 4
+        elif index >= len(cards):
+            top_y = cards[-1].y() + cards[-1].height() + 2
+        else:
+            top_y = cards[index].y() - 4
+        self._indicator_line.setGeometry(8, max(0, top_y), max(10, self.width() - 16), 3)
+        self._indicator_line.show()
+        self._indicator_line.raise_()
+
+
 class NotesAppWidget(BaseAttachedApp):
-    """Notes attached drawer with a dedicated two-page design (List & Editor), state persistence, and full search."""
+    """Notes attached drawer with a dedicated two-page design, drag-and-drop reordering, dates, and state persistence."""
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__("notes", "Notes", config, parent)
@@ -226,6 +397,47 @@ class NotesAppWidget(BaseAttachedApp):
         self._init_notes_ui()
         self._load_notes()
         self._restore_state()
+
+    def _read_state_dict(self) -> dict:
+        if self.state_file.exists():
+            try:
+                with open(self.state_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {}
+
+    def _write_state_dict(self, state: dict) -> None:
+        try:
+            with open(self.state_file, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception:
+            pass
+
+    def _has_welcome_been_created(self) -> bool:
+        state = self._read_state_dict()
+        return bool(state.get("welcome_created", False))
+
+    def _mark_welcome_created(self) -> None:
+        state = self._read_state_dict()
+        state["welcome_created"] = True
+        self._write_state_dict(state)
+
+    def _get_manual_order(self) -> List[str]:
+        state = self._read_state_dict()
+        return list(state.get("manual_order", []))
+
+    def _save_manual_order(self, order: List[str]) -> None:
+        state = self._read_state_dict()
+        state["manual_order"] = order
+        self._write_state_dict(state)
+
+    def _promote_note_to_top(self, note_id: str) -> None:
+        manual_order = self._get_manual_order()
+        if note_id in manual_order:
+            manual_order.remove(note_id)
+        manual_order.insert(0, note_id)
+        self._save_manual_order(manual_order)
 
     def _init_notes_ui(self) -> None:
         tokens = get_theme_tokens(self.config)
@@ -300,7 +512,8 @@ class NotesAppWidget(BaseAttachedApp):
             {get_scrollbar_style(tokens)}
         """)
 
-        self.cards_container = QWidget()
+        self.cards_container = CardsContainerWidget()
+        self.cards_container.order_changed.connect(self._on_cards_reordered)
         self.cards_layout = QVBoxLayout(self.cards_container)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         self.cards_layout.setSpacing(8)
@@ -403,8 +616,13 @@ class NotesAppWidget(BaseAttachedApp):
         # Floating Toast notification
         self.toast = NotesToast(self)
 
+    def _on_cards_reordered(self, new_order: List[str]) -> None:
+        """Handle user manually reordering notes via drag and drop."""
+        self._save_manual_order(new_order)
+        self.toast.show_message("Notes reordered")
+
     def _load_notes(self) -> None:
-        """Load all notes from disk and populate the list cards."""
+        """Load all notes from disk, apply ordering, and populate list cards."""
         # Clear existing cards
         for card in list(self._note_cards.values()):
             self.cards_layout.removeWidget(card)
@@ -414,7 +632,8 @@ class NotesAppWidget(BaseAttachedApp):
         # Gather note JSON files
         json_files = [f for f in self.notes_dir.glob("*.json") if not f.name.startswith(".")]
 
-        if not json_files:
+        # Only create initial welcome note once on first launch if not yet created
+        if not json_files and not self._has_welcome_been_created():
             self._create_welcome_note()
             json_files = [f for f in self.notes_dir.glob("*.json") if not f.name.startswith(".")]
 
@@ -424,13 +643,32 @@ class NotesAppWidget(BaseAttachedApp):
                 with open(file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     data["id"] = file.stem
-                    data["updated_at"] = data.get("updated_at", file.stat().st_mtime)
+                    updated_at = data.get("updated_at", file.stat().st_mtime)
+                    created_at = data.get("created_at")
+                    if not created_at:
+                        try:
+                            created_at = file.stat().st_birthtime
+                        except AttributeError:
+                            created_at = file.stat().st_ctime
+                    data["created_at"] = created_at
+                    data["updated_at"] = updated_at
                     notes_data.append(data)
             except Exception:
                 pass
 
-        # Sort by updated_at descending (newest first)
-        notes_data.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
+        # Sort:
+        # If manual order exists, follow it. Notes not in manual order (newly created/edited) go to top by updated_at descending.
+        manual_order = self._get_manual_order()
+        if manual_order:
+            order_map = {nid: idx for idx, nid in enumerate(manual_order)}
+            notes_data.sort(
+                key=lambda x: (
+                    0 if x["id"] in order_map else -1,
+                    order_map.get(x["id"], -x.get("updated_at", 0)),
+                )
+            )
+        else:
+            notes_data.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
 
         for n in notes_data:
             card = NoteCard(
@@ -439,6 +677,7 @@ class NotesAppWidget(BaseAttachedApp):
                 body=n.get("body", ""),
                 updated_at=n.get("updated_at", 0),
                 config=self.config,
+                created_at=n.get("created_at"),
                 parent=self.cards_container,
             )
             card.clicked.connect(self._open_note)
@@ -451,51 +690,51 @@ class NotesAppWidget(BaseAttachedApp):
 
     def _create_welcome_note(self) -> None:
         welcome_file = self.notes_dir / "welcome.json"
+        now = time.time()
         data = {
             "title": "Welcome to Notes",
-            "body": "Welcome to your persistent secondary dock companion!\n\n- Write fast thoughts and meeting notes\n- Auto-saves instantly as you type\n- Clean dark & light mode styling\n- Attached drawer stays beside your dock.",
-            "updated_at": time.time(),
+            "body": "Welcome to your persistent secondary dock companion!\n\n- Write fast thoughts and meeting notes\n- Drag and drop notes to reorder anytime\n- View create & modified dates on every card\n- Auto-saves instantly as you type\n- Attached drawer stays beside your dock.",
+            "created_at": now,
+            "updated_at": now,
         }
         with open(welcome_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
+        self._mark_welcome_created()
 
     def _save_state(self, page_index: int, note_id: Optional[str]) -> None:
         """Persist current view state so reopen preserves exact position."""
-        state = {
-            "last_page": page_index,
-            "last_note_id": note_id,
-        }
-        try:
-            with open(self.state_file, "w", encoding="utf-8") as f:
-                json.dump(state, f, indent=2)
-        except Exception:
-            pass
+        state = self._read_state_dict()
+        state["last_page"] = page_index
+        state["last_note_id"] = note_id
+        self._write_state_dict(state)
 
     def _restore_state(self) -> None:
         """Restore user's previous state (Page 0 List vs Page 1 Editor) on launch."""
-        if self.state_file.exists():
-            try:
-                with open(self.state_file, "r", encoding="utf-8") as f:
-                    state = json.load(f)
-                last_page = state.get("last_page", 0)
-                last_note_id = state.get("last_note_id")
-                if last_page == 1 and last_note_id:
-                    note_file = self.notes_dir / f"{last_note_id}.json"
-                    if note_file.exists():
-                        self._open_note(last_note_id, save_state=False)
-                        return
-            except Exception:
-                pass
+        state = self._read_state_dict()
+        last_page = state.get("last_page", 0)
+        last_note_id = state.get("last_note_id")
+        if last_page == 1 and last_note_id:
+            note_file = self.notes_dir / f"{last_note_id}.json"
+            if note_file.exists():
+                self._open_note(last_note_id, save_state=False)
+                return
         self._go_back_to_list(save_state=False)
 
     def _create_new_note(self) -> None:
-        """Create a new note and immediately open it in the editor."""
+        """Create a new note, place it at top, and immediately open it in the editor."""
         note_id = f"note_{int(time.time())}"
-        data = {"title": "Untitled Note", "body": "", "updated_at": time.time()}
+        now = time.time()
+        data = {
+            "title": "Untitled Note",
+            "body": "",
+            "created_at": now,
+            "updated_at": now,
+        }
         file_path = self.notes_dir / f"{note_id}.json"
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
+            self._promote_note_to_top(note_id)
         except Exception:
             pass
 
@@ -521,7 +760,11 @@ class NotesAppWidget(BaseAttachedApp):
             self.body_edit.setText(data.get("body", ""))
             self.title_input.blockSignals(False)
             self.body_edit.blockSignals(False)
-            self._update_editor_meta(data.get("updated_at", 0), data.get("body", ""))
+            self._update_editor_meta(
+                data.get("created_at", data.get("updated_at", 0)),
+                data.get("updated_at", 0),
+                data.get("body", ""),
+            )
         except Exception:
             pass
 
@@ -540,40 +783,53 @@ class NotesAppWidget(BaseAttachedApp):
         self.back_btn.setVisible(False)
         self.title_label.setText("Notes")
 
-        # Reload list cards so latest updates and previews are fresh
+        # Reload list cards so latest updates, dates, and order are fresh
         self._load_notes()
 
         if save_state:
             self._save_state(page_index=0, note_id=None)
 
-    def _update_editor_meta(self, updated_at: float, body: str) -> None:
+    def _update_editor_meta(self, created_at: float, updated_at: float, body: str) -> None:
         words = len((body or "").split())
-        dt_str = ""
-        if updated_at:
-            try:
-                dt = datetime.datetime.fromtimestamp(updated_at)
-                dt_str = f"Last edited {dt.strftime('%b %d, %I:%M %p')} • "
-            except Exception:
-                pass
-        self.editor_meta_lbl.setText(f"{dt_str}{words} {'word' if words == 1 else 'words'}")
+        created_str = format_note_date(created_at) if created_at else ""
+        updated_str = format_note_date(updated_at) if updated_at else ""
+        meta_parts = []
+        if created_str:
+            meta_parts.append(f"Created {created_str}")
+        if updated_str:
+            meta_parts.append(f"Modified {updated_str}")
+        meta_parts.append(f"{words} {'word' if words == 1 else 'words'}")
+        self.editor_meta_lbl.setText(" • ".join(meta_parts))
 
     def _on_content_changed(self) -> None:
-        """Auto-save note content as user types."""
+        """Auto-save note content as user types and promote note to top."""
         if not self._current_note_id:
             return
         file_path = self.notes_dir / f"{self._current_note_id}.json"
         title = self.title_input.text().strip()
         body = self.body_edit.toPlainText()
         now = time.time()
+
+        created_at = now
+        if file_path.exists():
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    prev = json.load(f)
+                    created_at = prev.get("created_at", now)
+            except Exception:
+                pass
+
         data = {
             "title": title or "Untitled Note",
             "body": body,
+            "created_at": created_at,
             "updated_at": now,
         }
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-            self._update_editor_meta(now, body)
+            self._update_editor_meta(created_at, now, body)
+            self._promote_note_to_top(self._current_note_id)
         except Exception:
             pass
 
@@ -594,6 +850,15 @@ class NotesAppWidget(BaseAttachedApp):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+
+        # Mark welcome created so deleting welcome note never resurrects it
+        self._mark_welcome_created()
+
+        # Remove from manual order
+        manual_order = self._get_manual_order()
+        if note_id in manual_order:
+            manual_order.remove(note_id)
+            self._save_manual_order(manual_order)
 
         file_path = self.notes_dir / f"{note_id}.json"
         if file_path.exists():
