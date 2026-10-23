@@ -12,6 +12,8 @@ from PySide6.QtCore import QMetaObject, QObject, QPoint, QThread, Qt, Signal, Sl
 from PySide6.QtWidgets import QMenu, QApplication
 
 from dock_twoo.brain.animation import ACTIONS
+from dock_twoo.brain.commands import handle_voice_command
+from dock_twoo.brain.listener import AudioListener, GlobalShortcutListener
 from dock_twoo.brain.mascot import Companion
 from dock_twoo.brain.profiles import ProfileManager
 from dock_twoo.brain.providers import query_llm
@@ -55,6 +57,23 @@ class BrainManager(QObject):
 
         self._active_query_thread: Optional[threading.Thread] = None
         self._is_listening: bool = False
+
+        # Real-time microphone listening and wake word ('Brain') detection
+        self.listener = AudioListener(
+            wake_word=self.store.setting("wake_word", "brain"),
+            on_wake=self._on_wake_detected,
+            on_turn_complete=self._on_turn_complete,
+            parent=self,
+        )
+        # Push-to-talk shortcut listener (default: right Command key)
+        self.shortcut_listener = GlobalShortcutListener(
+            shortcut_key=self.store.setting("push_to_talk_shortcut", "cmd_r"),
+            on_press=self._on_shortcut_press,
+            on_release=self._on_shortcut_release,
+        )
+        if self.store.setting("wake_word_enabled", True):
+            self.listener.start()
+        self.shortcut_listener.start()
 
     @Slot(str)
     def _do_speech_start(self, reply: str) -> None:
@@ -105,6 +124,76 @@ class BrainManager(QObject):
             self.show_mini_agent()
 
     @Slot()
+    def _on_wake_detected(self) -> None:
+        """Invoked when user says 'Brain' or 'Hey Brain'."""
+        if QThread.currentThread() != self.thread():
+            QMetaObject.invokeMethod(self, "_on_wake_detected", Qt.ConnectionType.QueuedConnection)
+            return
+        if not self.companion.isVisible():
+            self.show_mini_agent()
+        self.companion.turn_to_user()
+        self.companion.set_activity("listening")
+        # Greet user immediately and start listening for their statement!
+        self.speech.start("Hey Karthik, I'm listening.")
+
+        def wait_and_record():
+            while self.speech.playing:
+                time.sleep(0.04)
+            self.listener.start_recording()
+
+        threading.Thread(target=wait_and_record, daemon=True).start()
+
+    @Slot()
+    def _on_shortcut_press(self) -> None:
+        """Push-to-talk pressed: immediately begin recording."""
+        if QThread.currentThread() != self.thread():
+            QMetaObject.invokeMethod(self, "_on_shortcut_press", Qt.ConnectionType.QueuedConnection)
+            return
+        if not self.companion.isVisible():
+            self.show_mini_agent()
+        self.speech.stop()
+        self.companion.turn_to_user()
+        self.companion.set_activity("listening")
+        self.listener.start_recording()
+
+    @Slot()
+    def _on_shortcut_release(self) -> None:
+        """Push-to-talk released: finish recording immediately and process speech."""
+        if QThread.currentThread() != self.thread():
+            QMetaObject.invokeMethod(self, "_on_shortcut_release", Qt.ConnectionType.QueuedConnection)
+            return
+        self.listener.stop_recording()
+
+    @Slot(str)
+    def _on_turn_complete(self, user_text: str) -> None:
+        """Invoked when user finishes statement (via VAD or explicit shortcut)."""
+        if not user_text:
+            self.activity_requested.emit("idle")
+            return
+
+        # Top indicator rotates green with cycling hue while processing
+        self.activity_requested.emit("processing")
+
+        def run_turn():
+            # 1. Check for dedicated voice command (movement, action, memory, CUA, research)
+            cmd_reply = handle_voice_command(user_text, self)
+            if cmd_reply:
+                reply = cmd_reply
+            else:
+                self.activity_requested.emit("thinking")
+                active_profile = self.profile_mgr.get_active_profile()
+                provider = active_profile.get("provider", "local") if active_profile else "local"
+                api_key = self.profile_mgr.get_key(provider) if active_profile else ""
+                reply = query_llm(user_text, profile=active_profile, api_key=api_key)
+
+            if self.store.setting("voice_reply", True):
+                self.speech_start_requested.emit(reply)
+            else:
+                self.activity_requested.emit("idle")
+
+        threading.Thread(target=run_turn, daemon=True).start()
+
+    @Slot()
     def start_talking(self) -> None:
         """Activate voice listening state for the robot."""
         if QThread.currentThread() != self.thread():
@@ -113,45 +202,9 @@ class BrainManager(QObject):
         self.companion.show()
         self.companion.raise_()
         self.visibility_changed.emit(True)
-        # Turn around to face the user immediately!
         self.companion.turn_to_user()
         self.companion.set_activity("listening")
-        self._is_listening = True
-
-        # Conversational query prompt
-        def process_voice():
-            time.sleep(1.8)
-            if not self._is_listening:
-                return
-            self._is_listening = False
-
-            # Switch to thinking state safely via Qt signal
-            self.activity_requested.emit("thinking")
-
-            active_profile = self.profile_mgr.get_active_profile()
-            provider = active_profile.get("provider", "local") if active_profile else "local"
-            api_key = self.profile_mgr.get_key(provider) if active_profile else ""
-
-            # Generate natural conversational answer
-            sample_prompts = [
-                "What can you do?",
-                "Give me a quick status update.",
-                "How is my system today?",
-            ]
-            reply = query_llm(
-                prompt=random.choice(sample_prompts),
-                profile=active_profile,
-                api_key=api_key,
-            )
-
-            # Pure audio speech output
-            if self.store.setting("voice_reply", True):
-                self.speech_start_requested.emit(reply)
-            else:
-                self.activity_requested.emit("idle")
-
-        self._active_query_thread = threading.Thread(target=process_voice, daemon=True)
-        self._active_query_thread.start()
+        self.listener.start_recording()
 
     @Slot()
     def stop_talking(self) -> None:
@@ -160,6 +213,7 @@ class BrainManager(QObject):
             QMetaObject.invokeMethod(self, "stop_talking", Qt.ConnectionType.QueuedConnection)
             return
         self._is_listening = False
+        self.listener.stop_recording()
         self.speech.stop()
         self.companion.set_activity("idle")
 
@@ -207,9 +261,9 @@ class BrainManager(QObject):
         for p in profiles:
             p_id = p.get("id")
             p_name = p.get("name", p_id)
-            if p.get("local_only"):
-                p_name += " (100% Local)"
-            act = profile_menu.addAction(p_name)
+            p_status = p.get("status", "active")
+            display_label = f"{p_name} ({p_status.title()})"
+            act = profile_menu.addAction(display_label)
             act.setCheckable(True)
             act.setChecked(p_id == active_id)
             act.triggered.connect(lambda checked=False, pid=p_id: self._activate_and_notify(pid))

@@ -38,7 +38,9 @@ LABELS = {
     "idle": "Online · Ready",
     "listening": "Listening",
     "thinking": "Thinking",
+    "processing": "Processing",
     "speaking": "Speaking",
+    "offline": "Offline",
     "error": "Needs attention",
 }
 
@@ -362,7 +364,7 @@ class Companion(QWidget):
             return
         self.stop_motion(clear_sequence=not sequence)
 
-        if self.reduced_motion or not self.isVisible():
+        if self.reduced_motion:
             return
 
         self.action = action
@@ -548,6 +550,39 @@ class Companion(QWidget):
             y = int(area.bottom()) - self.height() - 75
         return QPoint(x, y)
 
+    def travel_to_corner(self, corner: str, style: str = "walk") -> None:
+        """Move companion to designated desktop corner using specified movement style (walk, jump, fly, roll)."""
+        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else QRectF(0, 0, 1920, 1080)
+        
+        c = corner.lower().replace("-", "_").replace(" ", "_")
+        margin_x = 40
+        margin_y = 40
+        
+        if "top_left" in c or "left_top" in c:
+            target = QPoint(int(area.left()) + margin_x, int(area.top()) + margin_y)
+        elif "top_right" in c or "right_top" in c:
+            target = QPoint(int(area.right()) - self.width() - margin_x, int(area.top()) + margin_y)
+        elif "bottom_left" in c or "left_bottom" in c:
+            target = QPoint(int(area.left()) + margin_x, int(area.bottom()) - self.height() - margin_y)
+        elif "bottom_right" in c or "right_bottom" in c:
+            target = QPoint(int(area.right()) - self.width() - margin_x, int(area.bottom()) - self.height() - margin_y)
+        elif "left" in c:
+            target = QPoint(int(area.left()) + margin_x, int(area.center().y()) - self.height() // 2)
+        elif "right" in c:
+            target = QPoint(int(area.right()) - self.width() - margin_x, int(area.center().y()) - self.height() // 2)
+        elif "top" in c:
+            target = QPoint(int(area.center().x()) - self.width() // 2, int(area.top()) + margin_y)
+        elif "bottom" in c:
+            target = QPoint(int(area.center().x()) - self.width() // 2, int(area.bottom()) - self.height() - margin_y)
+        else:
+            target = QPoint(int(area.center().x()) - self.width() // 2, int(area.center().y()) - self.height() // 2)
+
+        valid_style = style if style in ("jump", "fly", "walk", "roll", "glide") else "walk"
+        duration = 1.3 if valid_style == "jump" else (1.6 if valid_style == "fly" else 2.2)
+        self.play_action(valid_style, destination=target, duration=duration)
+        self.arrival = lambda: self.play_action("nod")
+
     def _idle_gesture(self) -> None:
         if (
             self.reduced_motion
@@ -594,23 +629,104 @@ class Companion(QWidget):
         painter.save()
         painter.scale(self.art_width, self.art_height)
 
-        # Visor antenna status light color
-        color_map = {
-            "idle": "#38c878",
-            "listening": "#22d3ee",
-            "speaking": "#2dd4bf",
-            "thinking": "#a78bfa",
-            "error": "#f87171",
-        }
-        color = color_map.get(self.activity, "#38c878")
+        # Top Headlight & Antenna Status Light
+        # Processing: Green rotating sweep beam and cycling color
+        # Offline: Red blinking alert beacon
+        # Thinking: Purple/Indigo cyclotron beam with orbiting dot
+        # Listening: Cyan expanding radar ripple
+        # Speaking: Radiant teal pulse modulated with mouth level
+        # Idle: Soft calm emerald/mint breathing glow
 
-        light = QRadialGradient(QPointF(0.484, 0.047), 0.055)
-        light.setColorAt(0, QColor(color).lighter(160))
-        light.setColorAt(0.55, QColor(color))
-        light.setColorAt(1, QColor(color).darker(135))
-        painter.setPen(QPen(QColor("#c4fff2"), 0.004))
-        painter.setBrush(light)
-        painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+        center_pt = QPointF(0.500, 0.061)
+
+        if self.activity == "processing":
+            # Rotate with slight color change to show loading
+            hue_t = (math.sin(self.phase * 0.2) + 1.0) / 2.0  # 0 to 1
+            r_c = int(16 + hue_t * (132 - 16))
+            g_c = int(185 + hue_t * (204 - 185))
+            b_c = int(129 + hue_t * (22 - 129))
+            active_color = QColor(r_c, g_c, b_c)
+
+            # Rotating radar sweep arc around the headlight
+            rot_angle = (self.phase * 22) % 360
+            painter.setPen(QPen(active_color.lighter(140), 0.007, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawArc(QRectF(0.445, 0.015, 0.11, 0.092), int(rot_angle * 16), int(120 * 16))
+
+            light = QRadialGradient(center_pt, 0.055)
+            light.setColorAt(0, active_color.lighter(170))
+            light.setColorAt(0.55, active_color)
+            light.setColorAt(1, active_color.darker(140))
+            painter.setPen(QPen(active_color.lighter(130), 0.004))
+            painter.setBrush(light)
+            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+
+        elif self.activity in ("offline", "error"):
+            # Red alert pulsing beacon
+            pulse = 0.5 + 0.5 * math.sin(self.phase * 0.3)
+            alert_color = QColor("#ef4444")
+            alert_color.setAlphaF(0.6 + 0.4 * pulse)
+            painter.setPen(QPen(alert_color, 0.006))
+            painter.setBrush(alert_color.lighter(130))
+            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+
+        elif self.activity == "thinking":
+            # Cyclotron pulse and orbiting particle
+            think_color = QColor("#a78bfa")
+            light = QRadialGradient(center_pt, 0.055)
+            light.setColorAt(0, think_color.lighter(160))
+            light.setColorAt(0.6, think_color)
+            light.setColorAt(1, think_color.darker(135))
+            painter.setPen(QPen(QColor("#c084fc"), 0.004))
+            painter.setBrush(light)
+            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+
+            # Orbiting electron
+            orb_angle = self.phase * (math.tau / 12.0)
+            ox = center_pt.x() + 0.048 * math.cos(orb_angle)
+            oy = center_pt.y() + 0.032 * math.sin(orb_angle)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#e9d5ff"))
+            painter.drawEllipse(QRectF(ox - 0.007, oy - 0.007, 0.014, 0.014))
+
+        elif self.activity == "listening":
+            listen_color = QColor("#22d3ee")
+            wave_r = 0.04 + 0.03 * ((self.phase % 12) / 12.0)
+            wave_col = QColor(listen_color)
+            wave_col.setAlphaF(max(0.0, 1.0 - (self.phase % 12) / 12.0))
+            painter.setPen(QPen(wave_col, 0.005))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(center_pt, wave_r, wave_r * 0.85)
+
+            light = QRadialGradient(center_pt, 0.055)
+            light.setColorAt(0, listen_color.lighter(160))
+            light.setColorAt(0.6, listen_color)
+            light.setColorAt(1, listen_color.darker(135))
+            painter.setPen(QPen(QColor("#a5f3fc"), 0.004))
+            painter.setBrush(light)
+            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+
+        elif self.activity == "speaking":
+            speak_color = QColor("#2dd4bf")
+            boost = max(0.0, min(1.0, self.mouth_level))
+            light = QRadialGradient(center_pt, 0.055 + 0.02 * boost)
+            light.setColorAt(0, speak_color.lighter(150 + int(40 * boost)))
+            light.setColorAt(0.6, speak_color)
+            light.setColorAt(1, speak_color.darker(135))
+            painter.setPen(QPen(speak_color.lighter(130), 0.004 + 0.003 * boost))
+            painter.setBrush(light)
+            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+
+        else:  # idle
+            idle_color = QColor("#38c878")
+            light = QRadialGradient(center_pt, 0.055)
+            light.setColorAt(0, idle_color.lighter(150))
+            light.setColorAt(0.6, idle_color)
+            light.setColorAt(1, idle_color.darker(135))
+            painter.setPen(QPen(QColor("#a7f3d0"), 0.004))
+            painter.setBrush(light)
+            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+
+        # Center highlight dot
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#ffffff"))
         painter.drawEllipse(QRectF(0.476, 0.039, 0.014, 0.012))

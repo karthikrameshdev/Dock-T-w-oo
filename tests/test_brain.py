@@ -96,13 +96,29 @@ def test_brain_storage_and_profiles(tmp_path):
     assert "id" in active
     assert "model" in active
 
-    # Switch active profile
-    assert profile_mgr.activate_profile("local_ollama") is True
-    assert profile_mgr.get_active_profile()["id"] == "local_ollama"
+    # Default active profile is local
+    active = profile_mgr.get_active_profile()
+    assert active["id"] == "local"
+    assert active["name"] == "Local"
+    assert active["status"] == "active"
 
-    # API key encryption and lookup
+    # Status before key
+    gemini_prof = [p for p in profiles if p["id"] == "gemini"][0]
+    assert gemini_prof["status"] == "not configured"
+
+    openrouter_prof = [p for p in profiles if p["id"] == "openrouter"][0]
+    assert openrouter_prof["status"] == "not configured"
+
+    # Set key for gemini
     profile_mgr.set_key("gemini", "ai-test-key-12345")
     assert profile_mgr.get_key("gemini") == "ai-test-key-12345"
+    updated_profiles = profile_mgr.get_profiles()
+    gemini_updated = [p for p in updated_profiles if p["id"] == "gemini"][0]
+    assert gemini_updated["status"] == "active"
+
+    # Switch active profile
+    assert profile_mgr.activate_profile("gemini") is True
+    assert profile_mgr.get_active_profile()["id"] == "gemini"
 
 
 def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
@@ -140,22 +156,22 @@ def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
     child_buttons = companion.findChildren(QPushButton)
     assert len(child_buttons) == 0
 
-    # 4. Test activity states
-    companion.set_activity("listening")
-    assert companion.activity == "listening"
-
-    companion.set_activity("thinking")
-    assert companion.activity == "thinking"
-
-    companion.set_activity("speaking")
-    assert companion.activity == "speaking"
-
-    companion.set_activity("idle")
-    assert companion.activity == "idle"
+    # 4. Test all headlight activity states
+    for state in ("listening", "thinking", "processing", "speaking", "offline", "idle"):
+        companion.set_activity(state)
+        assert companion.activity == state
 
     # 5. Turn to user animation
     companion.turn_to_user()
     assert companion.action == "turn_around"
+
+    # 6. Travel to corner
+    companion.travel_to_corner("bottom_left", style="jump")
+    assert companion.destination is not None
+    assert companion.action == "jump"
+
+    companion.travel_to_corner("top_right", style="walk")
+    assert companion.action == "walk"
 
     companion.close()
 
@@ -289,4 +305,62 @@ def test_local_first_conversational_engine():
     reply_dock = query_llm("What can you do?", profile=None, api_key="")
     assert "Brain" in reply_dock or "desktop" in reply_dock
     assert "API key" not in reply_dock
+
+
+def test_voice_commands_router(tmp_path):
+    """Verify voice commands for mascot movement, actions, memory inspection, and computer automation."""
+    from dock_twoo.brain.commands import handle_voice_command, get_process_memory_usage
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+
+    # 1. Mascot movement voice commands
+    r_jump = handle_voice_command("Brain, jump from the right corner to the left corner", mgr)
+    assert r_jump is not None
+    assert "Jumping" in r_jump
+    assert mgr.companion.action == "jump"
+
+    r_walk = handle_voice_command("Walk towards the top right", mgr)
+    assert r_walk is not None
+    assert "Walking" in r_walk
+    assert mgr.companion.action == "walk"
+
+    r_fly = handle_voice_command("Fly to the right", mgr)
+    assert r_fly is not None
+    assert "Flying" in r_fly
+    assert mgr.companion.action == "fly"
+
+    # 2. Gesture actions
+    r_wave = handle_voice_command("Brain, wave", mgr)
+    assert r_wave is not None
+    assert "Waving" in r_wave
+
+    # 3. Process Memory
+    count, mb = get_process_memory_usage("python")
+    assert count > 0
+    assert mb > 0.0
+
+    r_mem = handle_voice_command("What is my current memory usage in Python?", mgr)
+    assert r_mem is not None
+    assert "Python" in r_mem
+    assert "megabytes" in r_mem or "gigabytes" in r_mem
+
+
+def test_audio_listener_and_shortcuts():
+    """Verify AudioListener and GlobalShortcutListener initialization and signal routing."""
+    from dock_twoo.brain.listener import AudioListener, GlobalShortcutListener
+
+    woken = []
+    listener = AudioListener(wake_word="brain", on_wake=lambda: woken.append(True))
+    assert listener.wake_word == "brain"
+    assert listener.is_recording is False
+
+    # Simulate wake detection
+    listener.wake_detected.emit()
+    assert len(woken) == 1
+
+    # Shortcut listener initialization
+    pressed = []
+    shortcut = GlobalShortcutListener(shortcut_key="cmd_r", on_press=lambda: pressed.append(True))
+    assert shortcut.shortcut_key == "cmd_r"
+
 

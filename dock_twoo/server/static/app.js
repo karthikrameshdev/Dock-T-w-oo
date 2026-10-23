@@ -1069,10 +1069,15 @@ async function initBrainConsole() {
         data.profiles.forEach((p) => {
           const opt = document.createElement('option');
           opt.value = p.id;
-          opt.textContent = p.name + (p.local_only ? ' (100% Local)' : '');
-          if (p.id === data.active_profile.id) opt.selected = true;
+          const status = p.status || 'active';
+          opt.textContent = `${p.name} — ${status}`;
+          opt.dataset.status = status;
+          if (data.active_profile && p.id === data.active_profile.id) opt.selected = true;
           activeProfileSel.appendChild(opt);
         });
+        if (activeProfileSel._refreshCustomDropdown) {
+          activeProfileSel._refreshCustomDropdown();
+        }
       }
 
       // Populate Active Profile fields
@@ -1081,6 +1086,11 @@ async function initBrainConsole() {
       if (modelIdInput && ap.model) modelIdInput.value = ap.model;
       if (baseUrlInput) baseUrlInput.value = ap.base_url || '';
       if (localOnlyToggle) localOnlyToggle.checked = !!ap.local_only;
+
+      // Refresh any initialized dropdowns with new values
+      document.querySelectorAll('select.select-input').forEach((sel) => {
+        if (sel._refreshCustomDropdown) sel._refreshCustomDropdown();
+      });
     } catch (err) {
       console.warn('Could not load brain status:', err);
     }
@@ -1102,5 +1112,173 @@ async function initBrainConsole() {
     }
   }
 
-  loadBrainStatus();
+  await loadBrainStatus();
+  initSearchableDropdowns();
 }
+
+// Universal Custom Searchable Dropdown for all select.select-input elements
+function initSearchableDropdowns() {
+  document.querySelectorAll('select.select-input').forEach((select) => {
+    if (select._hasCustomDropdown) {
+      if (select._refreshCustomDropdown) select._refreshCustomDropdown();
+      return;
+    }
+    select._hasCustomDropdown = true;
+
+    // Hide native select visually
+    select.style.display = 'none';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'custom-dropdown-container';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'custom-dropdown-trigger';
+
+    const triggerText = document.createElement('span');
+    triggerText.className = 'custom-dropdown-value';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'custom-dropdown-arrow';
+    chevron.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>';
+
+    trigger.appendChild(triggerText);
+    trigger.appendChild(chevron);
+    wrapper.appendChild(trigger);
+
+    const menu = document.createElement('div');
+    menu.className = 'custom-dropdown-menu';
+    menu.style.display = 'none';
+
+    // Search input
+    const searchBox = document.createElement('input');
+    searchBox.type = 'text';
+    searchBox.className = 'custom-dropdown-search';
+    searchBox.placeholder = 'Search…';
+    searchBox.autocomplete = 'off';
+
+    const searchWrapper = document.createElement('div');
+    searchWrapper.className = 'custom-dropdown-search-wrapper';
+    searchWrapper.appendChild(searchBox);
+    menu.appendChild(searchWrapper);
+
+    const list = document.createElement('div');
+    list.className = 'custom-dropdown-list';
+    menu.appendChild(list);
+
+    wrapper.appendChild(menu);
+    select.parentNode.insertBefore(wrapper, select.nextSibling);
+
+    function updateOptions() {
+      list.innerHTML = '';
+      const query = searchBox.value.toLowerCase().trim();
+      let hasMatch = false;
+
+      Array.from(select.options).forEach((opt) => {
+        const text = opt.textContent;
+        const val = opt.value;
+        const matches = text.toLowerCase().includes(query);
+        if (!matches && query) return;
+
+        hasMatch = true;
+        const item = document.createElement('div');
+        item.className = 'custom-dropdown-item' + (opt.selected ? ' selected' : '');
+        item.dataset.value = val;
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'item-label';
+        labelSpan.textContent = text;
+        item.appendChild(labelSpan);
+
+        if (opt.selected) {
+          const check = document.createElement('span');
+          check.className = 'item-check';
+          check.innerHTML = '✓';
+          item.appendChild(check);
+        }
+
+        item.addEventListener('click', () => {
+          select.value = val;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          syncTrigger();
+          closeMenu();
+        });
+
+        list.appendChild(item);
+      });
+
+      if (!hasMatch) {
+        const empty = document.createElement('div');
+        empty.className = 'custom-dropdown-empty';
+        empty.textContent = 'No matching options';
+        list.appendChild(empty);
+      }
+    }
+
+    function syncTrigger() {
+      const selected = select.options[select.selectedIndex];
+      triggerText.textContent = selected ? selected.textContent : 'Select…';
+      updateOptions();
+    }
+
+    function openMenu() {
+      document.querySelectorAll('.custom-dropdown-menu').forEach((m) => {
+        if (m !== menu) m.style.display = 'none';
+      });
+      menu.style.display = 'flex';
+      wrapper.classList.add('open');
+      searchBox.value = '';
+      updateOptions();
+      searchBox.focus();
+    }
+
+    function closeMenu() {
+      menu.style.display = 'none';
+      wrapper.classList.remove('open');
+    }
+
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (menu.style.display === 'flex') {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    });
+
+    searchBox.addEventListener('input', () => {
+      updateOptions();
+    });
+
+    searchBox.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeMenu();
+        trigger.focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = list.querySelector('.custom-dropdown-item');
+        if (first) first.click();
+      }
+    });
+
+    select._refreshCustomDropdown = syncTrigger;
+    syncTrigger();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-dropdown-container')) {
+      document.querySelectorAll('.custom-dropdown-menu').forEach((m) => {
+        m.style.display = 'none';
+      });
+      document.querySelectorAll('.custom-dropdown-container').forEach((w) => {
+        w.classList.remove('open');
+      });
+    }
+  });
+}
+
+// Initial boot
+document.addEventListener('DOMContentLoaded', () => {
+  initSearchableDropdowns();
+});
+
