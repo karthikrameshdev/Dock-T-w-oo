@@ -125,7 +125,15 @@ class VaultStorageManager:
             secret = self._get_encryption_secret()
             decrypted_bytes = self.crypto.decrypt(encrypted_bytes, secret)
             data_dict = json.loads(decrypted_bytes.decode("utf-8"))
-            return VaultStore.from_dict(data_dict)
+            store = VaultStore.from_dict(data_dict)
+            needs_save = False
+            for item in store.items:
+                if "Vault T(w)oo" in item.title:
+                    item.title = item.title.replace("Vault T(w)oo", "Vault")
+                    needs_save = True
+            if needs_save:
+                self.save_vault(store)
+            return store
         except DecryptionError:
             raise
         except Exception as exc:

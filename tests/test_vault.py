@@ -215,8 +215,22 @@ def test_vault_app_widget_ui(qtbot, qapp, tmp_path: Path):
     assert widget.view_stack.currentIndex() == 0
     assert widget._is_locked is False
 
-    # Test Card Copy and Auto-Clear
+    # Test Card Collapsed state by default
     first_card = widget._cards[0]
+    assert first_card._is_expanded is False
+    assert first_card.details_widget.isHidden() is True
+
+    # Expand card
+    first_card.toggle_expand()
+    assert first_card._is_expanded is True
+    assert first_card.details_widget.isHidden() is False
+
+    # Collapse card back
+    first_card.toggle_expand()
+    assert first_card._is_expanded is False
+    assert first_card.details_widget.isHidden() is True
+
+    # Test Card Copy and Auto-Clear
     first_card._copy_to_clipboard("test_secret_clipboard_payload", "password")
     assert QGuiApplication.clipboard().text() == "test_secret_clipboard_payload"
     assert widget._last_copied_secret == "test_secret_clipboard_payload"
