@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication
 import pytest
 
 from dock_twoo.config import ConfigManager, DockAppItem, DockConfig
+from dock_twoo.os_integration.screen_manager import ScreenManager
 from dock_twoo.ui import AttachedWindow, DockIconButton, DockTooltip, DockWindow
 from dock_twoo.ui.apps import NotesAppWidget, VaultAppWidget, BrainAppWidget
 
@@ -119,3 +120,67 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
     assert notes_btn._is_active is False
 
     dock.close()
+
+
+def test_dock_hover_inspector_cursor_behavior(qtbot, qapp, tmp_path):
+    from PySide6.QtGui import QGuiApplication
+    config_file = tmp_path / "config.json"
+    mgr = ConfigManager(config_path=config_file)
+
+    dock = DockWindow(mgr)
+    qtbot.addWidget(dock)
+    dock.show()
+
+    # STRICT REQUIREMENT: Logo widget must strictly use ArrowCursor (never pointing hand)
+    assert dock.logo_widget.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+    # Icon buttons must use PointingHandCursor
+    assert dock._icon_buttons["notes"].cursor().shape() == Qt.CursorShape.PointingHandCursor
+    assert dock._icon_buttons["settings"].cursor().shape() == Qt.CursorShape.PointingHandCursor
+    assert dock._icon_buttons["brain"].cursor().shape() == Qt.CursorShape.PointingHandCursor
+
+    # Inactive hover override cursor mechanism
+    dock._set_pointing_hand_cursor()
+    assert dock._has_hand_cursor_override is True
+    assert QGuiApplication.overrideCursor() is not None
+
+    dock._restore_default_cursor()
+    assert dock._has_hand_cursor_override is False
+    assert QGuiApplication.overrideCursor() is None
+
+    # Hovering an app icon shows the callout tooltip
+    notes_btn = dock._icon_buttons["notes"]
+    notes_btn.set_hover(True)
+    tooltip = DockTooltip.get_instance()
+    assert tooltip.isVisible()
+
+    notes_btn.set_hover(False)
+    assert not tooltip.isVisible()
+
+    dock.close()
+
+
+def test_dock_auto_hide_slide_mechanics(qtbot, qapp, tmp_path):
+    config_file = tmp_path / "config.json"
+    mgr = ConfigManager(config_path=config_file)
+    mgr.update({"auto_hide": True})
+
+    dock = DockWindow(mgr)
+    qtbot.addWidget(dock)
+    dock.show()
+
+    # Verify collapsed geometry computation
+    collapsed = dock._get_collapsed_geometry()
+    avail = ScreenManager.get_available_geometry(0)
+    assert collapsed.left() == avail.right() - 2
+
+    # Verify slide out
+    dock._slide_out()
+    assert dock._is_collapsed is True
+
+    # Verify slide in
+    dock._slide_in()
+    assert dock._is_collapsed is False
+
+    dock.close()
+

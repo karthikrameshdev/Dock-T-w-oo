@@ -161,11 +161,17 @@ function updatePreview(cfg) {
   if (!cfg) return;
 
   // Edge positioning
+  desktopMockup.classList.remove('edge-left', 'edge-top', 'edge-bottom');
   if (cfg.edge === 'left') {
     desktopMockup.classList.add('edge-left');
     previewEdgeLabel.textContent = 'Left Edge';
+  } else if (cfg.edge === 'top') {
+    desktopMockup.classList.add('edge-top');
+    previewEdgeLabel.textContent = 'Top Edge';
+  } else if (cfg.edge === 'bottom') {
+    desktopMockup.classList.add('edge-bottom');
+    previewEdgeLabel.textContent = 'Bottom Edge';
   } else {
-    desktopMockup.classList.remove('edge-left');
     previewEdgeLabel.textContent = 'Right Edge';
   }
 

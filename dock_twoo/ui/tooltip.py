@@ -78,18 +78,28 @@ class DockTooltip(QWidget):
 
         self.resize(total_width, total_height)
 
-        # Calculate position relative to widget's center
         widget_global = widget.mapToGlobal(QPoint(0, 0))
+        widget_center_x = widget_global.x() + (widget.width() // 2)
         widget_center_y = widget_global.y() + (widget.height() // 2)
 
-        y = widget_center_y - (total_height // 2)
-
-        if edge == "right":
-            # Dock is on right edge, tooltip appears to the LEFT of the widget
-            x = widget_global.x() - total_width - 6
+        if edge in ("top", "bottom"):
+            total_width = max(bubble_width + 4, 30)
+            total_height = bubble_height + self._arrow_size + 4
+            self.resize(total_width, total_height)
+            x = widget_center_x - (total_width // 2)
+            if edge == "bottom":
+                y = widget_global.y() - total_height - 6
+            else:  # "top"
+                y = widget_global.y() + widget.height() + 6
         else:
-            # Dock is on left edge, tooltip appears to the RIGHT of the widget
-            x = widget_global.x() + widget.width() + 6
+            total_width = bubble_width + self._arrow_size + 4
+            total_height = max(bubble_height + 4, 30)
+            self.resize(total_width, total_height)
+            y = widget_center_y - (total_height // 2)
+            if edge == "right":
+                x = widget_global.x() - total_width - 6
+            else:  # "left"
+                x = widget_global.x() + widget.width() + 6
 
         self.move(x, y)
         self._hide_timer.stop()
@@ -120,22 +130,40 @@ class DockTooltip(QWidget):
             bubble_rect = QRectF(2, 2, self.width() - self._arrow_size - 4, self.height() - 4)
             pointer_x = bubble_rect.right()
             pointer_y = self.height() / 2
-            # Triangle pointing right
             triangle = QPolygonF([
                 QPointF(pointer_x, pointer_y - self._arrow_size),
                 QPointF(pointer_x + self._arrow_size, pointer_y),
                 QPointF(pointer_x, pointer_y + self._arrow_size),
             ])
-        else:
+        elif self._pointer_edge == "left":
             # Pointer extends to the left
             bubble_rect = QRectF(self._arrow_size + 2, 2, self.width() - self._arrow_size - 4, self.height() - 4)
             pointer_x = bubble_rect.left()
             pointer_y = self.height() / 2
-            # Triangle pointing left
             triangle = QPolygonF([
                 QPointF(pointer_x, pointer_y - self._arrow_size),
                 QPointF(pointer_x - self._arrow_size, pointer_y),
                 QPointF(pointer_x, pointer_y + self._arrow_size),
+            ])
+        elif self._pointer_edge == "bottom":
+            # Tooltip is above widget, pointer extends downward
+            bubble_rect = QRectF(2, 2, self.width() - 4, self.height() - self._arrow_size - 4)
+            pointer_x = self.width() / 2
+            pointer_y = bubble_rect.bottom()
+            triangle = QPolygonF([
+                QPointF(pointer_x - self._arrow_size, pointer_y),
+                QPointF(pointer_x, pointer_y + self._arrow_size),
+                QPointF(pointer_x + self._arrow_size, pointer_y),
+            ])
+        else:  # "top"
+            # Tooltip is below widget, pointer extends upward
+            bubble_rect = QRectF(2, self._arrow_size + 2, self.width() - 4, self.height() - self._arrow_size - 4)
+            pointer_x = self.width() / 2
+            pointer_y = bubble_rect.top()
+            triangle = QPolygonF([
+                QPointF(pointer_x - self._arrow_size, pointer_y),
+                QPointF(pointer_x, pointer_y - self._arrow_size),
+                QPointF(pointer_x + self._arrow_size, pointer_y),
             ])
 
         # Combine rounded rectangle and triangle pointer into a single callout path

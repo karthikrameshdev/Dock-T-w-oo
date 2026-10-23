@@ -61,12 +61,18 @@ class DockTrayIcon(QSystemTrayIcon):
         self.menu.addAction(console_action)
 
         edge_menu = self.menu.addMenu("Dock Screen Edge")
-        left_action = QAction("Left Edge", self)
-        left_action.triggered.connect(lambda: self._set_edge("left"))
-        right_action = QAction("Right Edge (Default)", self)
-        right_action.triggered.connect(lambda: self._set_edge("right"))
-        edge_menu.addAction(left_action)
-        edge_menu.addAction(right_action)
+        self.edge_actions = {}
+        for edge_id, label in [
+            ("left", "Left Edge"),
+            ("right", "Right Edge (Default)"),
+            ("top", "Top Edge"),
+            ("bottom", "Bottom Edge"),
+        ]:
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked=False, e=edge_id: self._set_edge(e))
+            edge_menu.addAction(action)
+            self.edge_actions[edge_id] = action
 
         self.menu.addSeparator()
 
@@ -84,9 +90,13 @@ class DockTrayIcon(QSystemTrayIcon):
         self.auto_hide_action.setChecked(cfg.auto_hide)
         self.reserve_action.setChecked(cfg.reserve_screen_space)
         self.glow_action.setChecked(cfg.glow_enabled)
+        for edge_id, action in self.edge_actions.items():
+            action.setChecked(cfg.edge == edge_id)
 
     def _toggle_auto_hide(self, checked: bool) -> None:
         self.config_manager.update({"auto_hide": checked})
+        if not checked and hasattr(self.dock_window, "_slide_in"):
+            self.dock_window._slide_in()
 
     def _toggle_reserve_space(self, checked: bool) -> None:
         self.config_manager.update({"reserve_screen_space": checked})

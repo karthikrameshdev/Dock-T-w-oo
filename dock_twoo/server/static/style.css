@@ -533,6 +533,56 @@ input:checked + .slider-switch:before {
   justify-content: flex-start;
 }
 
+.desktop-mockup.edge-top {
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.desktop-mockup.edge-bottom {
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.desktop-mockup.edge-top .mockup-dock,
+.desktop-mockup.edge-bottom .mockup-dock {
+  width: 94% !important;
+  height: 52px !important;
+  flex-direction: row;
+  padding: 0 16px;
+}
+
+.desktop-mockup.edge-top .mockup-logo-wrap,
+.desktop-mockup.edge-bottom .mockup-logo-wrap {
+  flex-direction: row !important;
+  padding-top: 0 !important;
+}
+
+.desktop-mockup.edge-top .mockup-icons,
+.desktop-mockup.edge-bottom .mockup-icons {
+  flex-direction: row !important;
+  margin-top: 0 !important;
+  margin-left: 8px !important;
+}
+
+.desktop-mockup.edge-top .mockup-bottom,
+.desktop-mockup.edge-bottom .mockup-bottom {
+  flex-direction: row !important;
+  margin-top: 0 !important;
+  margin-left: auto !important;
+}
+
+.desktop-mockup.edge-top .mockup-attached {
+  top: 72px !important;
+  bottom: auto !important;
+  height: 70% !important;
+}
+
+.desktop-mockup.edge-bottom .mockup-attached {
+  bottom: 72px !important;
+  top: auto !important;
+  height: 70% !important;
+}
+
 /* Mockup Dock */
 .mockup-dock {
   width: 60px;

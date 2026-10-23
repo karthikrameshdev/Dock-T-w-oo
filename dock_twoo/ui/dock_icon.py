@@ -30,6 +30,7 @@ class DockIconButton(QWidget):
 
         self._is_hover = False
         self._is_active = False
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._update_geometry()
@@ -42,7 +43,10 @@ class DockIconButton(QWidget):
 
     def _update_geometry(self) -> None:
         """Set standard bounding box so all icons are strictly uniform."""
-        btn_dimension = self.config.dock_width - (self.config.dock_padding_x * 2)
+        if self.config.edge in ("top", "bottom"):
+            btn_dimension = self.config.dock_width - (self.config.dock_padding_y * 2)
+        else:
+            btn_dimension = self.config.dock_width - (self.config.dock_padding_x * 2)
         self.setFixedSize(btn_dimension, btn_dimension)
 
     def set_active(self, active: bool) -> None:
@@ -51,21 +55,26 @@ class DockIconButton(QWidget):
             self._is_active = active
             self.update()
 
+    def set_hover(self, hover: bool) -> None:
+        """Programmatically set hover state and show/hide tooltip."""
+        if self._is_hover != hover:
+            self._is_hover = hover
+            self.update()
+            if hover and self.item.tooltip:
+                DockTooltip.get_instance(self.config).show_for_widget(
+                    self,
+                    self.item.tooltip,
+                    edge=self.config.edge,
+                )
+            elif not hover:
+                DockTooltip.get_instance().hide_tooltip()
+
     def enterEvent(self, event) -> None:
-        self._is_hover = True
-        self.update()
-        if self.item.tooltip:
-            DockTooltip.get_instance(self.config).show_for_widget(
-                self,
-                self.item.tooltip,
-                edge=self.config.edge,
-            )
+        self.set_hover(True)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
-        self._is_hover = False
-        self.update()
-        DockTooltip.get_instance().hide_tooltip()
+        self.set_hover(False)
         super().leaveEvent(event)
 
     def mousePressEvent(self, event) -> None:

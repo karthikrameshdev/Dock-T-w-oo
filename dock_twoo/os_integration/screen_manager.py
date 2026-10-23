@@ -41,7 +41,29 @@ class ScreenManager:
         margin_x = config.edge_offset_x
         margin_y = 20
 
-        # Calculate height
+        is_horizontal = config.edge in ("top", "bottom")
+
+        if is_horizontal:
+            height = config.dock_width
+            if config.dock_height_mode == "fill":
+                width = avail.width() - (margin_x * 2)
+                x = avail.left() + margin_x
+            elif config.dock_height_mode == "fixed":
+                width = min(config.dock_height_fixed, avail.width() - 40)
+                x = avail.left() + (avail.width() - width) // 2 + config.offset_y
+            else:  # "auto"
+                width = min(content_height, avail.width() - 40)
+                x = avail.left() + (avail.width() - width) // 2 + config.offset_y
+
+            if config.edge == "top":
+                y = avail.top() + margin_x
+            else:  # "bottom"
+                y = avail.bottom() - height - margin_x
+
+            x = max(avail.left() + 8, min(x, avail.right() - width - 8))
+            return QRect(x, y, width, height)
+
+        # Vertical edges: "left" or "right"
         if config.dock_height_mode == "fill":
             height = avail.height() - (margin_y * 2)
             y = avail.top() + margin_y
@@ -54,15 +76,12 @@ class ScreenManager:
 
         width = config.dock_width
 
-        # Calculate X based on edge
         if config.edge == "left":
             x = avail.left() + margin_x
         else:  # default "right"
             x = avail.right() - width - margin_x
 
-        # Clamp Y to screen
         y = max(avail.top() + 8, min(y, avail.bottom() - height - 8))
-
         return QRect(x, y, width, height)
 
     @staticmethod
@@ -73,24 +92,36 @@ class ScreenManager:
     ) -> QRect:
         """Compute attached window geometry pinned right next to the dock."""
         avail = ScreenManager.get_available_geometry(config.screen_index)
-        width = config.attached_width
-        height = dock_geom.height()
         gap = config.attached_gap
 
+        if config.edge in ("top", "bottom"):
+            width = config.attached_width
+            height = min(config.attached_height, avail.height() - dock_geom.height() - gap - 40)
+
+            if config.edge == "top":
+                y = dock_geom.bottom() + gap
+            else:  # "bottom"
+                y = dock_geom.top() - height - gap
+
+            # Horizontally center around clicked icon or dock center
+            anchor_x = target_center_y if target_center_y is not None else dock_geom.center().x()
+            x = anchor_x - (width // 2)
+            x = max(avail.left() + 8, min(x, avail.right() - width - 8))
+            y = max(avail.top() + 4, min(y, avail.bottom() - height - 4))
+            return QRect(x, y, width, height)
+
+        # Vertical edges: "left" or "right"
+        width = config.attached_width
+        height = dock_geom.height()
+
         if config.edge == "left":
-            # Pinned to the right of the dock
             x = dock_geom.right() + gap
         else:
-            # Pinned to the left of the dock
             x = dock_geom.left() - width - gap
 
-        # Exact same top alignment and height as the dock
         y = dock_geom.top()
-
-        # Clamp within available screen area
         y = max(avail.top() + 4, min(y, avail.bottom() - height - 4))
         x = max(avail.left() + 4, min(x, avail.right() - width - 4))
-
         return QRect(x, y, width, height)
 
     @staticmethod
@@ -178,5 +209,43 @@ class ScreenManager:
                             objc.objc_msgSend,
                             ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p),
                         )(nswindow, orderFrontRegardless)
+
+                        # setAcceptsMouseMovedEvents: YES (Enables mouse move tracking even when another window is focused!)
+                        setAcceptsMouseMovedEvents = objc.sel_registerName(b"setAcceptsMouseMovedEvents:")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool),
+                        )(nswindow, setAcceptsMouseMovedEvents, True)
+
+                        # Configure NSTrackingArea with NSTrackingActiveAlways so Cocoa delivers hover events when inactive
+                        NSTrackingArea = objc.objc_getClass(b"NSTrackingArea")
+                        alloc = objc.sel_registerName(b"alloc")
+                        area_alloc = ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+                        )(NSTrackingArea, alloc)
+
+                        class _CGPoint(ctypes.Structure):
+                            _fields_ = [('x', ctypes.c_double), ('y', ctypes.c_double)]
+
+                        class _CGSize(ctypes.Structure):
+                            _fields_ = [('width', ctypes.c_double), ('height', ctypes.c_double)]
+
+                        class _NSRect(ctypes.Structure):
+                            _fields_ = [('origin', _CGPoint), ('size', _CGSize)]
+
+                        initWithRect = objc.sel_registerName(b"initWithRect:options:owner:userInfo:")
+                        zero_rect = _NSRect(_CGPoint(0, 0), _CGSize(0, 0))
+                        # 0x287 = NSTrackingActiveAlways | NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingInVisibleRect | NSTrackingCursorUpdate
+                        tracking_area = ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, _NSRect, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p)
+                        )(area_alloc, initWithRect, zero_rect, 647, view_ptr, None)
+
+                        addTrackingArea = objc.sel_registerName(b"addTrackingArea:")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+                        )(view_ptr, addTrackingArea, tracking_area)
             except Exception as e:
                 pass

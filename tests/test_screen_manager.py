@@ -65,3 +65,42 @@ def test_attached_window_geometry_pinned_left(qapp):
     assert attached.width() == 380
     assert attached.x() == dock_geom.right() + 10
     assert attached.left() > dock_geom.right()
+
+
+def test_dock_geometry_calculation_top_edge(qapp):
+    cfg = DockConfig(edge="top", dock_width=60, edge_offset_x=10, dock_height_mode="fixed", dock_height_fixed=700)
+    geom = ScreenManager.calculate_dock_geometry(cfg, content_height=700)
+
+    avail = ScreenManager.get_available_geometry(0)
+    assert geom.height() == 60
+    assert geom.width() == 700
+    assert geom.y() == avail.top() + 10
+
+
+def test_dock_geometry_calculation_bottom_edge(qapp):
+    cfg = DockConfig(edge="bottom", dock_width=60, edge_offset_x=12, dock_height_mode="fixed", dock_height_fixed=650)
+    geom = ScreenManager.calculate_dock_geometry(cfg, content_height=650)
+
+    avail = ScreenManager.get_available_geometry(0)
+    assert geom.height() == 60
+    assert geom.width() == 650
+    assert geom.bottom() <= avail.bottom()
+
+
+def test_attached_window_geometry_top_and_bottom(qapp):
+    avail = ScreenManager.get_available_geometry(0)
+    cfg_top = DockConfig(edge="top", attached_width=400, attached_height=500, attached_gap=10)
+    dock_top = QRect(200, avail.top() + 10, 800, 60)
+    attached_top = ScreenManager.calculate_attached_geometry(dock_top, cfg_top, target_center_y=300)
+
+    assert attached_top.width() == 400
+    assert attached_top.top() == dock_top.bottom() + 10
+
+    cfg_bottom = DockConfig(edge="bottom", attached_width=400, attached_height=500, attached_gap=12)
+    dock_bottom = QRect(200, avail.bottom() - 60 - 12, 800, 60)
+    attached_bottom = ScreenManager.calculate_attached_geometry(dock_bottom, cfg_bottom, target_center_y=300)
+
+    assert attached_bottom.width() == 400
+    # In QRect, bottom() is top + height - 1, so the empty gap is dock.top() - attached.bottom() - 1
+    assert dock_bottom.top() - attached_bottom.bottom() - 1 == 12
+

@@ -75,22 +75,26 @@ class DesktopMarginManager(QObject):
                     time.sleep(0.5)
                     continue
 
-                if edge == "right":
-                    max_right = dock_rect.left() - gap
-                    min_left = 0
-                else:  # "left"
-                    max_right = 0
-                    min_left = dock_rect.right() + gap
+                max_right = (dock_rect.left() - gap) if edge == "right" else 0
+                min_left = (dock_rect.right() + gap) if edge == "left" else 0
+                min_top = (dock_rect.bottom() + gap) if edge == "top" else 0
+                max_bottom = (dock_rect.top() - gap) if edge == "bottom" else 0
 
-                self._check_and_clamp_frontmost(max_right, min_left, edge)
+                self._check_and_clamp_frontmost(max_right, min_left, min_top, max_bottom, edge)
             except Exception:
                 pass
 
             time.sleep(0.4)
 
-    def _check_and_clamp_frontmost(self, max_right: int, min_left: int, edge: str) -> None:
+    def _check_and_clamp_frontmost(
+        self,
+        max_right: int,
+        min_left: int,
+        min_top: int,
+        max_bottom: int,
+        edge: str,
+    ) -> None:
         """Run a lightweight AppleScript to check and clamp the frontmost window if needed."""
-        # AppleScript that checks frontmost app window and clamps right or left edge if overlapping
         script = f'''
         tell application "System Events"
             set frontApp to first application process whose frontmost is true
@@ -119,6 +123,26 @@ class DesktopMarginManager(QObject):
                                 set position of w to {{newX, wy}}
                                 set size of w to {{newW, wh}}
                                 return "adjusted:" & appName & ":" & newW
+                            end if
+                        end if
+
+                        -- Clamping on top edge
+                        if {min_top} > 0 and wy < {min_top} then
+                            set newY to {min_top}
+                            set newH to (wy + wh) - {min_top}
+                            if newH >= 200 then
+                                set position of w to {{wx, newY}}
+                                set size of w to {{ww, newH}}
+                                return "adjusted:" & appName & ":" & newH
+                            end if
+                        end if
+
+                        -- Clamping on bottom edge
+                        if {max_bottom} > 0 and (wy + wh) > {max_bottom} then
+                            set newH to ({max_bottom} - wy)
+                            if newH >= 200 then
+                                set size of w to {{ww, newH}}
+                                return "adjusted:" & appName & ":" & newH
                             end if
                         end if
                         
