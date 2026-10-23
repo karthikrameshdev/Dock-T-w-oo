@@ -171,6 +171,9 @@ class DockWindow(QWidget):
         self.attached_window = AttachedWindow(self.config)
         self.attached_window.window_closed.connect(self._on_attached_closed)
         self.brain_manager = get_brain_manager()
+        self.brain_manager.visibility_changed.connect(
+            lambda visible: self._set_active_icon("brain" if visible else None)
+        )
 
         # Margin Manager ensures other application windows stop at Dock 2 and don't slide behind it
         self.margin_manager = DesktopMarginManager(self.config, self)

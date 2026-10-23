@@ -30,12 +30,22 @@ def test_animation_poses_and_interpolation():
     assert "wave" in ACTIONS
     assert "nod" in ACTIONS
     assert "jump" in ACTIONS
+    assert "turn_around" in ACTIONS
+    assert "scan_screen" in ACTIONS
+    assert "inspect_icon" in ACTIONS
+    assert "explore" in ACTIONS
+    # Stool sitting must not exist
+    assert "sit" not in ACTIONS
     assert len(PLAYLIST) >= 20
 
     pose_wave = pose_at("wave", 0.5)
     assert isinstance(pose_wave, Pose)
     assert isinstance(pose_wave.right_arm, (int, float))
     assert 0.0 <= pose_wave.squash <= 2.0
+
+    pose_turn = pose_at("turn_around", 0.4)
+    assert isinstance(pose_turn, Pose)
+    assert pose_turn.surprise > 0
 
     pose_nod = pose_at("nod", 0.2)
     assert isinstance(pose_nod, Pose)
@@ -142,11 +152,33 @@ def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
     companion.caption.hide()
     assert companion.caption.isVisible() is False
 
+    # 5. Turn to user animation
+    companion.turn_to_user()
+    assert companion.action == "turn_around"
+
+    companion.close()
+
+
+def test_mini_agent_right_click_disabled(qtbot, qapp, tmp_path, monkeypatch):
+    """Verify right-clicking on the Mini Agent directly is disabled and never triggers context menu."""
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    companion = mgr.companion
+    qtbot.addWidget(companion)
+    companion.show()
+
+    menu_calls = []
+    monkeypatch.setattr(mgr, "show_context_menu", lambda pt: menu_calls.append(pt))
+
+    # Right click on companion
+    qtbot.mouseClick(companion, Qt.MouseButton.RightButton)
+    assert len(menu_calls) == 0
+
     companion.close()
 
 
 def test_brain_manager_lifecycle(qtbot, qapp, tmp_path):
-    """Verify BrainManager summon, hide, toggle, and status report."""
+    """Verify BrainManager summon, hide, toggle (on/off switch behavior), and status report."""
     mgr = BrainManager.get_instance()
     mgr.store = BrainStore(data_dir=tmp_path)
     qtbot.addWidget(mgr.companion)
@@ -156,11 +188,15 @@ def test_brain_manager_lifecycle(qtbot, qapp, tmp_path):
     mgr.hide_mini_agent()
     assert mgr.is_mini_agent_visible() is False
 
-    # Summon mini agent
-    mgr.show_mini_agent()
+    # 1. First click: Turn on (Mini Agent appears)
+    mgr.toggle_mini_agent()
     assert mgr.is_mini_agent_visible() is True
 
-    # Toggle when visible starts talking
+    # 2. Second click: Turn off (Mini Agent disappears like an on/off button)
+    mgr.toggle_mini_agent()
+    assert mgr.is_mini_agent_visible() is False
+
+    # 3. Third click: Turn back on without reinitializing
     mgr.toggle_mini_agent()
     assert mgr.is_mini_agent_visible() is True
 
@@ -195,7 +231,7 @@ def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeyp
     assert dock.attached_window.isVisible() is False
     assert brain_mgr.is_mini_agent_visible() is False
 
-    # 1. Left-click Brain icon on dock
+    # 1. Left-click Brain icon on dock -> Mini Agent appears
     brain_btn = dock._icon_buttons["brain"]
     qtbot.mouseClick(brain_btn, Qt.MouseButton.LeftButton)
 
@@ -204,7 +240,15 @@ def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeyp
     # The Mini Agent robot companion MUST open!
     assert brain_mgr.is_mini_agent_visible() is True
 
-    # 2. Right-click Brain icon on dock emits signal and invokes context menu
+    # 2. Left-click Brain icon again -> Mini Agent disappears (on/off toggle)
+    qtbot.mouseClick(brain_btn, Qt.MouseButton.LeftButton)
+    assert brain_mgr.is_mini_agent_visible() is False
+
+    # 3. Left-click again -> Mini Agent appears again
+    qtbot.mouseClick(brain_btn, Qt.MouseButton.LeftButton)
+    assert brain_mgr.is_mini_agent_visible() is True
+
+    # 4. Right-click Brain icon on dock emits signal and invokes context menu
     right_clicks = []
     brain_btn.right_clicked.connect(lambda app_id, pt: right_clicks.append((app_id, pt)))
 

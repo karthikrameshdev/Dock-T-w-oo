@@ -24,6 +24,7 @@ class BrainManager(QObject):
 
     status_changed = Signal(str)
     reply_received = Signal(str)
+    visibility_changed = Signal(bool)
 
     # Thread-safe dispatch signals for mascot updates from worker threads
     action_requested = Signal(str)
@@ -80,7 +81,7 @@ class BrainManager(QObject):
         self.store.set_setting("companion_visible", True)
         self.companion.show()
         self.companion.raise_()
-        self.start_talking()
+        self.visibility_changed.emit(True)
 
     @Slot()
     def hide_mini_agent(self) -> None:
@@ -90,21 +91,21 @@ class BrainManager(QObject):
             return
         self.store.set_setting("companion_visible", False)
         self.stop_talking()
+        self.companion.stop_motion()
         self.companion.caption.hide()
         self.companion.hide()
+        self.visibility_changed.emit(False)
 
     @Slot()
     def toggle_mini_agent(self) -> None:
-        """Clicking Brain in the dock summons the mini agent or activates talking."""
+        """Clicking Brain in the dock acts like an on/off toggle for the Mini Agent."""
         if QThread.currentThread() != self.thread():
             QMetaObject.invokeMethod(self, "toggle_mini_agent", Qt.ConnectionType.QueuedConnection)
             return
-        if not self.companion.isVisible():
-            self.show_mini_agent()
+        if self.companion.isVisible():
+            self.hide_mini_agent()
         else:
-            # If already visible, start listening / talking
-            self.companion.raise_()
-            self.start_talking()
+            self.show_mini_agent()
 
     @Slot()
     def start_talking(self) -> None:
@@ -113,6 +114,10 @@ class BrainManager(QObject):
             QMetaObject.invokeMethod(self, "start_talking", Qt.ConnectionType.QueuedConnection)
             return
         self.companion.show()
+        self.companion.raise_()
+        self.visibility_changed.emit(True)
+        # Turn around to face the user immediately!
+        self.companion.turn_to_user()
         self.companion.set_activity("listening")
         self.companion.caption.present("Listening… Speak or ask Brain anything.", duration_sec=5)
         self._is_listening = True
@@ -221,7 +226,7 @@ class BrainManager(QObject):
         act_loop.setEnabled(not self.companion.reduced_motion)
 
         act_stop = anim_menu.addAction("⏹ Stop Animations", self.companion.stop_motion)
-        act_stop.setEnabled(bool(self.companion.action or self.companion.animation_loop or self.companion.seated))
+        act_stop.setEnabled(bool(self.companion.action or self.companion.animation_loop))
 
         anim_menu.addSeparator()
         for action_key, (action_lbl, _) in ACTIONS.items():
@@ -235,7 +240,7 @@ class BrainManager(QObject):
         # 4. Roaming Toggle
         roam_act = menu.addAction("🚶 Roaming on Desktop")
         roam_act.setCheckable(True)
-        roam_act.setChecked(bool(self.store.setting("roaming", False)))
+        roam_act.setChecked(bool(self.store.setting("roaming", True)))
         roam_act.toggled.connect(lambda v: self.store.set_setting("roaming", v))
 
         # 5. Speak Replies Toggle

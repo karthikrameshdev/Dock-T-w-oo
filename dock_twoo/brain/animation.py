@@ -7,7 +7,10 @@ ACTIONS = {
     "camera": ("Take a photo", 1.4),
     "search": ("Look for an app", 1.2),
     "climb": ("Climb", 1.4),
-    "sit": ("Sit on a stool", 1.5),
+    "turn_around": ("Turn to user", 0.8),
+    "scan_screen": ("Scan desktop", 1.8),
+    "inspect_icon": ("Inspect icon", 1.5),
+    "explore": ("Explore omniverse", 2.2),
     "point": ("Point", 1.0),
     "walk": ("Walk", 1.6),
     "jump": ("Jump", 0.9),
@@ -27,9 +30,9 @@ ACTIONS = {
 }
 
 PLAYLIST = (
-    "wave", "wink", "walk", "jump", "dance", "roll", "fly", "sit", "stretch",
-    "peek", "nod", "point", "whistle", "camera", "search", "climb", "celebrate",
-    "surprised", "ponder", "sleep",
+    "wave", "turn_around", "walk", "scan_screen", "inspect_icon", "explore",
+    "jump", "dance", "roll", "fly", "stretch", "peek", "nod", "point",
+    "whistle", "camera", "search", "climb", "celebrate", "surprised", "ponder", "sleep",
 )
 
 
@@ -96,23 +99,61 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
             right_leg=18 * cycle,
             tilt=4 * cycle,
         )
-    if action == "sit":
+    if action == "turn_around":
+        swivel = math.sin(p * math.pi)
         return Pose(
-            left_leg=45 * arc + 4 * cycle,
-            right_leg=-45 * arc - 4 * cycle,
-            bob=-10 * arc,
-            stool=arc,
+            tilt=18 * math.sin(p * math.pi * 2) * (1.0 - p),
+            head=-10 * swivel,
+            bob=-3 * abs(math.sin(p * math.pi * 2)),
+            left_arm=25 * swivel,
+            right_arm=-35 * swivel,
+            surprise=0.35 * swivel,
+            squash=1.0 - 0.04 * math.sin(p * math.pi),
+        )
+    if action == "scan_screen":
+        sweep = math.sin(seconds * math.tau * 1.5) * fade
+        return Pose(
+            head=14 * sweep,
+            tilt=5 * sweep,
+            right_arm=-50 * fade,
+            left_arm=20 * fade,
+            search=fade,
+            surprise=0.15 * fade,
+        )
+    if action == "inspect_icon":
+        return Pose(
+            head=12 * arc,
+            tilt=8 * arc,
+            right_arm=-70 * arc,
+            left_arm=25 * arc,
+            bob=2 * arc,
+            search=arc,
+            surprise=0.2 * arc,
+        )
+    if action == "explore":
+        step_cycle = math.sin(seconds * math.tau * 2.5) * fade
+        look_cycle = math.sin(seconds * math.tau * 0.9) * fade
+        return Pose(
+            left_arm=-24 * step_cycle,
+            right_arm=24 * step_cycle,
+            left_leg=16 * step_cycle,
+            right_leg=-16 * step_cycle,
+            head=12 * look_cycle,
+            tilt=3 * step_cycle,
+            bob=-3 * abs(step_cycle),
+            surprise=0.15 * fade,
         )
     if action == "point":
         return Pose(right_arm=-85 * arc, head=-4 * arc)
     if action == "walk":
         return Pose(
-            left_arm=-14 * cycle,
-            right_arm=14 * cycle,
-            left_leg=8 * cycle,
-            right_leg=-8 * cycle,
-            bob=-2 * abs(cycle),
-            tilt=2 * cycle,
+            left_arm=-20 * cycle,
+            right_arm=20 * cycle,
+            left_leg=14 * cycle,
+            right_leg=-14 * cycle,
+            bob=-3 * abs(cycle),
+            tilt=2.5 * cycle,
+            head=-3 * cycle,
         )
     if action == "jump":
         return Pose(

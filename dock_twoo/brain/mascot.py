@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
+    QCursor,
     QPainter,
     QPainterPath,
     QPainterPathStroker,
@@ -161,8 +162,6 @@ class Companion(QWidget):
         self.animation_cycles: int = 0
         self.roam_action: bool = False
         self.arrival = None
-        self.seated: bool = False
-        self.seat_started: float = time.monotonic()
         self.processing_started: float = time.monotonic()
         self.pose = Pose()
         self.gaze: Optional[QPoint] = None
@@ -216,19 +215,16 @@ class Companion(QWidget):
         self.activity_timer = QTimer(self)
         self.activity_timer.setInterval(80)
         self.activity_timer.timeout.connect(self._animate_activity)
+        self.activity_timer.start()
 
         self.motion_timer = QTimer(self)
         self.motion_timer.setInterval(33)  # 30 fps motion
         self.motion_timer.timeout.connect(self._advance_motion)
 
         self.roam_timer = QTimer(self)
-        self.roam_timer.setInterval(22000)
+        self.roam_timer.setInterval(8500)  # Frequent omniverse roaming and exploring
         self.roam_timer.timeout.connect(self._roam)
         self.roam_timer.start()
-
-        self.seat_timer = QTimer(self)
-        self.seat_timer.setInterval(85)
-        self.seat_timer.timeout.connect(self._seat_motion)
 
         # Restore saved desktop placement
         self._restore_placement()
@@ -343,13 +339,21 @@ class Companion(QWidget):
         if self.isVisible():
             self.update()
 
+    def turn_to_user(self, on_turned=None) -> None:
+        """Turn around to face the user and prepare to respond."""
+        if not self.isVisible():
+            self.show()
+        self.stop_motion()
+        self.gaze = None  # Direct eye contact with user
+        self.play_action("turn_around", duration=0.85)
+        if on_turned:
+            self.arrival = on_turned
+
     def play_action(self, action: str, destination: Optional[QPoint] = None, duration: Optional[float] = None, *, sequence: bool = False) -> None:
         """Execute a procedural animation action."""
         if action not in ACTIONS:
             return
         self.stop_motion(clear_sequence=not sequence)
-        self.seated = False
-        self.seat_timer.stop()
 
         if self.reduced_motion or not self.isVisible():
             return
@@ -373,8 +377,6 @@ class Companion(QWidget):
         self.action = None
         self.destination = None
         self.pose = Pose()
-        self.seated = False
-        self.seat_timer.stop()
         self.update()
 
     def start_animation_loop(self) -> None:
@@ -421,33 +423,38 @@ class Companion(QWidget):
 
     def _animate_activity(self) -> None:
         self.phase = (self.phase + 1) % 24
+        if self.isVisible() and self.gaze is None:
+            self.gaze = QCursor.pos()
         if not self.action and self.origin is None:
             self.pose = self._rest_pose()
         self.update()
 
-    def _seat_motion(self) -> None:
-        if not self.seated or self.reduced_motion or not self.isVisible():
-            self.seat_timer.stop()
-            return
-        self.pose = self._rest_pose()
-        self.update()
-
     def _rest_pose(self) -> Pose:
         pose = Pose()
-        if self.seated:
-            seconds = time.monotonic() - self.seat_started
+        seconds = time.monotonic() - self.processing_started
+        if not self.reduced_motion and not self.action:
+            # Lively omniverse idle: subtle breathing bob and weight shift
             pose = Pose(
-                left_leg=42.0 + 6.0 * math.sin(seconds * 3.0),
-                right_leg=-42.0 - 6.0 * math.sin(seconds * 3.0),
-                bob=-9.0,
-                stool=1.0,
+                bob=1.2 * math.sin(seconds * 2.2),
+                tilt=0.6 * math.sin(seconds * 1.1),
+                head=1.5 * math.sin(seconds * 0.9),
+                left_leg=1.5 * math.sin(seconds * 2.2),
+                right_leg=-1.5 * math.sin(seconds * 2.2),
             )
         if self.activity == "thinking" and not self.reduced_motion:
-            seconds = time.monotonic() - self.processing_started
             pose = Pose(
-                head=3.0 * math.sin(seconds * 1.4),
-                right_arm=-20.0 - 5.0 * math.sin(seconds * 2.0),
+                head=4.0 * math.sin(seconds * 1.6),
+                right_arm=-25.0 - 5.0 * math.sin(seconds * 2.2),
                 bob=pose.bob - 0.8 * math.sin(seconds * 2.0),
+                surprise=0.15,
+            )
+        elif self.activity == "listening" and not self.reduced_motion:
+            pose = Pose(
+                head=-3.0 + 2.0 * math.sin(seconds * 1.8),
+                left_arm=15.0 * math.sin(seconds * 1.2),
+                right_arm=-20.0 - 5.0 * math.sin(seconds * 1.2),
+                bob=pose.bob,
+                surprise=0.25,
             )
         return pose
 
@@ -465,25 +472,85 @@ class Companion(QWidget):
             self.blink_timer.start(8000)
 
     def _roam(self) -> None:
-        if not self.store.setting("roaming", False):
+        if not self.store.setting("roaming", True):
             self._idle_gesture()
             return
-        if self.reduced_motion or not self.isVisible() or self.action or self.activity != "idle" or (time.monotonic() - self.last_dragged < 25):
+        if (
+            self.reduced_motion
+            or not self.isVisible()
+            or self.action
+            or self.activity != "idle"
+            or (time.monotonic() - self.last_dragged < 12)
+        ):
             return
 
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry()
-        target = QPoint(
-            random.randint(int(area.left()) + 30, max(int(area.left()) + 30, int(area.right()) - self.width() - 30)),
-            random.randint(int(area.top()) + 30, max(int(area.top()) + 30, int(area.bottom()) - self.height() - 30)),
-        )
-        self.play_action("walk", target, 2.0)
+
+        choice = random.random()
+        if choice < 0.35:
+            # Go see dock icons
+            target = self._get_dock_target(area)
+            action = "walk"
+            followup = lambda: self.play_action("inspect_icon")
+        elif choice < 0.70:
+            # Explore open desktop
+            target = QPoint(
+                random.randint(int(area.left()) + 40, max(int(area.left()) + 40, int(area.right()) - self.width() - 40)),
+                random.randint(int(area.top()) + 40, max(int(area.top()) + 40, int(area.bottom()) - self.height() - 40)),
+            )
+            action = "walk"
+            followup = lambda: self.play_action(random.choice(["scan_screen", "search", "camera", "wave"]))
+        else:
+            # Patrol omniverse
+            target = QPoint(
+                random.randint(int(area.left()) + 30, max(int(area.left()) + 30, int(area.right()) - self.width() - 30)),
+                random.randint(int(area.top()) + 30, max(int(area.top()) + 30, int(area.bottom()) - self.height() - 30)),
+            )
+            action = "walk"
+            followup = lambda: self.play_action(random.choice(["explore", "ponder", "nod", "whistle"]))
+
+        dist = math.hypot(target.x() - self.x(), target.y() - self.y())
+        if dist < 45:
+            if followup:
+                followup()
+            return
+
+        duration = max(1.4, min(4.2, dist / 160.0))
+        self.play_action(action, target, duration)
         self.roam_action = True
+        self.arrival = followup
+
+    def _get_dock_target(self, area: QRectF) -> QPoint:
+        """Find a target location near the desktop dock edge to inspect dock icons."""
+        dock_edge = "right"
+        if hasattr(self.manager, "dock_config"):
+            dock_edge = self.manager.dock_config.edge
+
+        if dock_edge == "right":
+            x = int(area.right()) - self.width() - 75
+            y = random.randint(max(int(area.top()) + 60, int(area.center().y()) - 180), min(int(area.bottom()) - self.height() - 60, int(area.center().y()) + 180))
+        elif dock_edge == "left":
+            x = int(area.left()) + 75
+            y = random.randint(max(int(area.top()) + 60, int(area.center().y()) - 180), min(int(area.bottom()) - self.height() - 60, int(area.center().y()) + 180))
+        elif dock_edge == "top":
+            x = random.randint(int(area.left()) + 60, int(area.right()) - self.width() - 60)
+            y = int(area.top()) + 75
+        else:
+            x = random.randint(int(area.left()) + 60, int(area.right()) - self.width() - 60)
+            y = int(area.bottom()) - self.height() - 75
+        return QPoint(x, y)
 
     def _idle_gesture(self) -> None:
-        if self.reduced_motion or not self.isVisible() or self.action or self.seated or self.activity != "idle" or (time.monotonic() - self.last_dragged < 25):
+        if (
+            self.reduced_motion
+            or not self.isVisible()
+            or self.action
+            or self.activity != "idle"
+            or (time.monotonic() - self.last_dragged < 12)
+        ):
             return
-        gesture = random.choice(("wink", "nod", "stretch", "whistle", "wave", "peek"))
+        gesture = random.choice(("wink", "nod", "stretch", "whistle", "wave", "peek", "scan_screen", "inspect_icon", "explore"))
         self.play_action(gesture)
 
     def paintEvent(self, event) -> None:
@@ -499,24 +566,13 @@ class Companion(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        # Stool rendering when seated
-        if self.pose.stool > 0:
-            painter.setOpacity(self.pose.stool)
-            painter.setPen(QPen(QColor("#66728c"), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            painter.drawLine(QPointF(59, 156), QPointF(54, 188))
-            painter.drawLine(QPointF(109, 156), QPointF(114, 188))
-            painter.setBrush(QColor("#b7a5df"))
-            painter.setPen(QPen(QColor("#eee7ff"), 1))
-            painter.drawRoundedRect(QRectF(49, 146, 70, 11), 5, 5)
-            painter.setOpacity(1.0)
-
         painter.save()
         painter.translate(self.art_width / 2, self.art_height / 2)
         painter.rotate(self.pose.tilt)
         painter.scale(1.0, self.pose.squash)
         painter.translate(-self.art_width / 2, -self.art_height / 2 + self.pose.bob)
 
-        if self.action or self.seated or self.activity == "thinking":
+        if self.action or self.activity in ("thinking", "listening"):
             for part, angle, pivot in [
                 ("left_leg", self.pose.left_leg, (0.417, 0.77)),
                 ("right_leg", self.pose.right_leg, (0.593, 0.77)),
@@ -639,7 +695,7 @@ class Companion(QWidget):
 
         painter.restore()
 
-        if self.action or self.seated or self.activity == "thinking":
+        if self.action or self.activity in ("thinking", "listening"):
             self._rotate_about(painter, -self.pose.head, (0.5, 0.505))
             self._draw_part(painter, "left_arm", self.pose.left_arm, (0.345, 0.574))
             self._draw_part(painter, "right_arm", self.pose.right_arm, (0.655, 0.574))
@@ -666,8 +722,9 @@ class Companion(QWidget):
             self.moved = False
             self.last_dragged = time.monotonic()
         elif event.button() == Qt.MouseButton.RightButton:
-            # Right click opens Brain context menu
-            self.manager.show_context_menu(event.globalPosition().toPoint())
+            # Right-clicking on the Mini Agent is not permitted
+            event.ignore()
+            return
 
     def mouseMoveEvent(self, event) -> None:
         if self.origin is not None and event.buttons() & Qt.MouseButton.LeftButton:
@@ -691,4 +748,5 @@ class Companion(QWidget):
             self.moved = False
 
     def contextMenuEvent(self, event) -> None:
-        self.manager.show_context_menu(event.globalPos())
+        # Mini Agent should not have any right-click context menu
+        event.ignore()
