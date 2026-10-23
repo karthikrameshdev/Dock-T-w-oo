@@ -10,16 +10,22 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
 from dock_twoo.config import DockConfig
-from dock_twoo.ui.theme import create_app_font, get_theme_tokens
+from dock_twoo.ui.theme import (
+    ThemeTokens,
+    create_app_font,
+    get_scrollbar_style,
+    get_theme_tokens,
+)
 
 
 class BaseAttachedApp(QWidget):
-    """Base attached application widget with a unified header."""
+    """Base attached application widget with a unified header and scrollable content."""
 
     close_requested = Signal()
 
@@ -39,8 +45,8 @@ class BaseAttachedApp(QWidget):
 
     def _setup_layout(self) -> None:
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(16, 16, 16, 16)
-        self.main_layout.setSpacing(14)
+        self.main_layout.setContentsMargins(14, 14, 14, 14)
+        self.main_layout.setSpacing(12)
 
         # Header bar
         self.header_layout = QHBoxLayout()
@@ -50,7 +56,7 @@ class BaseAttachedApp(QWidget):
 
         self.title_label = QLabel(self.title_text, self)
         self.title_label.setFont(create_app_font(self.config, size=tokens.font_size_title, weight=QFont.Weight.DemiBold))
-        self.title_label.setStyleSheet(f"color: {tokens.text_primary};")
+        self.title_label.setStyleSheet(f"color: {tokens.text_primary}; background: transparent; border: none;")
         self.header_layout.addWidget(self.title_label)
 
         self.header_layout.addStretch()
@@ -80,16 +86,33 @@ class BaseAttachedApp(QWidget):
 
         self.main_layout.addLayout(self.header_layout)
 
-        # App content area
-        self.content_widget = QWidget(self)
+        # Scrollable app content area: allows any app window to be smoothly scrollable
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._apply_scroll_style(tokens)
+
+        self.content_widget = QWidget(self.scroll_area)
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(10)
 
-        self.main_layout.addWidget(self.content_widget, 1)
+        self.scroll_area.setWidget(self.content_widget)
+        self.main_layout.addWidget(self.scroll_area, 1)
+
+    def _apply_scroll_style(self, tokens: ThemeTokens) -> None:
+        self.scroll_area.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background: transparent;
+            }}
+            {get_scrollbar_style(tokens)}
+        """)
 
     def update_config(self, config: DockConfig) -> None:
         self.config = config
         tokens = get_theme_tokens(self.config)
         self.title_label.setFont(create_app_font(self.config, size=tokens.font_size_title, weight=QFont.Weight.DemiBold))
-        self.title_label.setStyleSheet(f"color: {tokens.text_primary};")
+        self.title_label.setStyleSheet(f"color: {tokens.text_primary}; background: transparent; border: none;")
+        self._apply_scroll_style(tokens)

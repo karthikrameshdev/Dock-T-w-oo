@@ -69,3 +69,31 @@ def create_app_font(
     font.setPointSize(size or config.font_size_root)
     font.setWeight(weight)
     return font
+
+
+def get_scrollbar_style(tokens: ThemeTokens) -> str:
+    """Standard minimal modern scrollbar stylesheet matching theme tokens."""
+    return f"""
+        QScrollBar:vertical {{
+            border: none;
+            background: transparent;
+            width: 6px;
+            margin: 0;
+        }}
+        QScrollBar::handle:vertical {{
+            background: rgba(255, 255, 255, 0.2);
+            min-height: 20px;
+            border-radius: 3px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: {tokens.accent_color};
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            height: 0px;
+            border: none;
+            background: none;
+        }}
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+            background: none;
+        }}
+    """
