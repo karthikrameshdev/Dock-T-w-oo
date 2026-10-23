@@ -94,19 +94,73 @@ class ScreenManager:
         return QRect(x, y, width, height)
 
     @staticmethod
+    def configure_macos_accessory() -> None:
+        """Hide application icon from the macOS default bottom Dock panel (top bar/tray only)."""
+        if platform.system().lower() == "darwin":
+            try:
+                import ctypes
+
+                objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+                objc.objc_getClass.restype = ctypes.c_void_p
+                objc.sel_registerName.restype = ctypes.c_void_p
+
+                NSApp = objc.objc_getClass(b"NSApplication")
+                sharedApp = objc.sel_registerName(b"sharedApplication")
+                app_ptr = ctypes.cast(
+                    objc.objc_msgSend,
+                    ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p),
+                )(NSApp, sharedApp)
+
+                setActivationPolicy = objc.sel_registerName(b"setActivationPolicy:")
+                # NSApplicationActivationPolicyAccessory = 1 (no icon in macOS default dock!)
+                ctypes.cast(
+                    objc.objc_msgSend,
+                    ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long),
+                )(app_ptr, setActivationPolicy, 1)
+            except Exception as e:
+                print(f"[Dock T(w)oo] Failed to set macOS accessory policy: {e}")
+
+    @staticmethod
     def apply_window_levels(widget: QWidget) -> None:
-        """Apply native platform window levels for overlay residency where supported."""
+        """Apply native platform window levels so overlay stays visible and never closes or hides automatically."""
         system = platform.system().lower()
         if system == "darwin":
             try:
-                import objc
-                from AppKit import NSFloatingWindowLevel, NSMainMenuWindowLevel
+                import ctypes
 
-                win_id = widget.winId()
-                # PySide gives pointer to NSView
-                nsview = objc.objc_object(c_void_p=int(win_id))
-                nswindow = nsview.window()
-                if nswindow:
-                    nswindow.setLevel_(NSMainMenuWindowLevel + 1)
-            except Exception:
+                objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+                objc.objc_getClass.restype = ctypes.c_void_p
+                objc.sel_registerName.restype = ctypes.c_void_p
+
+                win_id = int(widget.winId())
+                if win_id:
+                    view_ptr = ctypes.c_void_p(win_id)
+                    window_sel = objc.sel_registerName(b"window")
+                    nswindow = ctypes.cast(
+                        objc.objc_msgSend,
+                        ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p),
+                    )(view_ptr, window_sel)
+
+                    if nswindow:
+                        # setLevel: NSMainMenuWindowLevel + 1 = 25
+                        setLevel = objc.sel_registerName(b"setLevel:")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long),
+                        )(nswindow, setLevel, 25)
+
+                        # setHidesOnDeactivate: NO (Crucial: prevents macOS from hiding dock when other apps are clicked!)
+                        setHidesOnDeactivate = objc.sel_registerName(b"setHidesOnDeactivate:")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool),
+                        )(nswindow, setHidesOnDeactivate, False)
+
+                        # setCanHide: NO
+                        setCanHide = objc.sel_registerName(b"setCanHide:")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool),
+                        )(nswindow, setCanHide, False)
+            except Exception as e:
                 pass

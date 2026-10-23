@@ -29,7 +29,7 @@ class AttachedWindow(QWidget):
     window_closed = Signal(str)  # closed app_id
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
-        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.config = config
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 

@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from PySide6.QtCore import QObject, Signal
+
 
 def get_default_config_dir() -> Path:
     """Return the configuration directory."""
@@ -132,7 +134,7 @@ class DockConfig:
     dock_height_mode: str = "fill"  # "fill" (pill taking ~90% height) or "auto" or "fixed"
     dock_height_fixed: int = 700
     dock_corner_radius: int = 28
-    dock_padding_y: int = 14
+    dock_padding_y: int = 10
     dock_padding_x: int = 8
 
     # Dock appearance
@@ -145,7 +147,7 @@ class DockConfig:
 
     # Icon appearance
     icon_size: int = 20  # Strict standard size
-    icon_spacing: int = 10
+    icon_spacing: int = 6
     icon_color: str = "#D8D8DF"
     icon_color_light: str = "#222224"
     icon_opacity: float = 0.90
@@ -228,10 +230,13 @@ class DockConfig:
         return cfg
 
 
-class ConfigManager:
-    """Manages reading, writing, and notifying observers of config changes."""
+class ConfigManager(QObject):
+    """Manages reading, writing, and notifying observers of config changes with thread-safe signals."""
 
-    def __init__(self, config_path: Optional[Path] = None):
+    config_updated = Signal(object)
+
+    def __init__(self, config_path: Optional[Path] = None, parent: Optional[QObject] = None):
+        super().__init__(parent)
         self.config_path = config_path or (get_default_config_dir() / "config.json")
         self._listeners: List[Callable[[DockConfig], None]] = []
         self._config = self.load()
@@ -289,6 +294,7 @@ class ConfigManager:
 
         self.save()
         self.notify()
+        self.config_updated.emit(self._config)
         return self._config
 
     def add_listener(self, callback: Callable[[DockConfig], None]) -> None:

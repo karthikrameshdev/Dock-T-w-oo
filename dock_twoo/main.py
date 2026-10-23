@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 
 from dock_twoo.config import ConfigManager
 from dock_twoo.icons import IconManager
+from dock_twoo.os_integration.screen_manager import ScreenManager
 from dock_twoo.server import WebConsoleServer
 from dock_twoo.ui import DockTrayIcon, DockWindow
 
@@ -53,6 +54,9 @@ def main() -> int:
     app.setApplicationName("Dock T(w)oo")
     app.setOrganizationName("DockTwoo")
     app.setQuitOnLastWindowClosed(False)
+
+    # Hide from macOS default bottom dock panel (top bar & floating dock only)
+    ScreenManager.configure_macos_accessory()
 
     # Initialize configuration
     config_mgr = ConfigManager()

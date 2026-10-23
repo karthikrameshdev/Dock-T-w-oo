@@ -25,47 +25,63 @@ from dock_twoo.ui.dock_icon import DockIconButton
 from dock_twoo.ui.tooltip import DockTooltip
 
 
-class TrafficDotsWidget(QWidget):
-    """Mac-style traffic light dots at the top of the dock."""
-
-    def __init__(self, parent: Optional[QWidget] = None):
-        super().__init__(parent)
-        self.setFixedHeight(18)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 0, 6, 0)
-        layout.setSpacing(5)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        for col in ("#FF5F56", "#FFBD2E", "#27C93F"):
-            dot = QWidget(self)
-            dot.setFixedSize(8, 8)
-            dot.setStyleSheet(f"background-color: {col}; border-radius: 4px;")
-            layout.addWidget(dot)
-
-
-class LogoWidget(QWidget):
-    """Dock T(w)oo logo widget at the top."""
+class DockLogoWidget(QWidget):
+    """Top Dock T(w)oo logo widget."""
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.config = config
-        self.setFixedHeight(32)
+        self._is_hover = False
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._update_geometry()
+
+    def update_config(self, config: DockConfig) -> None:
+        self.config = config
+        self._update_geometry()
+        self.update()
+
+    def _update_geometry(self) -> None:
+        dim = self.config.dock_width - (self.config.dock_padding_x * 2)
+        self.setFixedSize(dim, dim)
+
+    def enterEvent(self, event) -> None:
+        self._is_hover = True
+        self.update()
+        DockTooltip.get_instance(self.config).show_for_widget(
+            self,
+            "Dock T(w)oo",
+            edge=self.config.edge,
+        )
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._is_hover = False
+        self.update()
+        DockTooltip.get_instance().hide_tooltip()
+        super().leaveEvent(event)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
+        rect = QRectF(2, 2, self.width() - 4, self.height() - 4)
+        if self._is_hover:
+            hover_bg = QColor(self.config.get_effective_hover_bg())
+            painter.setBrush(QBrush(hover_bg))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(rect)
+
         icon_mgr = IconManager.get_instance()
         pixmap = icon_mgr.render_pixmap(
             name="logo",
-            size=24,
-            color="#FFFFFF" if self.config.get_effective_theme() == "dark" else "#111113",
-            opacity=1.0,
+            size=self.config.icon_size,
+            color=self.config.get_effective_icon_color(),
+            opacity=self.config.icon_opacity,
         )
 
-        dest_x = (self.width() - 24) / 2
-        dest_y = (self.height() - 24) / 2
+        dest_x = (self.width() - self.config.icon_size) / 2
+        dest_y = (self.height() - self.config.icon_size) / 2
         painter.drawPixmap(int(dest_x), int(dest_y), pixmap)
         painter.end()
 
@@ -76,21 +92,21 @@ class ThreeDotsDivider(QWidget):
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.config = config
-        self.setFixedHeight(14)
+        self.setFixedHeight(10)
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        color = QColor(255, 255, 255, 45) if self.config.get_effective_theme() == "dark" else QColor(0, 0, 0, 45)
+        color = QColor(255, 255, 255, 40) if self.config.get_effective_theme() == "dark" else QColor(0, 0, 0, 40)
         painter.setBrush(QBrush(color))
         painter.setPen(Qt.PenStyle.NoPen)
 
         cx = self.width() / 2
         cy = self.height() / 2
-        spacing = 5.5
-        r = 1.6
+        spacing = 4.5
+        r = 1.3
         painter.drawEllipse(QPointF(cx - spacing, cy), r, r)
         painter.drawEllipse(QPointF(cx, cy), r, r)
         painter.drawEllipse(QPointF(cx + spacing, cy), r, r)
@@ -101,7 +117,8 @@ class DockWindow(QWidget):
     """The resident secondary dock window pinned to a screen edge."""
 
     def __init__(self, config_manager: ConfigManager):
-        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        # Frameless and stays on top — NO Qt.WindowType.Tool so macOS never hides it on deactivate!
+        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.config_manager = config_manager
         self.config = config_manager.config
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -114,8 +131,8 @@ class DockWindow(QWidget):
         self.reposition_dock()
         ScreenManager.apply_window_levels(self)
 
-        # Listen to live config updates (from Web Console or internal triggers)
-        self.config_manager.add_listener(self.on_config_updated)
+        # Thread-safe Qt Signal dispatch guarantees GUI updates occur strictly on the main thread
+        self.config_manager.config_updated.connect(self.on_config_updated)
 
     def _setup_ui(self) -> None:
         self.main_layout = QVBoxLayout(self)
@@ -128,11 +145,15 @@ class DockWindow(QWidget):
         self.main_layout.setSpacing(self.config.icon_spacing)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
-        # 1. Traffic light controls at top
-        self.traffic_dots = TrafficDotsWidget(self)
-        self.main_layout.addWidget(self.traffic_dots)
+        # 1. Top Brand Logo
+        self.logo_widget = DockLogoWidget(self.config, self)
+        self.main_layout.addWidget(self.logo_widget)
 
-        # 2. Top apps container (Notes is the first icon on top)
+        # 2. Divider below logo
+        self.top_divider = ThreeDotsDivider(self.config, self)
+        self.main_layout.addWidget(self.top_divider)
+
+        # 3. Top apps container (Notes is the first app icon)
         self.icons_container = QWidget(self)
         self.icons_layout = QVBoxLayout(self.icons_container)
         self.icons_layout.setContentsMargins(0, 0, 0, 0)
@@ -142,10 +163,10 @@ class DockWindow(QWidget):
         self._populate_icons()
         self.main_layout.addWidget(self.icons_container)
 
-        # 3. Flexible stretch spacer pushing remaining items down
+        # 4. Flexible stretch spacer pushing remaining items down
         self.main_layout.addStretch(1)
 
-        # 4. Bottom items: 3-dots divider -> Settings -> 3-dots divider -> Brain
+        # 5. Bottom items: 3-dots divider -> Settings -> 3-dots divider -> Brain
         self.bottom_container = QWidget(self)
         self.bottom_layout = QVBoxLayout(self.bottom_container)
         self.bottom_layout.setContentsMargins(0, 0, 0, 0)
