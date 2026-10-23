@@ -33,7 +33,7 @@ def test_render_standard_sized_pixmaps(qapp):
 
     for size in standard_sizes:
         # Test app icons
-        for icon_name in ("apps", "calendar", "vault", "notes", "brain", "avatar"):
+        for icon_name in ("apps", "calendar", "vault", "notes", "brain", "logo"):
             pixmap = mgr.render_pixmap(
                 name=icon_name,
                 size=size,

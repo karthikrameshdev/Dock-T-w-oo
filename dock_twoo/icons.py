@@ -87,12 +87,6 @@ class IconManager:
         if cache_key in self._pixmap_cache:
             return self._pixmap_cache[cache_key]
 
-        # Handle special avatar icon (for brain / profile)
-        if name == "avatar":
-            pixmap = self._render_avatar(size, scale_factor, is_active)
-            self._pixmap_cache[cache_key] = pixmap
-            return pixmap
-
         raw_svg = self.get_raw_svg(name)
         if not raw_svg:
             # Fallback circle placeholder
@@ -152,48 +146,6 @@ class IconManager:
         tinted = tinted.replace('stroke="black"', f'stroke="{effective_color}"')
         tinted = tinted.replace('fill="black"', f'fill="{effective_color}"')
         return tinted
-
-    def _render_avatar(self, size: int, scale_factor: float, is_active: bool) -> QPixmap:
-        """Render circular avatar image with optional voice activity ring."""
-        avatar_file = get_assets_dir() / "avatar.png"
-        pixel_size = int(size * scale_factor)
-
-        image = QImage(pixel_size, pixel_size, QImage.Format.Format_ARGB32_Premultiplied)
-        image.fill(Qt.GlobalColor.transparent)
-
-        painter = QPainter(image)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
-        if avatar_file.exists():
-            src_img = QImage(str(avatar_file))
-            scaled = src_img.scaled(
-                pixel_size - 4,
-                pixel_size - 4,
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            # Clip circle
-            painter.setBrush(QBrush(scaled))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QRectF(2, 2, pixel_size - 4, pixel_size - 4))
-        else:
-            # Fallback circle avatar
-            painter.setBrush(QBrush(QColor("#6C5CE7")))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QRectF(2, 2, pixel_size - 4, pixel_size - 4))
-
-        # Ring border (pulsing green or purple when active)
-        ring_color = QColor("#00E676") if is_active else QColor(255, 255, 255, 120)
-        ring_pen = QPen(ring_color, 2 * scale_factor)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(ring_pen)
-        painter.drawEllipse(QRectF(1, 1, pixel_size - 2, pixel_size - 2))
-
-        painter.end()
-        pixmap = QPixmap.fromImage(image)
-        pixmap.setDevicePixelRatio(scale_factor)
-        return pixmap
 
     def _render_fallback(
         self, size: int, color: str, opacity: float, scale_factor: float
