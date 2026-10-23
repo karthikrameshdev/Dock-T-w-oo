@@ -96,8 +96,13 @@ class AttachedWindow(QWidget):
         self.setGeometry(target_geom)
         self.show()
         self.raise_()
+        ScreenManager.apply_window_levels(self)
         self.activateWindow()
         self.update()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        ScreenManager.apply_window_levels(self)
 
     def hide_window(self) -> None:
         """Dismiss the attached drawer."""
@@ -118,20 +123,38 @@ class AttachedWindow(QWidget):
         tokens = get_theme_tokens(self.config)
         is_dark = self.config.get_effective_theme() == "dark"
 
-        rect = QRectF(4, 4, self.width() - 8, self.height() - 8)
+        glow_pad = 8 if self.config.glow_enabled else 2
+        card_rect = QRectF(glow_pad, glow_pad, self.width() - 2 * glow_pad, self.height() - 2 * glow_pad)
         radius = self.config.attached_corner_radius
 
-        path = QPainterPath()
-        path.addRoundedRect(rect, radius, radius)
+        # 1. Radiant Ambient Halo / Glow
+        if self.config.glow_enabled:
+            glow_color = QColor(255, 255, 255) if is_dark else QColor(0, 0, 0)
+            max_alpha = 16 if is_dark else 12
+            for step in range(glow_pad, 0, -2):
+                alpha = int(max_alpha * (1.0 - (step / glow_pad) ** 1.3))
+                glow_col = QColor(glow_color.red(), glow_color.green(), glow_color.blue(), alpha)
+                pen = QPen(glow_col, step * 2)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                g_path = QPainterPath()
+                g_path.addRoundedRect(card_rect, radius, radius)
+                painter.drawPath(g_path)
 
-        # Background acrylic fill
+        path = QPainterPath()
+        path.addRoundedRect(card_rect, radius, radius)
+
+        # 2. Background acrylic fill
         bg_col = QColor(tokens.card_bg)
         bg_col.setAlphaF(self.config.attached_opacity)
         painter.setBrush(QBrush(bg_col))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
 
-        # Border
-        border_col = QColor(255, 255, 255, 25) if is_dark else QColor(0, 0, 0, 20)
-        painter.setPen(QPen(border_col, 1))
-
+        # 3. Crisp Luminous High-Contrast Border
+        rim_col = QColor(255, 255, 255, 75) if is_dark else QColor(0, 0, 0, 45)
+        painter.setPen(QPen(rim_col, 1.2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
         painter.end()

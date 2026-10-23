@@ -169,6 +169,17 @@ class DockConfig:
     font_size_tooltip: int = 12
     font_size_console: int = 14
 
+    # Window & Space Management
+    auto_hide: bool = False  # False = pinned & always visible; True = auto-collapses
+    reserve_screen_space: bool = True  # Keep other apps from sliding behind dock
+    screen_margin_gap: int = 8
+
+    # Ambient Background Glow
+    glow_enabled: bool = True
+    glow_color: str = "rgba(255, 255, 255, 0.22)"
+    glow_color_light: str = "rgba(0, 0, 0, 0.18)"
+    glow_radius: int = 10
+
     # Web Console server
     server_host: str = "127.0.0.1"
     server_port: int = 28842

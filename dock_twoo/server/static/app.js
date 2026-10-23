@@ -35,6 +35,9 @@ const mockupDock = document.getElementById('mockupDock');
 const mockupAttached = document.getElementById('mockupAttached');
 const mockupIcons = document.getElementById('mockupIcons');
 const previewEdgeLabel = document.getElementById('previewEdgeLabel');
+const reserveSpaceToggle = document.getElementById('reserveSpaceToggle');
+const autoHideToggle = document.getElementById('autoHideToggle');
+const glowToggle = document.getElementById('glowToggle');
 const saveBtn = document.getElementById('saveBtn');
 const resetBtn = document.getElementById('resetBtn');
 const toast = document.getElementById('toast');
@@ -96,6 +99,11 @@ function initForm(cfg) {
 
   iconColor.value = cfg.icon_color;
   iconColorHex.textContent = cfg.icon_color;
+
+  // Space & Visibility Toggles
+  if (reserveSpaceToggle) reserveSpaceToggle.checked = (cfg.reserve_screen_space !== false);
+  if (autoHideToggle) autoHideToggle.checked = !!cfg.auto_hide;
+  if (glowToggle) glowToggle.checked = (cfg.glow_enabled !== false);
 
   // Apps
   renderAppsList(cfg.apps || []);
@@ -166,6 +174,13 @@ function updatePreview(cfg) {
   mockupDock.style.borderRadius = `${cfg.dock_corner_radius}px`;
   mockupDock.style.backgroundColor = cfg.dock_bg_color;
   mockupDock.style.opacity = cfg.dock_opacity;
+  if (cfg.glow_enabled !== false) {
+    mockupDock.style.boxShadow = '0 0 16px rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.3)';
+    mockupAttached.style.boxShadow = '0 0 18px rgba(255, 255, 255, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.25)';
+  } else {
+    mockupDock.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.3)';
+    mockupAttached.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.3)';
+  }
 
   // Attached window matches dock height
   mockupAttached.style.width = `${Math.min(260, Math.round(cfg.attached_width * 0.6))}px`;
@@ -366,6 +381,28 @@ iconColor.addEventListener('input', (e) => {
   updatePreview(currentConfig);
 });
 iconColor.addEventListener('change', autoSave);
+
+if (reserveSpaceToggle) {
+  reserveSpaceToggle.addEventListener('change', () => {
+    currentConfig.reserve_screen_space = reserveSpaceToggle.checked;
+    autoSave();
+  });
+}
+
+if (autoHideToggle) {
+  autoHideToggle.addEventListener('change', () => {
+    currentConfig.auto_hide = autoHideToggle.checked;
+    autoSave();
+  });
+}
+
+if (glowToggle) {
+  glowToggle.addEventListener('change', () => {
+    currentConfig.glow_enabled = glowToggle.checked;
+    updatePreview(currentConfig);
+    autoSave();
+  });
+}
 
 // Save / Reset
 let debounceTimer = null;

@@ -5,7 +5,7 @@ from __future__ import annotations
 import webbrowser
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QFrame,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from dock_twoo.config import ConfigManager, DockAppItem, DockConfig
 from dock_twoo.icons import IconManager
+from dock_twoo.os_integration.margin_manager import DesktopMarginManager
 from dock_twoo.os_integration.screen_manager import ScreenManager
 from dock_twoo.ui.attached_window import AttachedWindow
 from dock_twoo.ui.dock_icon import DockIconButton
@@ -127,6 +128,14 @@ class DockWindow(QWidget):
         self.attached_window = AttachedWindow(self.config)
         self.attached_window.window_closed.connect(self._on_attached_closed)
 
+        # Margin Manager ensures other application windows stop at Dock 2 and don't slide behind it
+        self.margin_manager = DesktopMarginManager(self.config, self)
+
+        # Auto-hide timer
+        self._auto_hide_timer = QTimer(self)
+        self._auto_hide_timer.setSingleShot(True)
+        self._auto_hide_timer.timeout.connect(self._do_auto_hide)
+
         self._setup_ui()
         self.reposition_dock()
         ScreenManager.apply_window_levels(self)
@@ -135,12 +144,13 @@ class DockWindow(QWidget):
         self.config_manager.config_updated.connect(self.on_config_updated)
 
     def _setup_ui(self) -> None:
+        glow_pad = 8 if self.config.glow_enabled else 2
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(
-            self.config.dock_padding_x,
-            self.config.dock_padding_y,
-            self.config.dock_padding_x,
-            self.config.dock_padding_y,
+            self.config.dock_padding_x + glow_pad,
+            self.config.dock_padding_y + glow_pad,
+            self.config.dock_padding_x + glow_pad,
+            self.config.dock_padding_y + glow_pad,
         )
         self.main_layout.setSpacing(self.config.icon_spacing)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -240,16 +250,50 @@ class DockWindow(QWidget):
         """Calculate screen edge position and update dock geometry."""
         geom = ScreenManager.calculate_dock_geometry(self.config)
         self.setGeometry(geom)
+        if hasattr(self, "margin_manager"):
+            self.margin_manager.update_dock_geometry(geom)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        ScreenManager.apply_window_levels(self)
+        if hasattr(self, "attached_window"):
+            ScreenManager.apply_window_levels(self.attached_window)
+        if hasattr(self, "margin_manager"):
+            self.margin_manager.update_dock_geometry(self.geometry())
+            self.margin_manager.start()
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        if hasattr(self, "margin_manager"):
+            self.margin_manager.stop()
+
+    def enterEvent(self, event) -> None:
+        if self._auto_hide_timer.isActive():
+            self._auto_hide_timer.stop()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        if self.config.auto_hide and not self.attached_window.isVisible():
+            self._auto_hide_timer.start(1000)
+        super().leaveEvent(event)
+
+    def _do_auto_hide(self) -> None:
+        if self.config.auto_hide and not self.attached_window.isVisible() and not self.underMouse():
+            self.hide()
 
     def on_config_updated(self, config: DockConfig) -> None:
         """Handle live configuration updates from Web Console."""
         self.config = config
         IconManager.get_instance().clear_cache()
+        if hasattr(self, "margin_manager"):
+            self.margin_manager.update_config(config)
 
         # Update button geometries & appearances
         for btn in self._icon_buttons.values():
             btn.update_config(config)
 
+        self.logo_widget.update_config(config)
+        self.top_divider.update()
         self.attached_window.update_config(config)
         self.reposition_dock()
         self.update()
@@ -258,22 +302,40 @@ class DockWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Draw the rounded capsule background
-        rect = QRectF(2, 2, self.width() - 4, self.height() - 4)
+        glow_pad = 8 if self.config.glow_enabled else 2
+        capsule_rect = QRectF(glow_pad, glow_pad, self.width() - 2 * glow_pad, self.height() - 2 * glow_pad)
         radius = self.config.dock_corner_radius
+        is_dark = self.config.get_effective_theme() == "dark"
+
+        # 1. Radiant Ambient Halo / Glow
+        if self.config.glow_enabled:
+            glow_color = QColor(255, 255, 255) if is_dark else QColor(0, 0, 0)
+            max_alpha = 18 if is_dark else 14
+            for step in range(glow_pad, 0, -2):
+                alpha = int(max_alpha * (1.0 - (step / glow_pad) ** 1.3))
+                glow_col = QColor(glow_color.red(), glow_color.green(), glow_color.blue(), alpha)
+                pen = QPen(glow_col, step * 2)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                g_path = QPainterPath()
+                g_path.addRoundedRect(capsule_rect, radius, radius)
+                painter.drawPath(g_path)
 
         path = QPainterPath()
-        path.addRoundedRect(rect, radius, radius)
+        path.addRoundedRect(capsule_rect, radius, radius)
 
-        # Fill color with opacity
+        # 2. Main Capsule Fill
         bg_col = QColor(self.config.get_effective_dock_bg())
         bg_col.setAlphaF(self.config.dock_opacity)
         painter.setBrush(QBrush(bg_col))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
 
-        # Border
-        border_col = QColor(255, 255, 255, 20) if self.config.get_effective_theme() == "dark" else QColor(0, 0, 0, 20)
-        painter.setPen(QPen(border_col, 1))
-
+        # 3. Crisp Luminous High-Contrast Glass Border
+        rim_col = QColor(255, 255, 255, 75) if is_dark else QColor(0, 0, 0, 45)
+        painter.setPen(QPen(rim_col, 1.2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
         painter.end()
 

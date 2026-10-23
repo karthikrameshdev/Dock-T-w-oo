@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QBrush,
     QColor,

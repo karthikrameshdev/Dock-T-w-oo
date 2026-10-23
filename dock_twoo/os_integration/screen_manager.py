@@ -142,14 +142,23 @@ class ScreenManager:
                     )(view_ptr, window_sel)
 
                     if nswindow:
-                        # setLevel: NSMainMenuWindowLevel + 1 = 25
+                        # setLevel: NSMainMenuWindowLevel + 1 = 25 (kCGStatusWindowLevel)
                         setLevel = objc.sel_registerName(b"setLevel:")
                         ctypes.cast(
                             objc.objc_msgSend,
                             ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long),
                         )(nswindow, setLevel, 25)
 
-                        # setHidesOnDeactivate: NO (Crucial: prevents macOS from hiding dock when other apps are clicked!)
+                        # setCollectionBehavior:
+                        # 1 (CanJoinAllSpaces) | 16 (Stationary) | 64 (IgnoresCycle) | 256 (FullScreenAuxiliary) = 337
+                        # Stationary guarantees the window NEVER moves or hides when clicking desktop wallpaper ("Click wallpaper to reveal desktop")!
+                        setCollectionBehavior = objc.sel_registerName(b"setCollectionBehavior:")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong),
+                        )(nswindow, setCollectionBehavior, 337)
+
+                        # setHidesOnDeactivate: NO (prevents macOS from hiding dock when other apps or desktop are focused)
                         setHidesOnDeactivate = objc.sel_registerName(b"setHidesOnDeactivate:")
                         ctypes.cast(
                             objc.objc_msgSend,
@@ -162,5 +171,12 @@ class ScreenManager:
                             objc.objc_msgSend,
                             ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool),
                         )(nswindow, setCanHide, False)
+
+                        # orderFrontRegardless: bring to front without stealing key focus
+                        orderFrontRegardless = objc.sel_registerName(b"orderFrontRegardless")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p),
+                        )(nswindow, orderFrontRegardless)
             except Exception as e:
                 pass

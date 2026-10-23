@@ -29,19 +29,38 @@ class DockTrayIcon(QSystemTrayIcon):
         self.setIcon(QIcon(pixmap))
         self.setToolTip("Dock T(w)oo")
 
-        menu = QMenu()
+        self.menu = QMenu()
+        self.menu.aboutToShow.connect(self._update_menu_states)
 
-        toggle_action = QAction("Toggle Dock", self)
-        toggle_action.triggered.connect(self._toggle_dock)
-        menu.addAction(toggle_action)
+        self.toggle_action = QAction("Hide Dock" if self.dock_window.isVisible() else "Show Dock", self)
+        self.toggle_action.triggered.connect(self._toggle_dock)
+        self.menu.addAction(self.toggle_action)
 
-        menu.addSeparator()
+        self.auto_hide_action = QAction("Auto-Hide Dock", self)
+        self.auto_hide_action.setCheckable(True)
+        self.auto_hide_action.setChecked(self.config_manager.config.auto_hide)
+        self.auto_hide_action.toggled.connect(self._toggle_auto_hide)
+        self.menu.addAction(self.auto_hide_action)
+
+        self.reserve_action = QAction("Reserve Desktop Space", self)
+        self.reserve_action.setCheckable(True)
+        self.reserve_action.setChecked(self.config_manager.config.reserve_screen_space)
+        self.reserve_action.toggled.connect(self._toggle_reserve_space)
+        self.menu.addAction(self.reserve_action)
+
+        self.glow_action = QAction("Ambient Background Glow", self)
+        self.glow_action.setCheckable(True)
+        self.glow_action.setChecked(self.config_manager.config.glow_enabled)
+        self.glow_action.toggled.connect(self._toggle_glow)
+        self.menu.addAction(self.glow_action)
+
+        self.menu.addSeparator()
 
         console_action = QAction("Open Web Console...", self)
         console_action.triggered.connect(self._open_console)
-        menu.addAction(console_action)
+        self.menu.addAction(console_action)
 
-        edge_menu = menu.addMenu("Dock Screen Edge")
+        edge_menu = self.menu.addMenu("Dock Screen Edge")
         left_action = QAction("Left Edge", self)
         left_action.triggered.connect(lambda: self._set_edge("left"))
         right_action = QAction("Right Edge (Default)", self)
@@ -49,14 +68,31 @@ class DockTrayIcon(QSystemTrayIcon):
         edge_menu.addAction(left_action)
         edge_menu.addAction(right_action)
 
-        menu.addSeparator()
+        self.menu.addSeparator()
 
         quit_action = QAction("Quit Dock T(w)oo", self)
         quit_action.triggered.connect(self._quit_app)
-        menu.addAction(quit_action)
+        self.menu.addAction(quit_action)
 
-        self.setContextMenu(menu)
+        self.setContextMenu(self.menu)
         self.activated.connect(self._on_tray_activated)
+
+    def _update_menu_states(self) -> None:
+        cfg = self.config_manager.config
+        is_vis = self.dock_window.isVisible()
+        self.toggle_action.setText("Hide Dock" if is_vis else "Show Dock")
+        self.auto_hide_action.setChecked(cfg.auto_hide)
+        self.reserve_action.setChecked(cfg.reserve_screen_space)
+        self.glow_action.setChecked(cfg.glow_enabled)
+
+    def _toggle_auto_hide(self, checked: bool) -> None:
+        self.config_manager.update({"auto_hide": checked})
+
+    def _toggle_reserve_space(self, checked: bool) -> None:
+        self.config_manager.update({"reserve_screen_space": checked})
+
+    def _toggle_glow(self, checked: bool) -> None:
+        self.config_manager.update({"glow_enabled": checked})
 
     def _toggle_dock(self) -> None:
         if self.dock_window.isVisible():
