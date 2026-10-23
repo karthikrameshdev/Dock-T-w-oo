@@ -84,19 +84,19 @@
               <span class="nav-icon">📐</span>
               <span class="nav-label">Companion Drawers</span>
             </button>
+            <button class="nav-item" data-page="page-brain">
+              <span class="nav-icon">🧠</span>
+              <span class="nav-label">Brain Voice Agent</span>
+              <span class="nav-tag">Core Feature</span>
+            </button>
           </div>
 
           <div class="nav-group">
-            <span class="nav-group-title">Individual Apps</span>
+            <span class="nav-group-title">Companion Apps</span>
             <button class="nav-item" data-page="page-notes">
               <span class="nav-icon">📝</span>
               <span class="nav-label">Notes</span>
               <span class="nav-tag">Top App</span>
-            </button>
-            <button class="nav-item" data-page="page-brain">
-              <span class="nav-icon">🧠</span>
-              <span class="nav-label">Brain Voice Agent</span>
-              <span class="nav-tag">Assistant</span>
             </button>
             <button class="nav-item" data-page="page-vault">
               <span class="nav-icon">🛡️</span>
@@ -417,227 +417,327 @@
         </div>
 
         <!-- Page 6: Brain Voice Agent Settings -->
+        <!-- Page 6: Brain Core Feature Settings -->
         <div class="page-view" id="page-brain">
           <div class="page-header">
-            <h2>Brain Voice Assistant & Mini Agent</h2>
-            <p>Voice-assisted AI system: model profile routing, credentials, voice persona, robot animations, and storage</p>
+            <h2>Brain Voice Assistant & Robotic Mini Agent</h2>
+            <p>Dock 2 Core System: hands-free audio assistant, on-device wake word, multi-profile routing, and desktop robotics</p>
           </div>
 
-          <!-- Live Mini Agent Quick Bar -->
-          <div class="settings-card highlight-card">
-            <div class="card-header-flex">
-              <div>
-                <h3 class="card-subheading">Mini Agent Desktop Status</h3>
-                <p class="field-desc">The floating desktop robotic companion operates hands-free with voice and gestures</p>
-              </div>
-              <span class="badge" id="brainAgentStatusBadge">Online · Ready</span>
-            </div>
-            <div class="action-btn-row">
-              <button type="button" id="brainSummonBtn" class="btn btn-primary">
-                <span>✨ Summon Mini Agent</span>
-              </button>
-              <button type="button" id="brainTalkBtn" class="btn btn-secondary">
-                <span>🎤 Talk to Brain</span>
-              </button>
-              <button type="button" id="brainLoopAnimBtn" class="btn btn-secondary">
-                <span>🎭 Play Animations</span>
-              </button>
-              <button type="button" id="brainHideBtn" class="btn btn-secondary">
-                <span>✕ Hide Mini Agent</span>
-              </button>
-            </div>
+          <!-- Brain Multi-Tab Navigation Bar -->
+          <div class="brain-tab-bar">
+            <button type="button" class="brain-tab-btn active" data-tab="brain-tab-voice">
+              <span class="tab-icon">🎙️</span>
+              <span>Voice & Wake Word</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-tab="brain-tab-profiles">
+              <span class="tab-icon">🧠</span>
+              <span>Model Profiles & Status</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-tab="brain-tab-motions">
+              <span class="tab-icon">🤖</span>
+              <span>Robot Companion & Motions</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-tab="brain-tab-actions">
+              <span class="tab-icon">⚡</span>
+              <span>Native Actions & Vault</span>
+            </button>
           </div>
 
-          <!-- Model Profiles & Modality Routing -->
-          <div class="settings-card">
-            <h3 class="card-subheading">Model Profile & LLM Routing</h3>
-            <p class="field-desc">Select active brain profile and manage API credentials directly</p>
-
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label for="brainActiveProfile">Active Model Profile</label>
-                <select id="brainActiveProfile" class="select-input">
-                  <option value="gemini_default">Google Gemini (Recommended)</option>
-                  <option value="local_ollama">Local Ollama (100% Offline)</option>
-                  <option value="openrouter_default">OpenRouter Multi-Model</option>
-                </select>
+          <!-- Tab 1: Voice & Wake Word -->
+          <div class="brain-tab-panel active" id="brain-tab-voice">
+            <!-- Live Mini Agent Quick Bar -->
+            <div class="settings-card highlight-card">
+              <div class="card-header-flex">
+                <div>
+                  <h3 class="card-subheading">Mini Agent Desktop Status</h3>
+                  <p class="field-desc">The floating desktop robotic companion operates hands-free with voice and gestures</p>
+                </div>
+                <span class="badge" id="brainAgentStatusBadge">Online · Ready</span>
               </div>
-
-              <div class="form-group flex-1">
-                <label for="brainProvider">Provider</label>
-                <select id="brainProvider" class="select-input">
-                  <option value="gemini">Google Gemini</option>
-                  <option value="local">Local (Ollama / Llama.cpp)</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic Claude</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label for="brainModelId">Model Identifier</label>
-                <input type="text" id="brainModelId" class="text-input" value="gemini-2.0-flash" placeholder="e.g. gemini-2.0-flash, llama3.2:latest">
-              </div>
-
-              <div class="form-group flex-1">
-                <label for="brainBaseUrl">Endpoint / Base URL</label>
-                <input type="text" id="brainBaseUrl" class="text-input" placeholder="Default provider URL or http://127.0.0.1:11434/v1">
+              <div class="action-btn-row">
+                <button type="button" id="brainSummonBtn" class="btn btn-primary">
+                  <span>✨ Summon Mini Agent</span>
+                </button>
+                <button type="button" id="brainTalkBtn" class="btn btn-secondary">
+                  <span>🎤 Talk to Brain</span>
+                </button>
+                <button type="button" id="brainLoopAnimBtn" class="btn btn-secondary">
+                  <span>🎭 Play Animations</span>
+                </button>
+                <button type="button" id="brainHideBtn" class="btn btn-secondary">
+                  <span>✕ Hide Mini Agent</span>
+                </button>
               </div>
             </div>
 
-            <div class="form-group">
-              <label for="brainApiKey">Provider API Key</label>
-              <div class="input-with-button">
-                <input type="password" id="brainApiKey" class="text-input" placeholder="Enter API Key (stored securely in local Brain vault)">
-                <button type="button" id="brainSaveKeyBtn" class="btn btn-secondary">Save Key</button>
-              </div>
-              <span class="field-hint" id="brainKeyStatusHint">Saved keys are kept encrypted in local machine storage</span>
-            </div>
+            <!-- Hands-Free Wake Word -->
+            <div class="settings-card">
+              <h3 class="card-subheading">Voice Wake Word Activation</h3>
+              <p class="field-desc">Hands-free voice detection for instant summoning on speaking "Brain" or "Hey Brain"</p>
 
-            <div class="toggle-card-item">
-              <div>
-                <label class="toggle-title">Strict 100% Local Offline Mode</label>
-                <p class="field-desc">Never route queries or speech to external cloud APIs</p>
-              </div>
-              <input type="checkbox" id="brainLocalOnlyToggle" class="modern-toggle">
-            </div>
-          </div>
-
-          <!-- Voice Persona & Audio Settings -->
-          <div class="settings-card">
-            <h3 class="card-subheading">Voice Persona & Speech Output</h3>
-            <p class="field-desc">Speech synthesis persona, natural pacing, and robot mouth synchronization</p>
-
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label for="brainVoiceName">Voice Persona</label>
-                <select id="brainVoiceName" class="select-input">
-                  <option value="Aoede">Aoede (Warm & Natural)</option>
-                  <option value="Puck">Puck (Friendly & Playful)</option>
-                  <option value="Charon">Charon (Deep & Thoughtful)</option>
-                  <option value="Fenrir">Fenrir (Clear & Confident)</option>
-                  <option value="Kore">Kore (Calm & Expressive)</option>
-                  <option value="System">System Native Voice</option>
-                </select>
+              <div class="toggle-card-item">
+                <div>
+                  <label class="toggle-title">Enable Wake Word Detection</label>
+                  <p class="field-desc">Trigger Brain automatically when speaking the wake phrase</p>
+                </div>
+                <input type="checkbox" id="brainWakeWordToggle" checked class="modern-toggle">
               </div>
 
-              <div class="form-group flex-1">
-                <label for="brainSpeechRate">Speech Playback Rate</label>
-                <div class="slider-group-inline">
-                  <input type="range" id="brainSpeechRate" min="75" max="150" value="100">
-                  <span class="value-badge" id="brainSpeechRateVal">1.0x</span>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainWakeWord">Custom Wake Phrase</label>
+                  <input type="text" id="brainWakeWord" class="text-input" value="Hey Brain">
+                </div>
+
+                <div class="form-group flex-1">
+                  <label for="brainPushToTalkKey">Push-to-Talk Shortcut</label>
+                  <select id="brainPushToTalkKey" class="select-input">
+                    <option value="cmd_r" selected>Right Command Key (Hold to Talk)</option>
+                    <option value="cmd_l">Left Command Key</option>
+                    <option value="alt_r">Right Option / Alt</option>
+                    <option value="ctrl_r">Right Control</option>
+                    <option value="f5">F5 Key</option>
+                  </select>
                 </div>
               </div>
             </div>
 
-            <div class="form-group">
-              <label for="brainVoiceStyle">Voice Personality Prompt</label>
-              <input type="text" id="brainVoiceStyle" class="text-input" value="Warm, natural and conversational, with gentle expression and clear pacing.">
-            </div>
+            <!-- Voice Persona & Audio Settings -->
+            <div class="settings-card">
+              <h3 class="card-subheading">Voice Persona & Speech Output</h3>
+              <p class="field-desc">Speech synthesis persona, natural pacing, and robot mouth synchronization</p>
 
-            <div class="toggle-card-item">
-              <div>
-                <label class="toggle-title">Speak Answers Aloud</label>
-                <p class="field-desc">Play speech audio with synchronized robot mouth animation</p>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainVoiceName">Voice Persona</label>
+                  <select id="brainVoiceName" class="select-input">
+                    <option value="Aoede">Aoede (Warm & Natural)</option>
+                    <option value="Puck">Puck (Friendly & Playful)</option>
+                    <option value="Charon">Charon (Deep & Thoughtful)</option>
+                    <option value="Fenrir">Fenrir (Clear & Confident)</option>
+                    <option value="Kore">Kore (Calm & Expressive)</option>
+                    <option value="System">System Native Voice</option>
+                  </select>
+                </div>
+
+                <div class="form-group flex-1">
+                  <label for="brainSpeechRate">Speech Playback Rate</label>
+                  <div class="slider-group-inline">
+                    <input type="range" id="brainSpeechRate" min="75" max="150" value="100">
+                    <span class="value-badge" id="brainSpeechRateVal">1.0x</span>
+                  </div>
+                </div>
               </div>
-              <input type="checkbox" id="brainSpeakRepliesToggle" checked class="modern-toggle">
+
+              <div class="form-group">
+                <label for="brainVoiceStyle">Voice Personality Prompt</label>
+                <input type="text" id="brainVoiceStyle" class="text-input" value="Warm, natural and conversational, with gentle expression and clear pacing.">
+              </div>
+
+              <div class="toggle-card-item">
+                <div>
+                  <label class="toggle-title">Speak Answers Aloud</label>
+                  <p class="field-desc">Play speech audio with synchronized robot mouth animation</p>
+                </div>
+                <input type="checkbox" id="brainSpeakRepliesToggle" checked class="modern-toggle">
+              </div>
             </div>
           </div>
 
-          <!-- Mini Agent Desktop Behavior -->
-          <div class="settings-card">
-            <h3 class="card-subheading">Mini Agent Desktop Behavior</h3>
-            <p class="field-desc">Draggable positioning, idle animations, and desktop roaming</p>
+          <!-- Tab 2: Model Profiles & Status -->
+          <div class="brain-tab-panel" id="brain-tab-profiles">
+            <div class="settings-card">
+              <h3 class="card-subheading">Model Profile & LLM Routing</h3>
+              <p class="field-desc">Select active brain profile and manage API credentials directly</p>
 
-            <div class="toggle-card-item">
-              <div>
-                <label class="toggle-title">Roaming on Desktop</label>
-                <p class="field-desc">Periodically walk or climb across desktop work area when idle</p>
-              </div>
-              <input type="checkbox" id="brainRoamingToggle" class="modern-toggle">
-            </div>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainActiveProfile">Active Model Profile</label>
+                  <select id="brainActiveProfile" class="select-input">
+                    <option value="local">Local (Active)</option>
+                    <option value="gemini">Google Gemini (Not Configured)</option>
+                    <option value="openrouter">OpenRouter (Not Configured)</option>
+                  </select>
+                </div>
 
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label for="brainMascotPose">Default Idle Pose</label>
-                <select id="brainMascotPose" class="select-input">
-                  <option value="stand">Standing Alert</option>
-                  <option value="sit">Sitting on Stool</option>
-                </select>
+                <div class="form-group flex-1">
+                  <label for="brainProvider">Provider</label>
+                  <select id="brainProvider" class="select-input">
+                    <option value="local">Local (Local Engine)</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic Claude</option>
+                  </select>
+                </div>
               </div>
 
-              <div class="form-group flex-1">
-                <label for="brainMascotCorner">Resting Desktop Corner</label>
-                <select id="brainMascotCorner" class="select-input">
-                  <option value="bottom_right">Bottom Right Corner</option>
-                  <option value="bottom_left">Bottom Left Corner</option>
-                  <option value="top_right">Top Right Corner</option>
-                  <option value="top_left">Top Left Corner</option>
-                </select>
-              </div>
-            </div>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainModelId">Model Identifier</label>
+                  <input type="text" id="brainModelId" class="text-input" value="local" placeholder="e.g. local, gemini-2.0-flash, llama3.3">
+                </div>
 
-            <div class="toggle-card-item">
-              <div>
-                <label class="toggle-title">Reduce Motion</label>
-                <p class="field-desc">Disable complex travel and fast gestures for minimal desktop movement</p>
+                <div class="form-group flex-1">
+                  <label for="brainBaseUrl">Endpoint / Base URL</label>
+                  <input type="text" id="brainBaseUrl" class="text-input" placeholder="Default provider URL or http://127.0.0.1:11434/v1">
+                </div>
               </div>
-              <input type="checkbox" id="brainReduceMotionToggle" class="modern-toggle">
+
+              <div class="form-group">
+                <label for="brainApiKey">Provider API Key</label>
+                <div class="input-with-button">
+                  <input type="password" id="brainApiKey" class="text-input" placeholder="Enter API Key (stored securely in local Brain vault)">
+                  <button type="button" id="brainSaveKeyBtn" class="btn btn-secondary">Save Key</button>
+                </div>
+                <span class="field-hint" id="brainKeyStatusHint">Saved keys are kept encrypted in local machine storage</span>
+              </div>
+
+              <div class="toggle-card-item">
+                <div>
+                  <label class="toggle-title">Strict 100% Local Offline Mode</label>
+                  <p class="field-desc">Never route queries or speech to external cloud APIs</p>
+                </div>
+                <input type="checkbox" id="brainLocalOnlyToggle" class="modern-toggle">
+              </div>
             </div>
           </div>
 
-          <!-- Hands-Free Wake Word -->
-          <div class="settings-card">
-            <h3 class="card-subheading">Voice Wake Word Activation</h3>
-            <p class="field-desc">Hands-free voice detection for instant summoning</p>
+          <!-- Tab 3: Robot Companion & Motions -->
+          <div class="brain-tab-panel" id="brain-tab-motions">
+            <div class="settings-card">
+              <h3 class="card-subheading">Mini Agent Desktop Behavior & Robotics</h3>
+              <p class="field-desc">Autonomous desktop wandering, authentic robotic climbing, and window inspection</p>
 
-            <div class="toggle-card-item">
-              <div>
-                <label class="toggle-title">Enable Wake Word Detection</label>
-                <p class="field-desc">Trigger Brain automatically when speaking the wake phrase</p>
+              <div class="toggle-card-item">
+                <div>
+                  <label class="toggle-title">Roaming on Desktop</label>
+                  <p class="field-desc">Periodically climb onto the dock, inspect open windows, and replace text</p>
+                </div>
+                <input type="checkbox" id="brainRoamingToggle" class="modern-toggle">
               </div>
-              <input type="checkbox" id="brainWakeWordToggle" checked class="modern-toggle">
+
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainMascotPose">Default Idle Pose</label>
+                  <select id="brainMascotPose" class="select-input">
+                    <option value="stand">Standing Alert</option>
+                    <option value="fold_arms">Folded Arms Standby</option>
+                  </select>
+                </div>
+
+                <div class="form-group flex-1">
+                  <label for="brainMascotCorner">Resting Desktop Corner</label>
+                  <select id="brainMascotCorner" class="select-input">
+                    <option value="bottom_right">Bottom Right Corner</option>
+                    <option value="bottom_left">Bottom Left Corner</option>
+                    <option value="top_right">Top Right Corner</option>
+                    <option value="top_left">Top Left Corner</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="toggle-card-item">
+                <div>
+                  <label class="toggle-title">Reduce Motion</label>
+                  <p class="field-desc">Disable complex travel and fast gestures for minimal desktop movement</p>
+                </div>
+                <input type="checkbox" id="brainReduceMotionToggle" class="modern-toggle">
+              </div>
             </div>
 
-            <div class="form-group">
-              <label for="brainWakeWord">Custom Wake Phrase</label>
-              <input type="text" id="brainWakeWord" class="text-input" value="Hey Brain">
+            <!-- Interactive Robotic Action Triggers -->
+            <div class="settings-card">
+              <h3 class="card-subheading">Robotic Actions & Gestures</h3>
+              <p class="field-desc">Test realistic robotic motions manually or trigger them by voice anytime</p>
+
+              <div class="action-btn-row">
+                <button type="button" class="btn btn-secondary brain-anim-trigger" data-anim="climb_dock">
+                  <span>🧗 Climb Dock</span>
+                </button>
+                <button type="button" class="btn btn-secondary brain-anim-trigger" data-anim="inspect_window">
+                  <span>🔍 Inspect Window</span>
+                </button>
+                <button type="button" class="btn btn-secondary brain-anim-trigger" data-anim="replace_text">
+                  <span>✨ Replace Text</span>
+                </button>
+                <button type="button" class="btn btn-secondary brain-anim-trigger" data-anim="fold_arms">
+                  <span>🦾 Fold Arms</span>
+                </button>
+                <button type="button" class="btn btn-secondary brain-anim-trigger" data-anim="sensor_scan">
+                  <span>📡 Sensor Scan</span>
+                </button>
+                <button type="button" class="btn btn-secondary brain-anim-trigger" data-anim="dance">
+                  <span>💃 Dance</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- Model Storage & Memory Vault -->
-          <div class="settings-card">
-            <h3 class="card-subheading">Brain Memory & Storage</h3>
-            <p class="field-desc">Local encrypted memory vault and retention management</p>
+          <!-- Tab 4: Native Actions & Memory Vault -->
+          <div class="brain-tab-panel" id="brain-tab-actions">
+            <div class="settings-card">
+              <h3 class="card-subheading">Native Computer Automation & Inspection</h3>
+              <p class="field-desc">Voice control capabilities for desktop applications, live memory querying, and research</p>
 
-            <div class="info-box">
-              <div class="info-box-icon">🧠</div>
-              <div class="info-box-content">
-                <strong>Brain Vault Location:</strong> <code>~/.dock_twoo/brain/</code>
-                <p>Voice preferences, model profiles, conversation memory, and encryption keys are stored locally on your machine.</p>
+              <div class="info-box">
+                <div class="info-box-icon">⚡</div>
+                <div class="info-box-content">
+                  <strong>Computer Automation (CUA):</strong>
+                  <p>Say <em>"Open Visual Studio Code and enter the message Hello World"</em> or <em>"Launch Terminal"</em> to automate computer tasks natively.</p>
+                </div>
+              </div>
+
+              <div class="info-box" style="margin-top: 10px;">
+                <div class="info-box-icon">📊</div>
+                <div class="info-box-content">
+                  <strong>Live Memory & Resource Inspector:</strong>
+                  <p>Say <em>"What is my current memory usage in Visual Studio Code?"</em> to query active process RSS memory and receive verbal answers.</p>
+                </div>
+              </div>
+
+              <div class="info-box" style="margin-top: 10px;">
+                <div class="info-box-icon">🌐</div>
+                <div class="info-box-content">
+                  <strong>Google Web Research & Summaries:</strong>
+                  <p>Say <em>"Research quantum computing"</em> or <em>"Search Google for macOS Sonoma features"</em> for instant factual retrieval summarized by your active model.</p>
+                </div>
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label for="brainRetentionDays">Conversation Retention</label>
-                <select id="brainRetentionDays" class="select-input">
-                  <option value="7">7 Days</option>
-                  <option value="30" selected>30 Days</option>
-                  <option value="90">90 Days</option>
-                  <option value="0">Indefinite (No Auto-Clean)</option>
-                </select>
+            <!-- Model Storage & Memory Vault -->
+            <div class="settings-card">
+              <h3 class="card-subheading">Brain Memory & Storage</h3>
+              <p class="field-desc">Local encrypted memory vault and retention management</p>
+
+              <div class="info-box">
+                <div class="info-box-icon">🧠</div>
+                <div class="info-box-content">
+                  <strong>Brain Vault Location:</strong> <code>~/.dock_twoo/brain/</code>
+                  <p>Voice preferences, model profiles, conversation memory, and encryption keys are stored locally on your machine.</p>
+                </div>
               </div>
 
-              <div class="form-group flex-1">
-                <label for="brainRetentionMb">Max Storage Cap</label>
-                <select id="brainRetentionMb" class="select-input">
-                  <option value="512">512 MB</option>
-                  <option value="1024" selected>1024 MB (1 GB)</option>
-                  <option value="4096">4096 MB (4 GB)</option>
-                </select>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainRetentionDays">Conversation Retention</label>
+                  <select id="brainRetentionDays" class="select-input">
+                    <option value="7">7 Days</option>
+                    <option value="30" selected>30 Days</option>
+                    <option value="90">90 Days</option>
+                    <option value="0">Indefinite (No Auto-Clean)</option>
+                  </select>
+                </div>
+
+                <div class="form-group flex-1">
+                  <label for="brainRetentionMb">Max Storage Cap</label>
+                  <select id="brainRetentionMb" class="select-input">
+                    <option value="512">512 MB</option>
+                    <option value="1024" selected>1024 MB (1 GB)</option>
+                    <option value="4096">4096 MB (4 GB)</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

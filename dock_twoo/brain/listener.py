@@ -36,19 +36,35 @@ class AudioListener(QObject):
         self.wake_word = wake_word.lower().strip()
         self.is_running = False
         self.is_recording = False
-        self.noise_floor = 120.0
+        self.noise_floor = 75.0
         self.speech_frames = []
+        self.ambient_speech_frames = []
+        self.ambient_silence_count = 0
         self.silence_count = 0
         self.has_spoken = False
         self.stream = None
         self.worker_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
         self.audio_queue = queue.Queue(maxsize=40)
+        self._sf_recognizer = None
+        self._init_native_speech()
 
         if on_wake:
             self.wake_detected.connect(on_wake)
         if on_turn_complete:
             self.turn_completed.connect(on_turn_complete)
+
+    def _init_native_speech(self) -> None:
+        """Initialize Apple Speech framework for instant offline on-device speech transcription."""
+        try:
+            import Speech
+            from Foundation import NSLocale
+            loc = NSLocale.localeWithLocaleIdentifier_("en-US")
+            rec = Speech.SFSpeechRecognizer.alloc().initWithLocale_(loc)
+            if rec and rec.isAvailable():
+                self._sf_recognizer = rec
+        except Exception:
+            self._sf_recognizer = None
 
     def start(self) -> None:
         """Start background microphone monitoring."""
@@ -135,23 +151,36 @@ class AudioListener(QObject):
             return
 
         rms = math.sqrt(sum(float(x) ** 2 for x in samples) / len(samples))
-        norm_level = min(1.0, max(0.0, (rms - self.noise_floor) / 1200.0))
+        norm_level = min(1.0, max(0.0, (rms - self.noise_floor) / 1000.0))
         self.audio_level.emit(norm_level)
 
-        threshold = max(240.0, self.noise_floor * 2.2)
-        is_speech = rms > threshold
+        # Dynamic sensitivity: adapt to ambient room noise floor
+        speech_threshold = max(75.0, self.noise_floor * 1.45)
+        is_speech = rms > speech_threshold
 
         if not self.is_recording:
             # Ambient tracking / Wake word detection
             if not is_speech:
-                self.noise_floor = 0.96 * self.noise_floor + 0.04 * min(rms, 200.0)
+                self.noise_floor = 0.97 * self.noise_floor + 0.03 * min(rms, 180.0)
+                if self.ambient_speech_frames:
+                    self.ambient_silence_count += 1
+                    # When speech finishes (200ms of trailing silence), test utterance for wake word!
+                    if self.ambient_silence_count >= 2:
+                        frames = list(self.ambient_speech_frames)
+                        self.ambient_speech_frames = []
+                        self.ambient_silence_count = 0
+                        if len(frames) >= 2:
+                            threading.Thread(target=self._check_wake_word, args=(frames,), daemon=True).start()
             else:
-                self.speech_frames.append(pcm)
-                # If accumulated speech exceeds 0.8s, test for wake word
-                if len(self.speech_frames) >= 8:
-                    candidate_frames = list(self.speech_frames)
-                    self.speech_frames = []
-                    threading.Thread(target=self._check_wake_word, args=(candidate_frames,), daemon=True).start()
+                self.ambient_silence_count = 0
+                self.ambient_speech_frames.append(pcm)
+                # Keep maximum 18 frames (~1.8s) so candidate does not grow indefinitely
+                if len(self.ambient_speech_frames) > 18:
+                    self.ambient_speech_frames.pop(0)
+                # If speech has been ongoing for 8 frames, test rolling candidate too
+                if len(self.ambient_speech_frames) in (8, 14):
+                    frames = list(self.ambient_speech_frames)
+                    threading.Thread(target=self._check_wake_word, args=(frames,), daemon=True).start()
         else:
             # Active turn recording
             self.speech_frames.append(pcm)
@@ -164,18 +193,28 @@ class AudioListener(QObject):
                     # 6 consecutive 100ms silence chunks = 0.6s silence after speech -> turn complete!
                     if self.silence_count >= 6:
                         self.stop_recording()
+                elif len(self.speech_frames) > 70:
+                    # Recording started but user didn't speak within 7s -> timeout
+                    self.stop_recording()
 
     def _check_wake_word(self, frames: list[bytes]) -> None:
-        """Transcribe short candidate frame to detect wake word ('Brain')."""
-        text = self._transcribe_pcm(b"".join(frames)).lower().strip()
-        if re.search(r"\b(brain|hey\s+brain|brian)\b", text):
+        """Transcribe candidate frame to detect wake word ('Brain')."""
+        raw_pcm = b"".join(frames)
+        if len(raw_pcm) < 16000 * 2 * 0.2:
+            return
+        text = self._transcribe_pcm(raw_pcm).lower().strip()
+        if not text:
+            return
+        if re.search(r"\b(brain|hey\s+brain|brian|brin|rain|bran|drain)\b", text, re.IGNORECASE):
+            self.ambient_speech_frames = []
+            self.ambient_silence_count = 0
             self.wake_detected.emit()
 
     def _process_utterance(self, frames: list[bytes]) -> None:
         """Transcribe full user statement and emit turn_completed."""
         raw_pcm = b"".join(frames)
-        # Skip trivial clicks/blips under 0.3s
-        if len(raw_pcm) < 16000 * 2 * 0.3:
+        # Skip trivial clicks/blips under 0.25s
+        if len(raw_pcm) < 16000 * 2 * 0.25:
             return
 
         transcription = self._transcribe_pcm(raw_pcm)
@@ -183,14 +222,59 @@ class AudioListener(QObject):
             self.turn_completed.emit(transcription.strip())
 
     def _transcribe_pcm(self, pcm_data: bytes) -> str:
-        """Transcribe 16-bit 16kHz PCM audio buffer using local speech recognizer."""
+        """Transcribe 16-bit 16kHz PCM audio buffer using local on-device recognizer with fallback."""
+        if not pcm_data or len(pcm_data) < 1600:
+            return ""
+
+        # 1. On macOS: Native On-Device Speech Recognition (instant, zero network latency)
+        if self._sf_recognizer:
+            try:
+                import Speech
+                from Foundation import NSURL
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+                    temp_wav = tf.name
+                with wave.open(temp_wav, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    wf.writeframes(pcm_data)
+
+                ns_url = NSURL.fileURLWithPath_(temp_wav)
+                req = Speech.SFSpeechURLRecognitionRequest.alloc().initWithURL_(ns_url)
+                if hasattr(req, "setRequiresOnDeviceRecognition_"):
+                    req.setRequiresOnDeviceRecognition_(True)
+
+                results = []
+                done_ev = threading.Event()
+
+                def handler(result, error):
+                    if result:
+                        text = str(result.bestTranscription().formattedString())
+                        results.append(text)
+                        if result.isFinal():
+                            done_ev.set()
+                    if error:
+                        done_ev.set()
+
+                task = self._sf_recognizer.recognitionTaskWithRequest_resultHandler_(req, handler)
+                done_ev.wait(timeout=1.6)
+                try:
+                    os.unlink(temp_wav)
+                except Exception:
+                    pass
+                if results and results[-1].strip():
+                    return results[-1].strip()
+            except Exception:
+                pass
+
+        # 2. Fallback: speech_recognition (Google endpoint / Sphinx)
         try:
             import speech_recognition as sr
             recognizer = sr.Recognizer()
-            recognizer.energy_threshold = 280
+            recognizer.energy_threshold = 180
             recognizer.dynamic_energy_threshold = False
 
-            # Wrap PCM in standard WAV container in-memory
             wav_buf = io.BytesIO()
             with wave.open(wav_buf, "wb") as wav_file:
                 wav_file.setnchannels(1)
@@ -202,7 +286,6 @@ class AudioListener(QObject):
             with sr.AudioFile(wav_buf) as source:
                 audio = recognizer.record(source)
 
-            # Recognize using Google local/endpoint or Sphinx
             try:
                 return recognizer.recognize_google(audio)
             except Exception:

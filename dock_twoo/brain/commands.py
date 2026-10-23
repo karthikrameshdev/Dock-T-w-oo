@@ -176,8 +176,22 @@ def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]
         companion.travel_to_corner(dest, style=style)
         return f"{style.capitalize()}ing to the {dest}!"
 
-    # 2. Mascot Action Gestures ("wave", "nod", "spin", "turn around", "dance", "scan screen", "inspect", etc.)
+    # 2. Mascot Action Gestures
     actions_map = {
+        "climb onto the dock": "climb_dock",
+        "climb the dock": "climb_dock",
+        "climb on dock": "climb_dock",
+        "climb dock": "climb_dock",
+        "inspect window": "inspect_window",
+        "inspect the window": "inspect_window",
+        "see command": "inspect_window",
+        "replace text": "replace_text",
+        "replace the text": "replace_text",
+        "grab text": "replace_text",
+        "fold arms": "fold_arms",
+        "fold your arms": "fold_arms",
+        "fold hands": "fold_arms",
+        "sensor scan": "sensor_scan",
         "turn around": "turn_around",
         "turn to me": "turn_around",
         "wave": "wave",
@@ -196,7 +210,17 @@ def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]
     for phrase, act in actions_map.items():
         if re.search(rf"\b{re.escape(phrase)}\b", clean_text):
             companion.play_action(act)
-            if act == "wave":
+            if act == "climb_dock":
+                return "Climbing onto the dock now!"
+            elif act == "inspect_window":
+                return "Inspecting the window with laser scanner."
+            elif act == "replace_text":
+                return "Grabbing and replacing text playfully on screen!"
+            elif act == "fold_arms":
+                return "Arms folded in robotic standby."
+            elif act == "sensor_scan":
+                return "Running full desktop sensor scan."
+            elif act == "wave":
                 return "Waving hello!"
             elif act == "nod":
                 return "Understood!"

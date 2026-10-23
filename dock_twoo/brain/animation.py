@@ -7,6 +7,11 @@ ACTIONS = {
     "camera": ("Take a photo", 1.4),
     "search": ("Look for an app", 1.2),
     "climb": ("Climb", 1.4),
+    "climb_dock": ("Climb onto dock", 2.8),
+    "inspect_window": ("Inspect window", 2.2),
+    "replace_text": ("Grab & replace text", 3.0),
+    "fold_arms": ("Fold arms", 1.8),
+    "sensor_scan": ("Sensor scan", 2.0),
     "turn_around": ("Turn to user", 0.8),
     "scan_screen": ("Scan desktop", 1.8),
     "inspect_icon": ("Inspect icon", 1.5),
@@ -30,6 +35,7 @@ ACTIONS = {
 }
 
 PLAYLIST = (
+    "climb_dock", "inspect_window", "replace_text", "fold_arms", "sensor_scan",
     "wave", "turn_around", "walk", "scan_screen", "inspect_icon", "explore",
     "jump", "dance", "roll", "fly", "stretch", "peek", "nod", "point",
     "whistle", "camera", "search", "climb", "celebrate", "surprised", "ponder", "sleep",
@@ -54,6 +60,8 @@ class Pose:
     camera: float = 0
     stool: float = 0
     search: float = 0
+    scan_beam: float = 0
+    text_sparkle: float = 0
 
 
 def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
@@ -98,6 +106,80 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
             left_leg=-18 * cycle,
             right_leg=18 * cycle,
             tilt=4 * cycle,
+        )
+    if action == "climb_dock":
+        climb_cycle = math.sin(seconds * math.tau * 2.2) * fade
+        return Pose(
+            left_arm=72 + 25 * climb_cycle,
+            right_arm=-72 - 25 * climb_cycle,
+            left_leg=-24 * climb_cycle,
+            right_leg=24 * climb_cycle,
+            tilt=6 * climb_cycle,
+            bob=-6 * abs(climb_cycle),
+            head=5 * math.sin(seconds * math.tau * 1.0) * fade,
+            surprise=0.2 * fade,
+        )
+    if action == "inspect_window":
+        scan_swivel = math.sin(seconds * math.tau * 1.4) * fade
+        return Pose(
+            head=14 * scan_swivel,
+            tilt=4 * scan_swivel,
+            left_arm=35 * fade,
+            right_arm=-55 * fade,
+            bob=-2 * abs(scan_swivel),
+            scan_beam=fade,
+            surprise=0.25 * fade,
+        )
+    if action == "replace_text":
+        if p < 0.3:
+            sub = p / 0.3
+            return Pose(
+                bob=6 * math.sin(sub * math.pi),
+                tilt=4 * sub,
+                left_arm=40 * sub,
+                right_arm=-40 * sub,
+                squash=1.0 - 0.05 * math.sin(sub * math.pi),
+                text_sparkle=sub * 0.5,
+            )
+        elif p < 0.7:
+            sub = (p - 0.3) / 0.4
+            carry_wobble = math.sin(sub * math.tau * 2.0)
+            return Pose(
+                bob=-4 + 2 * carry_wobble,
+                tilt=5 * carry_wobble,
+                left_arm=55 + 10 * carry_wobble,
+                right_arm=-55 - 10 * carry_wobble,
+                text_sparkle=1.0,
+                surprise=0.3,
+            )
+        else:
+            sub = (p - 0.7) / 0.3
+            return Pose(
+                bob=-6 * math.sin(sub * math.pi),
+                left_arm=90 * math.sin(sub * math.pi),
+                right_arm=-90 * math.sin(sub * math.pi),
+                head=6 * math.sin(sub * math.tau),
+                text_sparkle=max(0.0, 1.0 - sub * 2.0),
+                surprise=0.4 * (1.0 - sub),
+            )
+    if action == "fold_arms":
+        fold_in = math.sin(math.pi * p)
+        return Pose(
+            left_arm=65 * fold_in,
+            right_arm=-65 * fold_in,
+            head=-3 * fold_in,
+            squash=1.0 + 0.02 * fold_in,
+            surprise=0.1 * fold_in,
+        )
+    if action == "sensor_scan":
+        sweep = math.sin(seconds * math.tau * 2.0) * fade
+        return Pose(
+            head=16 * sweep,
+            tilt=5 * sweep,
+            left_arm=30 * fade,
+            right_arm=-30 * fade,
+            scan_beam=fade * 0.85,
+            surprise=0.2 * fade,
         )
     if action == "turn_around":
         swivel = math.sin(p * math.pi)
@@ -210,4 +292,6 @@ def travel_point(start: tuple[int, int], destination: tuple[int, int], progress:
     y = start[1] + (destination[1] - start[1]) * eased
     if action in ("jump", "fly", "celebrate"):
         y -= math.sin(math.pi * p) * (62.0 if action == "jump" else 48.0)
+    elif action == "climb_dock":
+        y -= math.sin(math.pi * p) * 36.0
     return round(x), round(y)

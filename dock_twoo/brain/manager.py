@@ -327,6 +327,7 @@ class BrainManager(QObject):
 
     def _activate_and_notify(self, profile_id: str) -> None:
         self.profile_mgr.activate_profile(profile_id)
+        self.companion.update()
         if self.store.setting("voice_reply", True):
             active = self.profile_mgr.get_active_profile()
             self.speech.start(f"Switched profile to {active.get('name')}.")

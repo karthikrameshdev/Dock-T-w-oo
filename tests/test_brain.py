@@ -34,9 +34,26 @@ def test_animation_poses_and_interpolation():
     assert "scan_screen" in ACTIONS
     assert "inspect_icon" in ACTIONS
     assert "explore" in ACTIONS
+    assert "climb_dock" in ACTIONS
+    assert "inspect_window" in ACTIONS
+    assert "replace_text" in ACTIONS
+    assert "fold_arms" in ACTIONS
+    assert "sensor_scan" in ACTIONS
     # Stool sitting must not exist
     assert "sit" not in ACTIONS
     assert len(PLAYLIST) >= 20
+
+    # New robotic actions return valid Pose
+    pose_climb = pose_at("climb_dock", 0.5)
+    assert isinstance(pose_climb, Pose)
+
+    pose_scan = pose_at("inspect_window", 0.5)
+    assert isinstance(pose_scan, Pose)
+    assert pose_scan.scan_beam > 0
+
+    pose_text = pose_at("replace_text", 0.5)
+    assert isinstance(pose_text, Pose)
+    assert pose_text.text_sparkle > 0
 
     pose_wave = pose_at("wave", 0.5)
     assert isinstance(pose_wave, Pose)
@@ -333,6 +350,26 @@ def test_voice_commands_router(tmp_path):
     r_wave = handle_voice_command("Brain, wave", mgr)
     assert r_wave is not None
     assert "Waving" in r_wave
+
+    r_climb = handle_voice_command("Brain, climb onto the dock", mgr)
+    assert r_climb is not None
+    assert "Climbing" in r_climb
+    assert mgr.companion.action == "climb_dock"
+
+    r_inspect = handle_voice_command("Brain, inspect window", mgr)
+    assert r_inspect is not None
+    assert "Inspecting" in r_inspect
+    assert mgr.companion.action == "inspect_window"
+
+    r_replace = handle_voice_command("Brain, replace text", mgr)
+    assert r_replace is not None
+    assert "replacing text" in r_replace.lower()
+    assert mgr.companion.action == "replace_text"
+
+    r_fold = handle_voice_command("Brain, fold your arms", mgr)
+    assert r_fold is not None
+    assert "standby" in r_fold.lower()
+    assert mgr.companion.action == "fold_arms"
 
     # 3. Process Memory
     count, mb = get_process_memory_usage("python")

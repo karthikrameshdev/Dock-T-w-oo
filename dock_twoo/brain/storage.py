@@ -90,6 +90,43 @@ class BrainStore:
             for k, v in defaults.items():
                 if k not in data:
                     data[k] = v
+
+            # Normalize profile IDs and active profile
+            active = data.get("active_profile", "local")
+            if active in ("local_ollama", "ollama", "local_100"):
+                data["active_profile"] = "local"
+            elif active in ("gemini_default",):
+                data["active_profile"] = "gemini"
+            elif active in ("openrouter_default",):
+                data["active_profile"] = "openrouter"
+
+            # Normalize profile list
+            normalized_profiles = []
+            seen_ids = set()
+            for p in data.get("profiles", defaults["profiles"]):
+                pid = p.get("id", "")
+                if pid in ("local_ollama", "ollama", "local_100"):
+                    pid = "local"
+                    p["name"] = "Local"
+                elif pid in ("gemini_default",):
+                    pid = "gemini"
+                    p["name"] = "Google Gemini"
+                elif pid in ("openrouter_default",):
+                    pid = "openrouter"
+                    p["name"] = "OpenRouter"
+                p["id"] = pid
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    normalized_profiles.append(p)
+
+            # Ensure all standard profiles exist
+            for def_p in defaults["profiles"]:
+                if def_p["id"] not in seen_ids:
+                    seen_ids.add(def_p["id"])
+                    normalized_profiles.append(def_p)
+
+            data["profiles"] = normalized_profiles
+            self._save_raw(data)
             return data
         except Exception:
             return defaults
@@ -112,6 +149,9 @@ class BrainStore:
     def get_all(self) -> Dict[str, Any]:
         with self.lock:
             return dict(self._settings)
+
+    def get_all_settings(self) -> Dict[str, Any]:
+        return self.get_all()
 
     def update_settings(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:

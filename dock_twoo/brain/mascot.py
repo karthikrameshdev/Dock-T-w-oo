@@ -328,7 +328,7 @@ class Companion(QWidget):
         if not self.action:
             self.pose = self._rest_pose()
 
-        if state in ("listening", "thinking") and self.isVisible() and not self.reduced_motion:
+        if self.isVisible() and not self.reduced_motion:
             self.activity_timer.start()
         else:
             self.activity_timer.stop()
@@ -497,27 +497,35 @@ class Companion(QWidget):
         area = screen.availableGeometry()
 
         choice = random.random()
-        if choice < 0.35:
-            # Go see dock icons
+        if choice < 0.25:
+            # Go climb onto dock
             target = self._get_dock_target(area)
             action = "walk"
-            followup = lambda: self.play_action("inspect_icon")
-        elif choice < 0.70:
-            # Explore open desktop
+            followup = lambda: self.play_action("climb_dock")
+        elif choice < 0.50:
+            # Inspect window with laser beam
             target = QPoint(
-                random.randint(int(area.left()) + 40, max(int(area.left()) + 40, int(area.right()) - self.width() - 40)),
-                random.randint(int(area.top()) + 40, max(int(area.top()) + 40, int(area.bottom()) - self.height() - 40)),
+                random.randint(int(area.left()) + 80, max(int(area.left()) + 80, int(area.right()) - self.width() - 80)),
+                random.randint(int(area.top()) + 80, max(int(area.top()) + 80, int(area.bottom()) - self.height() - 80)),
             )
             action = "walk"
-            followup = lambda: self.play_action(random.choice(["scan_screen", "search", "camera", "wave"]))
+            followup = lambda: self.play_action("inspect_window")
+        elif choice < 0.72:
+            # Grab and replace text playfully
+            target = QPoint(
+                random.randint(int(area.left()) + 60, max(int(area.left()) + 60, int(area.right()) - self.width() - 60)),
+                random.randint(int(area.top()) + 60, max(int(area.top()) + 60, int(area.bottom()) - self.height() - 60)),
+            )
+            action = "walk"
+            followup = lambda: self.play_action("replace_text")
         else:
-            # Patrol omniverse
+            # Patrol omniverse with sensors, gestures, or standby pose
             target = QPoint(
                 random.randint(int(area.left()) + 30, max(int(area.left()) + 30, int(area.right()) - self.width() - 30)),
                 random.randint(int(area.top()) + 30, max(int(area.top()) + 30, int(area.bottom()) - self.height() - 30)),
             )
             action = "walk"
-            followup = lambda: self.play_action(random.choice(["explore", "ponder", "nod", "whistle"]))
+            followup = lambda: self.play_action(random.choice(["sensor_scan", "fold_arms", "wave", "camera", "nod", "whistle"]))
 
         dist = math.hypot(target.x() - self.x(), target.y() - self.y())
         if dist < 45:
@@ -717,14 +725,42 @@ class Companion(QWidget):
             painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
 
         else:  # idle
-            idle_color = QColor("#38c878")
-            light = QRadialGradient(center_pt, 0.055)
-            light.setColorAt(0, idle_color.lighter(150))
-            light.setColorAt(0.6, idle_color)
-            light.setColorAt(1, idle_color.darker(135))
-            painter.setPen(QPen(QColor("#a7f3d0"), 0.004))
-            painter.setBrush(light)
-            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            # Headlight indicates operational status of active profile
+            active_profile = self.manager.profile_mgr.get_active_profile()
+            status = (active_profile.get("status") or "active").lower()
+            if status == "not configured":
+                # Amber breathing warning glow
+                pulse = 0.5 + 0.5 * math.sin(self.phase * 0.25)
+                warn_color = QColor("#f59e0b")
+                light = QRadialGradient(center_pt, 0.055)
+                light.setColorAt(0, warn_color.lighter(150))
+                light.setColorAt(0.6, warn_color)
+                light.setColorAt(1, warn_color.darker(140))
+                painter.setPen(QPen(QColor(245, 158, 11, int(150 + 105 * pulse)), 0.004))
+                painter.setBrush(light)
+                painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            elif status == "offline":
+                # Pulsing red alert beacon
+                pulse = 0.5 + 0.5 * math.sin(self.phase * 0.35)
+                alert_color = QColor("#ef4444")
+                light = QRadialGradient(center_pt, 0.055)
+                light.setColorAt(0, alert_color.lighter(150))
+                light.setColorAt(0.6, alert_color)
+                light.setColorAt(1, alert_color.darker(140))
+                painter.setPen(QPen(QColor(239, 68, 68, int(180 + 75 * pulse)), 0.005))
+                painter.setBrush(light)
+                painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            else:
+                # Active: soft calm emerald/mint breathing glow
+                pulse = 0.75 + 0.25 * math.sin(self.phase * 0.2)
+                idle_color = QColor("#10b981")
+                light = QRadialGradient(center_pt, 0.055)
+                light.setColorAt(0, idle_color.lighter(150))
+                light.setColorAt(0.6, idle_color)
+                light.setColorAt(1, idle_color.darker(135))
+                painter.setPen(QPen(QColor(16, 185, 129, int(160 + 95 * pulse)), 0.004))
+                painter.setBrush(light)
+                painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
 
         # Center highlight dot
         painter.setPen(Qt.PenStyle.NoPen)
@@ -815,6 +851,35 @@ class Companion(QWidget):
             smile.moveTo(0.445, 0.41)
             smile.quadTo(0.5, 0.45, 0.555, 0.41)
             painter.drawPath(smile)
+
+        # Laser scanning fan beam (for inspect_window / scan_screen / sensor_scan)
+        if self.pose.scan_beam > 0.05:
+            alpha = int(140 * self.pose.scan_beam)
+            beam_grad = QRadialGradient(QPointF(0.5, 0.22), 0.7)
+            beam_grad.setColorAt(0, QColor(34, 211, 238, alpha))
+            beam_grad.setColorAt(0.6, QColor(59, 130, 246, int(alpha * 0.4)))
+            beam_grad.setColorAt(1, QColor(99, 102, 241, 0))
+            beam_path = QPainterPath()
+            beam_path.moveTo(0.46, 0.22)
+            beam_path.lineTo(0.54, 0.22)
+            beam_path.lineTo(0.88, 0.88)
+            beam_path.lineTo(0.12, 0.88)
+            beam_path.closeSubpath()
+            painter.setPen(QPen(QColor(34, 211, 238, int(alpha * 0.8)), 0.003))
+            painter.setBrush(beam_grad)
+            painter.drawPath(beam_path)
+
+        # Carried text snippet sparkles (for replace_text action)
+        if self.pose.text_sparkle > 0.05:
+            sp_alpha = int(220 * self.pose.text_sparkle)
+            text_rect = QRectF(0.32, 0.62, 0.36, 0.12)
+            painter.setPen(QPen(QColor(56, 189, 248, sp_alpha), 0.004))
+            painter.setBrush(QColor(15, 23, 42, int(sp_alpha * 0.85)))
+            painter.drawRoundedRect(text_rect, 0.02, 0.02)
+            painter.setPen(QPen(QColor(147, 197, 253, sp_alpha), 0.004))
+            painter.drawLine(QPointF(0.36, 0.66), QPointF(0.64, 0.66))
+            painter.setPen(QPen(QColor(52, 211, 153, sp_alpha), 0.004))
+            painter.drawLine(QPointF(0.36, 0.70), QPointF(0.58, 0.70))
 
         painter.restore()
 

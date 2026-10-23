@@ -905,8 +905,35 @@ async function initBrainConsole() {
   const reduceMotionToggle = document.getElementById('brainReduceMotionToggle');
   const wakeWordToggle = document.getElementById('brainWakeWordToggle');
   const wakeWordInput = document.getElementById('brainWakeWord');
-  const retentionDaysSel = document.getElementById('brainRetentionDays');
-  const retentionMbSel = document.getElementById('brainRetentionMb');
+  const pushToTalkSel = document.getElementById('brainPushToTalkKey');
+
+  // Brain Multi-Tab Switching Logic
+  document.querySelectorAll('.brain-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.brain-tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.brain-tab-panel').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+      const targetPanel = document.getElementById(btn.dataset.tab);
+      if (targetPanel) targetPanel.classList.add('active');
+    });
+  });
+
+  // Robotic Animation Buttons
+  document.querySelectorAll('.brain-anim-trigger').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const animName = btn.dataset.anim;
+      try {
+        await fetch('/api/brain/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'animation', name: animName }),
+        });
+        showToast(`Playing ${animName.replace('_', ' ')} animation`);
+      } catch (err) {
+        showToast('Animation trigger failed', true);
+      }
+    });
+  });
 
   // Quick Action Buttons
   if (summonBtn) {
@@ -997,6 +1024,7 @@ async function initBrainConsole() {
     [reduceMotionToggle, 'reduced_motion', (el) => el.checked],
     [wakeWordToggle, 'wake_word_enabled', (el) => el.checked],
     [wakeWordInput, 'wake_word', (el) => el.value],
+    [pushToTalkSel, 'push_to_talk_shortcut', (el) => el.value],
     [voiceNameSel, 'voice_name', (el) => el.value],
     [voiceStyleInput, 'voice_style', (el) => el.value],
     [mascotPoseSel, 'mascot_pose', (el) => el.value],
@@ -1051,6 +1079,7 @@ async function initBrainConsole() {
       if (reduceMotionToggle) reduceMotionToggle.checked = !!s.reduced_motion;
       if (wakeWordToggle) wakeWordToggle.checked = s.wake_word_enabled !== false;
       if (wakeWordInput && s.wake_word) wakeWordInput.value = s.wake_word;
+      if (pushToTalkSel && s.push_to_talk_shortcut) pushToTalkSel.value = s.push_to_talk_shortcut;
       if (voiceNameSel && s.voice_name) voiceNameSel.value = s.voice_name;
       if (voiceStyleInput && s.voice_style) voiceStyleInput.value = s.voice_style;
       if (mascotPoseSel && s.mascot_pose) mascotPoseSel.value = s.mascot_pose;
@@ -1069,8 +1098,9 @@ async function initBrainConsole() {
         data.profiles.forEach((p) => {
           const opt = document.createElement('option');
           opt.value = p.id;
-          const status = p.status || 'active';
-          opt.textContent = `${p.name} — ${status}`;
+          const status = (p.status || 'active').toLowerCase();
+          const displayStatus = status === 'not configured' ? 'Not Configured' : (status === 'offline' ? 'Offline' : 'Active');
+          opt.textContent = `${p.name} (${displayStatus})`;
           opt.dataset.status = status;
           if (data.active_profile && p.id === data.active_profile.id) opt.selected = true;
           activeProfileSel.appendChild(opt);
@@ -1225,6 +1255,19 @@ function initSearchableDropdowns() {
       document.querySelectorAll('.custom-dropdown-menu').forEach((m) => {
         if (m !== menu) m.style.display = 'none';
       });
+      document.querySelectorAll('.custom-dropdown-container').forEach((c) => {
+        if (c !== wrapper) c.classList.remove('open', 'drop-up');
+      });
+
+      // Flip upward if close to viewport bottom
+      const rect = wrapper.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 260 && rect.top > 260) {
+        wrapper.classList.add('drop-up');
+      } else {
+        wrapper.classList.remove('drop-up');
+      }
+
       menu.style.display = 'flex';
       wrapper.classList.add('open');
       searchBox.value = '';
@@ -1234,7 +1277,7 @@ function initSearchableDropdowns() {
 
     function closeMenu() {
       menu.style.display = 'none';
-      wrapper.classList.remove('open');
+      wrapper.classList.remove('open', 'drop-up');
     }
 
     trigger.addEventListener('click', (e) => {
@@ -1251,13 +1294,36 @@ function initSearchableDropdowns() {
     });
 
     searchBox.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
+      const items = Array.from(list.querySelectorAll('.custom-dropdown-item'));
+      const activeItem = list.querySelector('.custom-dropdown-item.keyboard-focus');
+      let idx = items.indexOf(activeItem);
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (items.length > 0) {
+          if (activeItem) activeItem.classList.remove('keyboard-focus');
+          idx = (idx + 1) % items.length;
+          items[idx].classList.add('keyboard-focus');
+          items[idx].scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (items.length > 0) {
+          if (activeItem) activeItem.classList.remove('keyboard-focus');
+          idx = idx <= 0 ? items.length - 1 : idx - 1;
+          items[idx].classList.add('keyboard-focus');
+          items[idx].scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'Escape') {
         closeMenu();
         trigger.focus();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        const first = list.querySelector('.custom-dropdown-item');
-        if (first) first.click();
+        if (activeItem) {
+          activeItem.click();
+        } else if (items.length > 0) {
+          items[0].click();
+        }
       }
     });
 
