@@ -28,7 +28,6 @@ class BrainManager(QObject):
 
     # Thread-safe dispatch signals for mascot updates from worker threads
     action_requested = Signal(str)
-    caption_requested = Signal(str, float)
     activity_requested = Signal(str)
     speech_start_requested = Signal(str)
 
@@ -51,7 +50,6 @@ class BrainManager(QObject):
         self.speech.mouth.connect(self.companion.set_mouth)
 
         self.activity_requested.connect(self.companion.set_activity)
-        self.caption_requested.connect(self.companion.caption.present)
         self.speech_start_requested.connect(self._do_speech_start)
         self.action_requested.connect(self._do_action)
 
@@ -92,7 +90,6 @@ class BrainManager(QObject):
         self.store.set_setting("companion_visible", False)
         self.stop_talking()
         self.companion.stop_motion()
-        self.companion.caption.hide()
         self.companion.hide()
         self.visibility_changed.emit(False)
 
@@ -119,10 +116,9 @@ class BrainManager(QObject):
         # Turn around to face the user immediately!
         self.companion.turn_to_user()
         self.companion.set_activity("listening")
-        self.companion.caption.present("Listening… Speak or ask Brain anything.", duration_sec=5)
         self._is_listening = True
 
-        # Simulate or initiate conversational query prompt after short pause
+        # Conversational query prompt
         def process_voice():
             time.sleep(1.8)
             if not self._is_listening:
@@ -133,8 +129,8 @@ class BrainManager(QObject):
             self.activity_requested.emit("thinking")
 
             active_profile = self.profile_mgr.get_active_profile()
-            provider = active_profile.get("provider", "gemini")
-            api_key = self.profile_mgr.get_key(provider)
+            provider = active_profile.get("provider", "local") if active_profile else "local"
+            api_key = self.profile_mgr.get_key(provider) if active_profile else ""
 
             # Generate natural conversational answer
             sample_prompts = [
@@ -148,8 +144,7 @@ class BrainManager(QObject):
                 api_key=api_key,
             )
 
-            # Present caption and speak response safely on main thread via signals
-            self.caption_requested.emit(reply, 10.0)
+            # Pure audio speech output
             if self.store.setting("voice_reply", True):
                 self.speech_start_requested.emit(reply)
             else:
@@ -166,7 +161,6 @@ class BrainManager(QObject):
             return
         self._is_listening = False
         self.speech.stop()
-        self.companion.caption.hide()
         self.companion.set_activity("idle")
 
     def show_context_menu(self, global_pos: QPoint) -> None:
@@ -272,8 +266,11 @@ class BrainManager(QObject):
 
     def _activate_and_notify(self, profile_id: str) -> None:
         self.profile_mgr.activate_profile(profile_id)
-        active = self.profile_mgr.get_active_profile()
-        self.companion.caption.present(f"Switched model profile to {active.get('name')}.", duration_sec=3)
+        if self.store.setting("voice_reply", True):
+            active = self.profile_mgr.get_active_profile()
+            self.speech.start(f"Switched profile to {active.get('name')}.")
+        else:
+            self.speech.whistle()
 
     def open_console_settings(self) -> None:
         webbrowser.open("http://127.0.0.1:28842/#brain")

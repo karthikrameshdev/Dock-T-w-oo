@@ -20,12 +20,11 @@ from PySide6.QtGui import (
     QRadialGradient,
     QRegion,
 )
+import ctypes
+import platform
+
 from PySide6.QtWidgets import (
     QApplication,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -49,84 +48,81 @@ def get_robot_image_path() -> Path:
     return Path(__file__).resolve().parent.parent / "assets" / "mascot" / "robot-base.png"
 
 
-class BrainCaption(QWidget):
-    """Floating transparent speech bubble attached above the mascot."""
+def mac_window(widget):
+    """Qt's Cocoa winId is an NSView; resolve its owning NSWindow on the GUI thread."""
+    try:
+        objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+        objc.sel_registerName.restype = ctypes.c_void_p
+        address = ctypes.cast(objc.objc_msgSend, ctypes.c_void_p).value
 
-    def __init__(self, companion: Companion):
-        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
-        self.companion = companion
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        def message(result, target, selector, *arguments):
+            types = [kind for kind, _ in arguments]
+            call = ctypes.CFUNCTYPE(result, ctypes.c_void_p, ctypes.c_void_p, *types)(
+                address
+            )
+            return call(
+                target, objc.sel_registerName(selector.encode()), *[v for _, v in arguments]
+            )
 
-        self.setFixedWidth(280)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 12)
+        window = message(ctypes.c_void_p, int(widget.winId()), "window")
+        return window, message
+    except Exception:
+        return None, None
 
-        self.bubble = QWidget(self)
-        self.bubble.setStyleSheet("""
-            QWidget {
-                background: rgba(15, 23, 42, 0.92);
-                color: #f8fafc;
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 12px;
-                font-size: 12px;
-            }
-        """)
-        b_layout = QVBoxLayout(self.bubble)
-        b_layout.setContentsMargins(12, 8, 12, 10)
-        b_layout.setSpacing(4)
 
-        top_row = QHBoxLayout()
-        title = QLabel("🧠 Brain", self.bubble)
-        title.setStyleSheet("font-weight: 600; color: #60a5fa; font-size: 11px;")
-        top_row.addWidget(title)
-        top_row.addStretch()
-
-        btn_close = QPushButton("×", self.bubble)
-        btn_close.setFixedSize(18, 18)
-        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_close.setStyleSheet("QPushButton { border: none; color: #94a3b8; font-size: 14px; font-weight: bold; } QPushButton:hover { color: #ffffff; }")
-        btn_close.clicked.connect(self.hide)
-        top_row.addWidget(btn_close)
-        b_layout.addLayout(top_row)
-
-        self.text_lbl = QLabel(self.bubble)
-        self.text_lbl.setWordWrap(True)
-        self.text_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self.text_lbl.setStyleSheet("color: #e2e8f0; line-height: 1.4;")
-        b_layout.addWidget(self.text_lbl)
-
-        layout.addWidget(self.bubble)
-
-        self.auto_hide_timer = QTimer(self)
-        self.auto_hide_timer.setSingleShot(True)
-        self.auto_hide_timer.timeout.connect(self.hide)
-
-    def present(self, text: str, duration_sec: int = 7) -> None:
-        if not text:
-            self.hide()
+def pin_native(widget):
+    """Keep the mini agent permanently floating above all windows across desktop spaces without auto-hiding."""
+    if widget.windowHandle() is None or widget.windowHandle().screen() is None:
+        return
+    if QApplication.platformName() == "offscreen":
+        return
+    if platform.system() == "Darwin":
+        window, message = mac_window(widget)
+        if not window or not message:
             return
-        self.auto_hide_timer.stop()
-        self.text_lbl.setText(text[:300] + ("…" if len(text) > 300 else ""))
-        self.adjustSize()
-        self.anchor()
-        self.show()
-        if duration_sec > 0:
-            self.auto_hide_timer.start(duration_sec * 1000)
-
-    def anchor(self) -> None:
-        screen = QApplication.screenAt(self.companion.geometry().center()) or QApplication.primaryScreen()
-        area = screen.availableGeometry()
-        c_geom = self.companion.geometry()
-
-        x = c_geom.center().x() - (self.width() // 2)
-        y = c_geom.top() - self.height() - 6
-
-        # Keep on screen
-        x = max(area.left() + 10, min(x, area.right() - self.width() - 10))
-        if y < area.top() + 10:
-            y = c_geom.bottom() + 6  # flip below if off top
-        self.move(x, y)
+        # Status-window level (25) keeps this above ordinary apps.
+        message(None, window, "setLevel:", (ctypes.c_long, 25))
+        behavior = message(ctypes.c_ulong, window, "collectionBehavior")
+        # Exclude from transient behavior
+        behavior &= ~((1 << 1) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 9))
+        # CanJoinAllSpaces (1) | Stationary (1<<4) | IgnoresCycle (1<<6) | FullScreenAuxiliary (1<<8)
+        behavior |= 1 | (1 << 4) | (1 << 6) | (1 << 8)
+        try:
+            ver_major = int(platform.mac_ver()[0].split(".")[0])
+            if ver_major >= 13:
+                behavior &= ~((1 << 16) | (1 << 17))
+                behavior |= 1 << 18  # CanJoinAllApplications: floating system overlay
+        except Exception:
+            pass
+        message(None, window, "setCollectionBehavior:", (ctypes.c_ulong, behavior))
+        # Never hide on deactivate or when clicking outside on desktop/apps
+        message(None, window, "setHidesOnDeactivate:", (ctypes.c_bool, False))
+        message(None, window, "setCanHide:", (ctypes.c_bool, False))
+    elif platform.system() == "Windows":
+        try:
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            user32.SetWindowPos.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_uint,
+            ]
+            user32.SetWindowPos.restype = ctypes.c_bool
+            user32.SetWindowPos(
+                int(widget.winId()),
+                ctypes.c_void_p(-1),
+                0,
+                0,
+                0,
+                0,
+                0x0001 | 0x0002 | 0x0010,  # NOSIZE | NOMOVE | NOACTIVATE
+            )
+        except Exception:
+            pass
 
 
 class Companion(QWidget):
@@ -134,16 +130,24 @@ class Companion(QWidget):
     
     Rendered with native transparent cutouts, animated gestures, visor light states,
     gaze tracking, speech mouth synchronization, and desktop positioning.
-    No bottom icons or mic buttons are attached.
+    Audio-based companion with no text chat bubbles or bottom toolbar buttons.
+    Pinned on desktop to remain floating and never auto-hide when clicking outside.
     """
 
     def __init__(self, manager: BrainManager, parent: Optional[QWidget] = None):
-        super().__init__(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
+        super().__init__(parent)
         self.manager = manager
         self.store = manager.store
 
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setWindowFlags(
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowDoesNotAcceptFocus
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
         self.setWindowTitle("Brain Mini Agent")
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
@@ -204,8 +208,6 @@ class Companion(QWidget):
         self.setMask(self.input_region)
         self.setMouseTracking(True)
 
-        self.caption = BrainCaption(self)
-
         # Timers
         self.blink_timer = QTimer(self)
         self.blink_timer.setSingleShot(True)
@@ -229,6 +231,10 @@ class Companion(QWidget):
         # Restore saved desktop placement
         self._restore_placement()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        pin_native(self)
+
     def _restore_placement(self) -> None:
         screen = QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRectF(0, 0, 1920, 1080)
@@ -248,6 +254,7 @@ class Companion(QWidget):
             default_y = int(area.bottom()) - self.height() - 50
             self.move(default_x, default_y)
         self.home = self.pos()
+        pin_native(self)
 
     def _build_body_parts(self) -> Dict[str, QPainterPath]:
         def polygon(points):
@@ -732,7 +739,6 @@ class Companion(QWidget):
             if (curr_pos - self.press_point).manhattanLength() >= QApplication.startDragDistance():
                 self.moved = True
             self.move(curr_pos - self.origin)
-            self.caption.anchor()
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

@@ -16,7 +16,7 @@ class ProfileManager:
         return list(self.store.setting("profiles", []))
 
     def get_active_profile(self) -> Dict[str, Any]:
-        active_id = self.store.setting("active_profile", "gemini_default")
+        active_id = self.store.setting("active_profile", "local_first")
         profiles = self.get_profiles()
         for p in profiles:
             if p.get("id") == active_id:
@@ -24,13 +24,13 @@ class ProfileManager:
         if profiles:
             return dict(profiles[0])
         return {
-            "id": "gemini_default",
-            "name": "Google Gemini",
-            "provider": "gemini",
-            "model": "gemini-2.0-flash",
-            "voice_model": "gemini-2.0-flash",
-            "local_only": False,
-            "voice": {"voice_name": "Aoede", "robot_voice": 0.0},
+            "id": "local_first",
+            "name": "Local Resident (100% Offline)",
+            "provider": "local",
+            "model": "local",
+            "voice_model": "local",
+            "local_only": True,
+            "voice": {"voice_name": "System", "robot_voice": 0.0},
         }
 
     def activate_profile(self, profile_id: str) -> bool:

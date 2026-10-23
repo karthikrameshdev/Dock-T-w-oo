@@ -106,8 +106,9 @@ def test_brain_storage_and_profiles(tmp_path):
 
 
 def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
-    """Verify Companion mascot window creation, transparent layout, and absence of bottom toolbars."""
+    """Verify Companion mascot window creation, transparent layout, native pinning, and absence of bottom toolbars or captions."""
     from dock_twoo.brain import manager
+    from dock_twoo.brain.mascot import pin_native
     test_store = BrainStore(data_dir=tmp_path)
     
     # Create test manager instance
@@ -117,7 +118,6 @@ def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
 
     companion = mgr.companion
     qtbot.addWidget(companion)
-    qtbot.addWidget(companion.caption)
 
     # 1. Window geometry and flags
     assert companion.width() == 264
@@ -125,13 +125,22 @@ def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
     flags = companion.windowFlags()
     assert bool(flags & Qt.WindowType.FramelessWindowHint) is True
     assert bool(flags & Qt.WindowType.WindowStaysOnTopHint) is True
+    assert bool(flags & Qt.WindowType.WindowDoesNotAcceptFocus) is True
 
-    # 2. Strict check: Mascot has NO bottom controls/toolbar buttons (mic, chat, console, settings)
+    # 2. Window attributes for desktop permanence (never auto-hide on click outside)
+    assert companion.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground) is True
+    assert companion.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating) is True
+    assert companion.testAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow) is True
+
+    # Pin native execution
+    pin_native(companion)
+
+    # 3. Strict check: Companion has NO text captions and NO bottom controls/toolbar buttons
+    assert not hasattr(companion, "caption")
     child_buttons = companion.findChildren(QPushButton)
-    # The Companion window itself has 0 QPushButton child controls (only transparent canvas)
     assert len(child_buttons) == 0
 
-    # 3. Test activity states
+    # 4. Test activity states
     companion.set_activity("listening")
     assert companion.activity == "listening"
 
@@ -143,14 +152,6 @@ def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
 
     companion.set_activity("idle")
     assert companion.activity == "idle"
-
-    # 4. Speech caption bubble
-    companion.caption.present("Hello from Brain Mini Agent!", duration_sec=5)
-    assert companion.caption.isVisible() is True
-    assert companion.caption.text_lbl.text() == "Hello from Brain Mini Agent!"
-
-    companion.caption.hide()
-    assert companion.caption.isVisible() is False
 
     # 5. Turn to user animation
     companion.turn_to_user()
@@ -182,7 +183,6 @@ def test_brain_manager_lifecycle(qtbot, qapp, tmp_path):
     mgr = BrainManager.get_instance()
     mgr.store = BrainStore(data_dir=tmp_path)
     qtbot.addWidget(mgr.companion)
-    qtbot.addWidget(mgr.companion.caption)
 
     # Initially hide
     mgr.hide_mini_agent()
@@ -224,7 +224,6 @@ def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeyp
 
     brain_mgr = dock.brain_manager
     qtbot.addWidget(brain_mgr.companion)
-    qtbot.addWidget(brain_mgr.companion.caption)
 
     # Ensure mini agent is initially hidden and drawer is closed
     brain_mgr.hide_mini_agent()
@@ -263,3 +262,31 @@ def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeyp
     # Clean up
     brain_mgr.hide_mini_agent()
     dock.close()
+
+
+def test_local_first_conversational_engine():
+    """Verify local-first spoken answers without API key prompt."""
+    from dock_twoo.brain.providers import query_llm, answer_locally, get_system_summary
+
+    # 1. System summary pulls machine status
+    summary = get_system_summary()
+    assert isinstance(summary, str)
+    assert len(summary) > 10
+
+    # 2. Querying without any API key or profile returns natural voice response
+    reply_system = query_llm("How is my system?", profile=None, api_key="")
+    assert "API key" not in reply_system
+    assert "Error" not in reply_system
+
+    reply_time = query_llm("What time is it?", profile=None, api_key="")
+    assert "currently" in reply_time.lower() or "pm" in reply_time.lower() or "am" in reply_time.lower()
+    assert "API key" not in reply_time
+
+    reply_hello = query_llm("Hello!", profile=None, api_key="")
+    assert len(reply_hello) > 5
+    assert "API key" not in reply_hello
+
+    reply_dock = query_llm("What can you do?", profile=None, api_key="")
+    assert "Brain" in reply_dock or "desktop" in reply_dock
+    assert "API key" not in reply_dock
+
