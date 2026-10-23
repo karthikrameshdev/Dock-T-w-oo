@@ -44,6 +44,12 @@ class DockTooltip(QWidget):
 
     @classmethod
     def get_instance(cls, config: Optional[DockConfig] = None) -> DockTooltip:
+        try:
+            if cls._instance is not None:
+                _ = cls._instance.isVisible()
+        except (RuntimeError, Exception):
+            cls._instance = None
+
         if cls._instance is None:
             cls._instance = DockTooltip(config)
         elif config:

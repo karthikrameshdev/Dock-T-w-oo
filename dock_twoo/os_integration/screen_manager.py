@@ -176,13 +176,14 @@ class ScreenManager:
         dock_geom: QRect,
         config: DockConfig,
         target_center_y: Optional[int] = None,
+        actual_width: Optional[int] = None,
     ) -> QRect:
         """Compute attached window geometry pinned right next to the dock."""
         avail = ScreenManager.get_available_geometry(config.screen_index)
         gap = config.attached_gap
+        width = max(config.attached_width, actual_width or 0)
 
         if config.edge in ("top", "bottom"):
-            width = config.attached_width
             height = min(config.attached_height, avail.height() - dock_geom.height() - gap - 40)
 
             if config.edge == "top":
@@ -198,7 +199,6 @@ class ScreenManager:
             return QRect(x, y, width, height)
 
         # Vertical edges: "left" or "right"
-        width = config.attached_width
         height = dock_geom.height()
 
         if config.edge == "left":
@@ -208,7 +208,8 @@ class ScreenManager:
 
         y = dock_geom.top()
         y = max(avail.top() + 4, min(y, avail.bottom() - height - 4))
-        x = max(avail.left() + 4, min(x, avail.right() - width - 4))
+        max_x = (dock_geom.left() - width - gap) if config.edge == "right" else (avail.right() - width - 4)
+        x = max(avail.left() + 4, min(x, max_x))
         return QRect(x, y, width, height)
 
     @staticmethod
@@ -243,6 +244,8 @@ class ScreenManager:
     @staticmethod
     def apply_window_levels(widget: QWidget) -> None:
         """Apply native platform window levels so overlay stays visible and never closes or hides automatically."""
+        if QGuiApplication.platformName() == "offscreen":
+            return
         system = platform.system().lower()
         if system == "darwin":
             try:

@@ -546,6 +546,8 @@ class NotesAppWidget(BaseAttachedApp):
         meta_row.setSpacing(8)
 
         self.editor_meta_lbl = QLabel("", self.editor_page)
+        self.editor_meta_lbl.setWordWrap(True)
+        self.editor_meta_lbl.setMinimumWidth(0)
         self.editor_meta_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
         self.editor_meta_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.7); background: transparent;")
         meta_row.addWidget(self.editor_meta_lbl, 1)

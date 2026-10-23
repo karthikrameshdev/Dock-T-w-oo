@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -35,6 +36,34 @@ from dock_twoo.os_integration.screen_manager import MacOSCursorHelper, ScreenMan
 from dock_twoo.ui.attached_window import AttachedWindow
 from dock_twoo.ui.dock_icon import DockIconButton
 from dock_twoo.ui.tooltip import DockTooltip
+
+
+class DockScrollArea(QScrollArea):
+    """Seamless scroll area for dock icons supporting horizontal or vertical wheel and swipe scrolling."""
+
+    def __init__(self, is_horizontal: bool, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.is_horizontal = is_horizontal
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet("background: transparent; border: none;")
+
+    def wheelEvent(self, event) -> None:
+        if self.is_horizontal:
+            delta_x = event.angleDelta().x()
+            delta_y = event.angleDelta().y()
+            delta = delta_x if abs(delta_x) > abs(delta_y) else delta_y
+            hbar = self.horizontalScrollBar()
+            if hbar:
+                hbar.setValue(hbar.value() - delta)
+            event.accept()
+        else:
+            vbar = self.verticalScrollBar()
+            if vbar:
+                vbar.setValue(vbar.value() - event.angleDelta().y())
+            event.accept()
 
 
 class DockLogoWidget(QWidget):
@@ -165,6 +194,7 @@ class DockWindow(QWidget):
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.config_manager = config_manager
         self.config = config_manager.config
+        self._current_edge: str = self.config.edge
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self._icon_buttons: Dict[str, DockIconButton] = {}
@@ -178,7 +208,6 @@ class DockWindow(QWidget):
         # Margin Manager ensures other application windows stop at Dock 2 and don't slide behind it
         self.margin_manager = DesktopMarginManager(self.config, self)
 
-        # Auto-hide mechanics: smooth slide, inactive hover tracking, and edge hover detection
         self._is_collapsed: bool = False
         self._anim: Optional[QPropertyAnimation] = None
         self._has_hand_cursor_override: bool = False
@@ -201,9 +230,16 @@ class DockWindow(QWidget):
     def _setup_ui(self) -> None:
         self._icon_buttons.clear()
 
-        # Cleanly detach old layout if changing edge orientations
+        # Cleanly detach and remove old layout items and child widgets
         if self.layout() is not None:
-            QWidget().setLayout(self.layout())
+            old_layout = self.layout()
+            while old_layout.count():
+                item = old_layout.takeAt(0)
+                w = item.widget()
+                if w is not None:
+                    w.setParent(None)
+                    w.deleteLater()
+            QWidget().setLayout(old_layout)
 
         glow_pad = 8 if self.config.glow_enabled else 2
         is_horizontal = self.config.edge in ("top", "bottom")
@@ -237,19 +273,27 @@ class DockWindow(QWidget):
         self.top_divider = ThreeDotsDivider(self.config, self)
         self.main_layout.addWidget(self.top_divider)
 
-        # 3. Top/Left apps container (Notes is the first app icon)
-        self.icons_container = QWidget(self)
+        # 3. Scrollable app icons container (Notes is the first app icon)
+        self.scroll_area = DockScrollArea(is_horizontal=is_horizontal, parent=self)
+        self.scroll_area.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Preferred,
+        )
+
+        self.icons_container = QWidget(self.scroll_area)
+        self.icons_container.setStyleSheet("background: transparent;")
         if is_horizontal:
             self.icons_layout = QHBoxLayout(self.icons_container)
-            self.icons_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+            self.icons_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         else:
             self.icons_layout = QVBoxLayout(self.icons_container)
-            self.icons_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            self.icons_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         self.icons_layout.setContentsMargins(0, 0, 0, 0)
         self.icons_layout.setSpacing(self.config.icon_spacing)
 
         self._populate_icons()
-        self.main_layout.addWidget(self.icons_container)
+        self.scroll_area.setWidget(self.icons_container)
+        self.main_layout.addWidget(self.scroll_area)
 
         # 4. Flexible stretch spacer in the middle
         self.main_layout.addStretch(1)
@@ -438,6 +482,10 @@ class DockWindow(QWidget):
             hovered_btn: Optional[DockIconButton] = None
             for btn in self._icon_buttons.values():
                 if btn.isVisible() and btn.rect().contains(btn.mapFromGlobal(cursor)):
+                    if hasattr(self, "scroll_area") and btn.parent() == self.icons_container:
+                        vp = self.scroll_area.viewport()
+                        if not vp.rect().contains(vp.mapFromGlobal(cursor)):
+                            continue
                     hovered_btn = btn
                     break
 
@@ -534,7 +582,8 @@ class DockWindow(QWidget):
 
     def on_config_updated(self, config: DockConfig) -> None:
         """Handle live configuration updates from Web Console."""
-        edge_changed = (self.config.edge != config.edge)
+        edge_changed = (self._current_edge != config.edge)
+        self._current_edge = config.edge
         self.config = config
         IconManager.get_instance().clear_cache()
         if hasattr(self, "margin_manager"):
@@ -545,8 +594,10 @@ class DockWindow(QWidget):
         else:
             for btn in self._icon_buttons.values():
                 btn.update_config(config)
-            self.logo_widget.update_config(config)
-            self.top_divider.update_config(config)
+            if hasattr(self, "logo_widget"):
+                self.logo_widget.update_config(config)
+            if hasattr(self, "top_divider"):
+                self.top_divider.update_config(config)
 
         self.attached_window.update_config(config)
         self.reposition_dock()
@@ -607,6 +658,16 @@ class DockWindow(QWidget):
 
     def closeEvent(self, event) -> None:
         self._restore_default_cursor()
-        self.attached_window.close()
-        DockTooltip.get_instance().close()
+        if hasattr(self, "margin_manager"):
+            self.margin_manager.stop()
+        if hasattr(self, "_edge_sensor_timer"):
+            self._edge_sensor_timer.stop()
+        if hasattr(self, "_hide_countdown_timer"):
+            self._hide_countdown_timer.stop()
+        if hasattr(self, "attached_window"):
+            self.attached_window.close()
+        try:
+            DockTooltip.get_instance().close()
+        except Exception:
+            pass
         super().closeEvent(event)

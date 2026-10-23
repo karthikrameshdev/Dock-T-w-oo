@@ -37,6 +37,13 @@ class BrainManager(QObject):
 
     @classmethod
     def get_instance(cls) -> BrainManager:
+        try:
+            import shiboken6
+            if cls._instance is not None and not shiboken6.isValid(cls._instance):
+                cls._instance = None
+        except Exception:
+            pass
+
         if cls._instance is None:
             cls._instance = BrainManager()
         return cls._instance

@@ -52,7 +52,6 @@ def test_dock_tooltip(qtbot, qapp):
     btn.show()
 
     tooltip = DockTooltip.get_instance(cfg)
-    qtbot.addWidget(tooltip)
 
     tooltip.show_for_widget(btn, "Vault", edge="right")
     assert tooltip.isVisible()
@@ -61,6 +60,7 @@ def test_dock_tooltip(qtbot, qapp):
 
     tooltip.hide_tooltip()
     assert tooltip.isHidden()
+    btn.close()
 
 
 def test_attached_window_switching_apps(qtbot, qapp):
@@ -89,6 +89,7 @@ def test_attached_window_switching_apps(qtbot, qapp):
     # Hide window
     window.hide_window()
     assert not window.isVisible()
+    window.close()
 
 
 def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
@@ -312,4 +313,39 @@ def test_notes_app_two_page_design_and_state_persistence(qtbot, qapp, tmp_path, 
 
     notes_widget.close()
     reopened_widget.close()
+
+
+def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
+    """Verify automatic orientation switching (horizontal/vertical) and attached window overlap prevention."""
+    cfg_path = tmp_path / "config.json"
+    cfg_mgr = ConfigManager(config_path=cfg_path)
+    cfg_mgr.update({"edge": "right", "attached_gap": 12, "attached_width": 390})
+
+    dock = DockWindow(cfg_mgr)
+    qtbot.addWidget(dock)
+    qtbot.addWidget(dock.attached_window)
+
+    # 1. Right edge: vertical layout
+    assert dock.layout().__class__.__name__ == "QVBoxLayout"
+    assert dock.scroll_area.is_horizontal is False
+
+    dock_geom = dock.geometry()
+    dock.attached_window.show_app("vault", dock_geom, 300)
+    att_geom = dock.attached_window.geometry()
+    # Pinned to the left of the dock with gap
+    assert dock_geom.left() - att_geom.right() >= 12
+
+    # 2. Switch edge to 'top': automatic horizontal layout & scrolling
+    cfg_mgr.update({"edge": "top"})
+    assert dock.layout().__class__.__name__ == "QHBoxLayout"
+    assert dock.scroll_area.is_horizontal is True
+
+    dock_geom = dock.geometry()
+    dock.attached_window.show_app("vault", dock_geom, 500)
+    att_geom = dock.attached_window.geometry()
+    # Pinned below the dock with gap
+    assert att_geom.top() - dock_geom.bottom() >= 12
+
+    dock.close()
+
 

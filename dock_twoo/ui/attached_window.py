@@ -88,15 +88,40 @@ class AttachedWindow(QWidget):
         self.stack.setCurrentWidget(widget)
         self._current_app_id = app_id
 
+        # Determine effective required width based on child contents
+        msh = self.minimumSizeHint()
+        eff_width = max(self.config.attached_width, msh.width())
+
         # Calculate attached geometry pinned beside dock
         target_geom = ScreenManager.calculate_attached_geometry(
             dock_geom=dock_geom,
             config=self.config,
             target_center_y=icon_center_y,
+            actual_width=eff_width,
         )
 
         self.setGeometry(target_geom)
         self.show()
+
+        # Extra safety guarantee: verify that right/bottom edges never breach dock boundary
+        gap = self.config.attached_gap
+        if self.config.edge == "right":
+            max_right = dock_geom.left() - gap
+            if self.geometry().right() > max_right or self.x() + self.width() > max_right:
+                self.move(max_right - self.width(), self.y())
+        elif self.config.edge == "left":
+            min_left = dock_geom.right() + gap
+            if self.geometry().left() < min_left:
+                self.move(min_left, self.y())
+        elif self.config.edge == "top":
+            min_top = dock_geom.bottom() + gap
+            if self.geometry().top() < min_top:
+                self.move(self.x(), min_top)
+        elif self.config.edge == "bottom":
+            max_bottom = dock_geom.top() - gap
+            if self.geometry().bottom() > max_bottom or self.y() + self.height() > max_bottom:
+                self.move(self.x(), max_bottom - self.height())
+
         self.raise_()
         ScreenManager.apply_window_levels(self)
         self.activateWindow()
