@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from dock_twoo.config import ConfigManager, DockAppItem, DockConfig
 from dock_twoo.icons import IconManager
 from dock_twoo.os_integration.margin_manager import DesktopMarginManager
-from dock_twoo.os_integration.screen_manager import ScreenManager
+from dock_twoo.os_integration.screen_manager import MacOSCursorHelper, ScreenManager
 from dock_twoo.ui.attached_window import AttachedWindow
 from dock_twoo.ui.dock_icon import DockIconButton
 from dock_twoo.ui.tooltip import DockTooltip
@@ -355,6 +355,7 @@ class DockWindow(QWidget):
         if not self._has_hand_cursor_override:
             QGuiApplication.setOverrideCursor(Qt.CursorShape.PointingHandCursor)
             self._has_hand_cursor_override = True
+        MacOSCursorHelper.set_pointing_hand()
 
     def _restore_default_cursor(self) -> None:
         """Safely restore the default system arrow cursor."""
@@ -362,6 +363,7 @@ class DockWindow(QWidget):
             while QGuiApplication.overrideCursor() is not None:
                 QGuiApplication.restoreOverrideCursor()
             self._has_hand_cursor_override = False
+        MacOSCursorHelper.set_arrow()
 
     def _is_mouse_over(self) -> bool:
         cursor = QCursor.pos()

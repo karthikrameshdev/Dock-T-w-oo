@@ -46,7 +46,7 @@ def test_dock_icon_button(qtbot, qapp):
 
 def test_dock_tooltip(qtbot, qapp):
     cfg = DockConfig(edge="right")
-    item = DockAppItem(id="vault", name="Vault", icon="vault", tooltip="Vault T(w)oo")
+    item = DockAppItem(id="vault", name="Vault", icon="vault", tooltip="Vault")
     btn = DockIconButton(item, cfg)
     qtbot.addWidget(btn)
     btn.show()
@@ -54,9 +54,9 @@ def test_dock_tooltip(qtbot, qapp):
     tooltip = DockTooltip.get_instance(cfg)
     qtbot.addWidget(tooltip)
 
-    tooltip.show_for_widget(btn, "Vault T(w)oo - Password Manager", edge="right")
+    tooltip.show_for_widget(btn, "Vault", edge="right")
     assert tooltip.isVisible()
-    assert tooltip._text == "Vault T(w)oo - Password Manager"
+    assert tooltip._text == "Vault"
     assert tooltip._pointer_edge == "right"
 
     tooltip.hide_tooltip()

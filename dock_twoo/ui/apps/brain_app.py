@@ -1,4 +1,4 @@
-"""Brain T(w)oo voice-assisted agent attached drawer."""
+"""Brain voice-assisted agent attached drawer."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from dock_twoo.ui.theme import get_theme_tokens
 
 
 class VoiceOrbWidget(QWidget):
-    """Pulsing voice visualizer orb for Brain T(w)oo agent."""
+    """Pulsing voice visualizer orb for Brain agent."""
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -95,10 +95,10 @@ class VoiceOrbWidget(QWidget):
 
 
 class BrainAppWidget(BaseAttachedApp):
-    """Brain T(w)oo voice-assisted desktop agent interface."""
+    """Brain voice-assisted desktop agent interface."""
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
-        super().__init__("brain", "Brain T(w)oo — Voice Assistant", config, parent)
+        super().__init__("brain", "Brain", config, parent)
         self._init_brain_ui()
 
     def _init_brain_ui(self) -> None:
@@ -224,7 +224,7 @@ class BrainAppWidget(BaseAttachedApp):
         self.prompt_input.clear()
 
         # Simulate agent reply
-        QTimer.singleShot(600, lambda: self._add_message("assistant", f"I received your request: '{text}'. Processing with Brain T(w)oo engine."))
+        QTimer.singleShot(600, lambda: self._add_message("assistant", f"I received your request: '{text}'. Processing with Brain engine."))
 
     def _add_message(self, sender: str, text: str) -> None:
         msg_box = QWidget(self.chat_container)

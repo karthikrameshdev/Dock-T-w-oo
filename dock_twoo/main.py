@@ -29,8 +29,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--edge",
-        choices=["left", "right"],
-        help="Force dock screen edge ('left' or 'right')",
+        choices=["left", "right", "top", "bottom"],
+        help="Force dock screen edge ('left', 'right', 'top', or 'bottom')",
     )
     parser.add_argument(
         "--theme",

@@ -12,6 +12,93 @@ from PySide6.QtWidgets import QWidget
 from dock_twoo.config import DockConfig
 
 
+class MacOSCursorHelper:
+    """Native macOS cursor manipulator that bypasses inactive-application restrictions."""
+
+    _initialized = False
+    _pointing_hand = None
+    _arrow = None
+    _msg_send = None
+    _msg_send_void = None
+    _set_sel = None
+
+    @classmethod
+    def init(cls) -> None:
+        if cls._initialized or platform.system().lower() != "darwin":
+            return
+        try:
+            import ctypes
+
+            cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+            cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+            objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+            objc.objc_getClass.restype = ctypes.c_void_p
+            objc.sel_registerName.restype = ctypes.c_void_p
+
+            # 1. Enable background cursor manipulation in macOS WindowServer
+            def_conn = getattr(cg, "_CGSDefaultConnection", None) or getattr(cg, "CGSMainConnectionID", None)
+            if def_conn:
+                def_conn.restype = ctypes.c_int
+                cid = def_conn()
+                set_prop = getattr(cg, "CGSSetConnectionProperty", None)
+                if set_prop:
+                    set_prop.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]
+                    set_prop.restype = ctypes.c_int
+
+                    cfstr = cf.CFStringCreateWithCString
+                    cfstr.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+                    cfstr.restype = ctypes.c_void_p
+
+                    cfrelease = cf.CFRelease
+                    cfrelease.argtypes = [ctypes.c_void_p]
+
+                    kCFBooleanTrue = ctypes.c_void_p.in_dll(cf, "kCFBooleanTrue")
+
+                    key = cfstr(None, b"SetsCursorInBackground", 0x08000100)
+                    set_prop(cid, cid, key, kCFBooleanTrue)
+                    cfrelease(key)
+
+            # 2. Cache NSCursor pointers and selectors
+            NSCursor = objc.objc_getClass(b"NSCursor")
+            if NSCursor:
+                pointingHand_sel = objc.sel_registerName(b"pointingHandCursor")
+                arrow_sel = objc.sel_registerName(b"arrowCursor")
+                cls._set_sel = objc.sel_registerName(b"set")
+
+                cls._msg_send = ctypes.cast(
+                    objc.objc_msgSend,
+                    ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p),
+                )
+                cls._msg_send_void = ctypes.cast(
+                    objc.objc_msgSend,
+                    ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p),
+                )
+
+                cls._pointing_hand = cls._msg_send(NSCursor, pointingHand_sel)
+                cls._arrow = cls._msg_send(NSCursor, arrow_sel)
+                cls._initialized = True
+        except Exception:
+            pass
+
+    @classmethod
+    def set_pointing_hand(cls) -> None:
+        cls.init()
+        if cls._initialized and cls._pointing_hand and cls._set_sel and cls._msg_send_void:
+            try:
+                cls._msg_send_void(cls._pointing_hand, cls._set_sel)
+            except Exception:
+                pass
+
+    @classmethod
+    def set_arrow(cls) -> None:
+        cls.init()
+        if cls._initialized and cls._arrow and cls._set_sel and cls._msg_send_void:
+            try:
+                cls._msg_send_void(cls._arrow, cls._set_sel)
+            except Exception:
+                pass
+
+
 class ScreenManager:
     """Calculates screen edge positions and clamps windows to safe areas."""
 
@@ -148,6 +235,8 @@ class ScreenManager:
                     objc.objc_msgSend,
                     ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long),
                 )(app_ptr, setActivationPolicy, 1)
+
+                MacOSCursorHelper.init()
             except Exception as e:
                 print(f"[Dock T(w)oo] Failed to set macOS accessory policy: {e}")
 
@@ -158,6 +247,8 @@ class ScreenManager:
         if system == "darwin":
             try:
                 import ctypes
+
+                MacOSCursorHelper.init()
 
                 objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
                 objc.objc_getClass.restype = ctypes.c_void_p

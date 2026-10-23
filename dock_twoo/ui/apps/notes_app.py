@@ -1,4 +1,4 @@
-"""Notes T(w)oo application attached drawer."""
+"""Notes application attached drawer."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ class NotesAppWidget(BaseAttachedApp):
     """Notes attached drawer with fast search, creation, and markdown note editing."""
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
-        super().__init__("notes", "Notes T(w)oo", config, parent)
+        super().__init__("notes", "Notes", config, parent)
         self.notes_dir = get_default_config_dir() / "notes"
         self.notes_dir.mkdir(parents=True, exist_ok=True)
         self._current_note_id: Optional[str] = None
@@ -174,8 +174,8 @@ class NotesAppWidget(BaseAttachedApp):
     def _create_welcome_note(self) -> None:
         welcome_file = self.notes_dir / "welcome.json"
         data = {
-            "title": "Welcome to Notes T(w)oo",
-            "body": "Welcome to your persistent secondary dock companion!\n\n- Write fast thoughts and meeting notes\n- Auto-saves instantly as you type\n- Clean dark & light mode styling\n- Dock T(w)oo attached drawer stays beside your dock.",
+            "title": "Welcome to Notes",
+            "body": "Welcome to your persistent secondary dock companion!\n\n- Write fast thoughts and meeting notes\n- Auto-saves instantly as you type\n- Clean dark & light mode styling\n- Attached drawer stays beside your dock.",
         }
         with open(welcome_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)

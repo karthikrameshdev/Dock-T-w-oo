@@ -79,7 +79,7 @@ def get_default_apps() -> List[DockAppItem]:
             id="notes",
             name="Notes",
             icon="notes",
-            tooltip="Notes T(w)oo - Scratchpad",
+            tooltip="Notes",
             enabled=True,
             is_bottom=False,
         ),
@@ -96,7 +96,7 @@ def get_default_apps() -> List[DockAppItem]:
             id="settings",
             name="Settings",
             icon="sliders",
-            tooltip="Console & Settings (Click to open)",
+            tooltip="Settings",
             enabled=True,
             is_bottom=True,
             action_type="url",
@@ -114,7 +114,7 @@ def get_default_apps() -> List[DockAppItem]:
             id="brain",
             name="Brain",
             icon="brain",
-            tooltip="Brain T(w)oo — Voice Assistant",
+            tooltip="Brain",
             enabled=True,
             is_bottom=True,
         ),
@@ -267,6 +267,25 @@ class ConfigManager(QObject):
                     app_ids = {a.id for a in self._config.apps}
                     if "launcher" in app_ids or "vault" in app_ids or "calendar" in app_ids or len(self._config.apps) > 5:
                         self._config.apps = get_default_apps()
+                        self.save()
+                    # Clean up any legacy tooltips or names containing "T(w)oo" for inner apps
+                    needs_save = False
+                    for app in self._config.apps:
+                        if "T(w)oo" in app.tooltip or "T(w)oo" in app.name:
+                            needs_save = True
+                            if app.id == "notes":
+                                app.name = "Notes"
+                                app.tooltip = "Notes"
+                            elif app.id == "brain":
+                                app.name = "Brain"
+                                app.tooltip = "Brain"
+                            elif app.id == "settings":
+                                app.name = "Settings"
+                                app.tooltip = "Settings"
+                            else:
+                                app.name = app.name.replace(" T(w)oo", "").replace("T(w)oo", "").strip()
+                                app.tooltip = app.tooltip.replace(" T(w)oo", "").replace("T(w)oo", "").strip()
+                    if needs_save:
                         self.save()
                     return self._config
             except Exception as e:
