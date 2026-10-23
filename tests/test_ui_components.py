@@ -223,3 +223,93 @@ def test_dock_tray_icon_non_modal_menu(qtbot, qapp, tmp_path):
     tray.menu.hide()
     dock.close()
 
+
+def test_notes_app_two_page_design_and_state_persistence(qtbot, qapp, tmp_path, monkeypatch):
+    notes_dir = tmp_path / "notes"
+    notes_dir.mkdir(parents=True, exist_ok=True)
+
+    # Monkeypatch get_default_config_dir to use isolated test tmp_path
+    from dock_twoo.ui.apps import notes_app
+    monkeypatch.setattr(notes_app, "get_default_config_dir", lambda: tmp_path)
+
+    cfg = DockConfig()
+    notes_widget = NotesAppWidget(cfg)
+    qtbot.addWidget(notes_widget)
+    notes_widget.show()
+
+    # 1. Initial State: Page 0 (List View), back button hidden
+    assert notes_widget.stack.currentIndex() == 0
+    assert notes_widget.back_btn.isHidden() is True
+    assert notes_widget.title_label.text() == "Notes"
+
+    # 2. Create a new note -> switches to Page 1 (Editor View)
+    notes_widget._create_new_note()
+    assert notes_widget.stack.currentIndex() == 1
+    assert notes_widget.back_btn.isVisible() is True
+    assert notes_widget.title_label.text() == "Note"
+
+    note_id = notes_widget._current_note_id
+    assert note_id is not None
+
+    # Edit note content
+    notes_widget.title_input.setText("Secret Roadmap")
+    notes_widget.body_edit.setText("This contains quantum computing blueprints.")
+
+    # 3. Back button returns to Page 0 (List View)
+    qtbot.mouseClick(notes_widget.back_btn, Qt.MouseButton.LeftButton)
+    assert notes_widget.stack.currentIndex() == 0
+    assert notes_widget.back_btn.isHidden() is True
+    assert notes_widget.title_label.text() == "Notes"
+
+    # Card updated in list view
+    assert note_id in notes_widget._note_cards
+    card = notes_widget._note_cards[note_id]
+    assert card.title_lbl.text() == "Secret Roadmap"
+    assert "quantum computing blueprints" in card.snippet_lbl.text()
+
+    # 4. Search by title
+    notes_widget.search_input.setText("Secret")
+    assert card.isVisible() is True
+
+    # 5. Search by body content
+    notes_widget.search_input.setText("blueprints")
+    assert card.isVisible() is True
+
+    # Search non-matching query
+    notes_widget.search_input.setText("non_existent_text_xyz")
+    assert card.isVisible() is False
+    assert notes_widget.empty_label.isVisible() is True
+
+    notes_widget.search_input.clear()
+    assert card.isVisible() is True
+
+    # 6. Click card to open Editor View (Page 1)
+    card.clicked.emit(note_id)
+    assert notes_widget.stack.currentIndex() == 1
+    assert notes_widget.back_btn.isVisible() is True
+    assert notes_widget.title_input.text() == "Secret Roadmap"
+
+    # 7. State persistence: reopen widget preserves opened note
+    reopened_widget = NotesAppWidget(cfg)
+    qtbot.addWidget(reopened_widget)
+    reopened_widget.show()
+
+    # Preserves previous state: opened directly into the note!
+    assert reopened_widget.stack.currentIndex() == 1
+    assert reopened_widget.back_btn.isVisible() is True
+    assert reopened_widget._current_note_id == note_id
+    assert reopened_widget.title_input.text() == "Secret Roadmap"
+
+    # 8. Delete note from editor view (monkeypatch QMessageBox to return Yes)
+    from PySide6.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
+
+    notes_widget._on_editor_delete_clicked()
+    # After deleting currently opened note, navigates back to list view
+    assert notes_widget.stack.currentIndex() == 0
+    assert notes_widget.back_btn.isHidden() is True
+    assert (notes_dir / f"{note_id}.json").exists() is False
+
+    notes_widget.close()
+    reopened_widget.close()
+
