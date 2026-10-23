@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dock T(w)oo — Settings Console</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/svg+xml" href="/icons/logo.svg">
+</head>
+<body class="theme-dark">
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14.5 3.5 L7.5 10.5 L10.5 13.5 L7 17 L10 20 L13.5 16.5 L16.5 19.5 L20.5 15.5 L14.5 9.5 L17.5 6.5 Z" />
+            <path d="M5 6 L10 3 L12 5 L7 8 Z" opacity="0.85" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Dock T(w)oo</h1>
+          <span class="badge">Console v0.1.0</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="resetBtn" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          Reset Defaults
+        </button>
+        <button id="saveBtn" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save Changes
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="console-body">
+      <!-- Settings Column -->
+      <section class="settings-column">
+
+        <!-- Edge Placement & Dimensions -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon">📍</div>
+            <div>
+              <h2>Screen Edge & Placement</h2>
+              <p>Position the dock along desktop edges with smart alignment</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="form-group">
+              <label>Dock Screen Edge</label>
+              <div class="segmented-control" id="edgeControl">
+                <button type="button" class="segment" data-edge="left">Left Edge</button>
+                <button type="button" class="segment active" data-edge="right">Right Edge (Default)</button>
+              </div>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="dockWidth">Dock Width</label>
+                <span class="value-badge" id="dockWidthVal">60 px</span>
+              </div>
+              <input type="range" id="dockWidth" min="48" max="96" value="60">
+            </div>
+
+            <div class="form-group">
+              <label>Dock Height Mode</label>
+              <div class="segmented-control" id="heightModeControl">
+                <button type="button" class="segment active" data-mode="fill">Full Height (Pill)</button>
+                <button type="button" class="segment" data-mode="auto">Auto-Fit Content</button>
+                <button type="button" class="segment" data-mode="fixed">Fixed</button>
+              </div>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="dockRadius">Dock Corner Radius</label>
+                <span class="value-badge" id="dockRadiusVal">28 px</span>
+              </div>
+              <input type="range" id="dockRadius" min="14" max="40" value="28">
+            </div>
+          </div>
+        </div>
+
+        <!-- Icon Sizing & Sizing Standardization -->
+        <div class="card highlight-card">
+          <div class="card-header">
+            <div class="card-icon">📐</div>
+            <div>
+              <h2>Standardized Icon Sizing</h2>
+              <p>All icons scale uniformly with precision vector SVG rendering</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="iconSize">Standard Icon Size</label>
+                <span class="value-badge accent" id="iconSizeVal">20 px</span>
+              </div>
+              <input type="range" id="iconSize" min="16" max="40" value="20">
+              <span class="help-text">Controls standard icon dimensions across all dock items</span>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="iconSpacing">Icon Vertical Spacing</label>
+                <span class="value-badge" id="iconSpacingVal">10 px</span>
+              </div>
+              <input type="range" id="iconSpacing" min="4" max="24" value="10">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="iconOpacity">Icon Opacity</label>
+                <span class="value-badge" id="iconOpacityVal">90%</span>
+              </div>
+              <input type="range" id="iconOpacity" min="20" max="100" value="90">
+            </div>
+          </div>
+        </div>
+
+        <!-- Theme, Colors & Opacity -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon">🎨</div>
+            <div>
+              <h2>Theme & Color Customization</h2>
+              <p>Dynamic SVG tinting and acrylic backdrop styling</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="form-group">
+              <label>Theme Style</label>
+              <div class="segmented-control" id="themeControl">
+                <button type="button" class="segment active" data-theme="system">System Default</button>
+                <button type="button" class="segment" data-theme="dark">Dark Theme</button>
+                <button type="button" class="segment" data-theme="light">Light Theme</button>
+              </div>
+            </div>
+
+            <div class="color-row">
+              <div class="color-item">
+                <label for="dockBgColor">Dock Background</label>
+                <div class="color-picker-wrap">
+                  <input type="color" id="dockBgColor" value="#111113">
+                  <span class="color-hex" id="dockBgHex">#111113</span>
+                </div>
+              </div>
+              <div class="color-item">
+                <label for="iconColor">Icon Tint</label>
+                <div class="color-picker-wrap">
+                  <input type="color" id="iconColor" value="#D8D8DF">
+                  <span class="color-hex" id="iconColorHex">#D8D8DF</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="dockOpacity">Dock Opacity</label>
+                <span class="value-badge" id="dockOpacityVal">94%</span>
+              </div>
+              <input type="range" id="dockOpacity" min="20" max="100" value="94">
+            </div>
+          </div>
+        </div>
+
+        <!-- Attached Window Geometry -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon">🪟</div>
+            <div>
+              <h2>Attached App Window Settings</h2>
+              <p>Dimensions and margins for the seamless companion drawers</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="attachedWidth">Window Width</label>
+                <span class="value-badge" id="attachedWidthVal">390 px</span>
+              </div>
+              <input type="range" id="attachedWidth" min="280" max="640" value="390">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="attachedHeight">Window Height</label>
+                <span class="value-badge" id="attachedHeightVal">620 px</span>
+              </div>
+              <input type="range" id="attachedHeight" min="360" max="840" value="620">
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-header">
+                <label for="attachedGap">Dock Gap Spacing</label>
+                <span class="value-badge" id="attachedGapVal">12 px</span>
+              </div>
+              <input type="range" id="attachedGap" min="4" max="32" value="12">
+            </div>
+          </div>
+        </div>
+
+        <!-- Apps Toggle & Ordering -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon">📱</div>
+            <div>
+              <h2>Dock Applications</h2>
+              <p>Enable, disable, and manage apps shown in Dock T(w)oo</p>
+            </div>
+          </div>
+          <div class="card-content">
+            <div id="appsList" class="apps-list">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Live Preview Column -->
+      <aside class="preview-column">
+        <div class="preview-sticky">
+          <div class="preview-card">
+            <div class="preview-header">
+              <span class="live-dot"></span>
+              <h3>Live Desktop Mockup</h3>
+              <span class="preview-edge-label" id="previewEdgeLabel">Right Edge</span>
+            </div>
+            
+            <div class="desktop-mockup" id="desktopMockup">
+              <!-- Simulated Desktop Screen Area -->
+              <div class="mockup-screen-bg"></div>
+
+              <!-- Attached Window Mockup -->
+              <div class="mockup-attached" id="mockupAttached">
+                <div class="mockup-attached-header">
+                  <div class="mockup-attached-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                  </div>
+                  <span class="mockup-attached-title">Vault T(w)oo</span>
+                  <div class="mockup-close-dot"></div>
+                </div>
+                <div class="mockup-attached-body">
+                  <div class="mockup-search-bar">Search credentials...</div>
+                  <div class="mockup-card">Stripe API Secret</div>
+                  <div class="mockup-card">GitHub Personal Token</div>
+                  <div class="mockup-card">AWS Production Access</div>
+                </div>
+              </div>
+
+              <!-- Pointed Callout Tooltip Mockup -->
+              <div class="mockup-tooltip" id="mockupTooltip">
+                <span>Vault T(w)oo</span>
+                <div class="tooltip-pointer"></div>
+              </div>
+
+              <!-- Dock Mockup -->
+              <div class="mockup-dock" id="mockupDock">
+                <!-- Window traffic lights -->
+                <div class="mockup-dots">
+                  <span class="dot red"></span>
+                  <span class="dot yellow"></span>
+                  <span class="dot green"></span>
+                </div>
+
+                <!-- Brand logo -->
+                <div class="mockup-logo">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14.5 3.5 L7.5 10.5 L10.5 13.5 L7 17 L10 20 L13.5 16.5 L16.5 19.5 L20.5 15.5 L14.5 9.5 L17.5 6.5 Z" />
+                  </svg>
+                </div>
+
+                <!-- Icons container -->
+                <div class="mockup-icons" id="mockupIcons">
+                  <!-- Populated dynamically via JS -->
+                </div>
+
+                <!-- Bottom spacer & Brain agent -->
+                <div class="mockup-bottom">
+                  <div class="mockup-more">···</div>
+                  <div class="mockup-avatar" title="Brain Voice Agent">
+                    <div class="avatar-ring"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="preview-footer">
+              <span class="hint">Pointer tooltip automatically points directly to hovered dock icon</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast">Settings applied successfully</div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
