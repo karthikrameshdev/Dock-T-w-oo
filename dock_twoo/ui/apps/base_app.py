@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import SIGNAL, Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -45,8 +45,31 @@ class BaseAttachedApp(QWidget):
         # Header bar
         self.header_layout = QHBoxLayout()
         self.header_layout.setContentsMargins(0, 0, 0, 0)
+        self.header_layout.setSpacing(8)
 
         tokens = get_theme_tokens(self.config)
+
+        # Back button (for inner subviews e.g. Form view)
+        self.back_btn = QPushButton("←", self)
+        self.back_btn.setFixedSize(26, 26)
+        self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.back_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: rgba(255, 255, 255, 0.08);
+                color: {tokens.text_primary};
+                border: 1px solid {tokens.border_color};
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: rgba(255, 255, 255, 0.16);
+            }}
+            """
+        )
+        self.back_btn.setVisible(False)
+        self.header_layout.addWidget(self.back_btn)
 
         self.title_label = QLabel(self.title_text, self)
         self.title_label.setFont(create_app_font(self.config, size=tokens.font_size_title, weight=QFont.Weight.DemiBold))
@@ -87,6 +110,15 @@ class BaseAttachedApp(QWidget):
         self.content_layout.setSpacing(10)
 
         self.main_layout.addWidget(self.content_widget, 1)
+
+    def set_nav_header(self, title: str, show_back: bool = False, on_back=None) -> None:
+        """Update top bar title and back button cleanly without double headers."""
+        self.title_label.setText(title)
+        self.back_btn.setVisible(show_back)
+        if self.back_btn.receivers(SIGNAL("clicked()")) > 0:
+            self.back_btn.clicked.disconnect()
+        if on_back:
+            self.back_btn.clicked.connect(on_back)
 
     def update_config(self, config: DockConfig) -> None:
         self.config = config

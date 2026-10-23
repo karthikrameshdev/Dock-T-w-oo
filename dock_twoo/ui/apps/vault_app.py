@@ -435,94 +435,36 @@ class VaultFormWidget(QWidget):
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(6)
+        self.main_layout.setSpacing(0)
 
         self._build_form()
 
     def _build_form(self) -> None:
         tokens = get_theme_tokens(self.config)
 
-        # 1. Navigation Header
-        nav_header = QHBoxLayout()
-        nav_header.setContentsMargins(0, 0, 0, 2)
-        nav_header.setSpacing(8)
-
-        btn_back = QPushButton("← Back", self)
-        btn_back.setFixedHeight(28)
-        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_back.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: rgba(255, 255, 255, 0.08);
-                color: {tokens.text_primary};
-                border: 1px solid {tokens.border_color};
-                border-radius: 6px;
-                padding: 2px 10px;
-                font-size: 11px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background: rgba(255, 255, 255, 0.16);
-            }}
-            """
-        )
-        btn_back.clicked.connect(self.cancel_requested.emit)
-        nav_header.addWidget(btn_back)
-
-        title_text = "Edit Credential" if self.editing_item else "New Credential"
-        hdr_lbl = QLabel(title_text, self)
-        hdr_lbl.setFont(create_app_font(self.config, size=13, weight=QFont.Weight.DemiBold))
-        hdr_lbl.setStyleSheet(f"color: {tokens.text_primary}; background: transparent; border: none;")
-        nav_header.addWidget(hdr_lbl)
-
-        nav_header.addStretch()
-
-        if self.editing_item:
-            btn_hdr_del = QPushButton("🗑️", self)
-            btn_hdr_del.setFixedSize(28, 28)
-            btn_hdr_del.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_hdr_del.setToolTip("Delete this credential")
-            btn_hdr_del.setStyleSheet(
-                """
-                QPushButton {
-                    background: rgba(239, 68, 68, 0.15);
-                    color: #f87171;
-                    border: 1px solid rgba(239, 68, 68, 0.3);
-                    border-radius: 6px;
-                    font-size: 12px;
-                }
-                QPushButton:hover {
-                    background: #ef4444;
-                    color: #ffffff;
-                }
-                """
-            )
-            btn_hdr_del.clicked.connect(lambda: self.delete_requested.emit(self.editing_item.id))
-            nav_header.addWidget(btn_hdr_del)
-
-        self.main_layout.addLayout(nav_header)
-
-        # 2. Main Scroll Area for form body (smooth scrolling on any window height)
+        # 1. Main Scroll Area for form body (smooth scrolling on any window height)
         self.scroll = QScrollArea(self)
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.scroll.setStyleSheet(
             f"""
-            QScrollArea {{
+            QScrollArea, QScrollArea > QWidget > QWidget {{
                 border: none;
                 background: transparent;
             }}
             {get_scrollbar_style(tokens)}
             """
         )
+        self.scroll.viewport().setStyleSheet("background: transparent; border: none;")
 
         self.form_body = QWidget(self.scroll)
+        self.form_body.setStyleSheet("background: transparent;")
         body_layout = QVBoxLayout(self.form_body)
-        body_layout.setContentsMargins(0, 4, 4, 4)
+        body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(10)
 
-        # Helper to group label and input tightly
+        # Helper to group label and input tightly with 0 margin
         def make_field(label_str: str, input_widget: QWidget) -> QWidget:
             box = QWidget(self.form_body)
             b_layout = QVBoxLayout(box)
@@ -608,12 +550,13 @@ class VaultFormWidget(QWidget):
 
         # Field 4: Custom Fields (Scrollable naturally if keys grow!)
         custom_hdr_row = QHBoxLayout()
-        custom_hdr_row.setContentsMargins(0, 4, 0, 0)
+        custom_hdr_row.setContentsMargins(0, 4, 0, 2)
         custom_hdr_row.setSpacing(6)
+        custom_hdr_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         lbl_custom = QLabel("Custom Fields", self.form_body)
         lbl_custom.setStyleSheet(self._label_style(tokens))
-        custom_hdr_row.addWidget(lbl_custom)
+        custom_hdr_row.addWidget(lbl_custom, 0, Qt.AlignmentFlag.AlignVCenter)
 
         custom_hdr_row.addStretch()
 
@@ -638,7 +581,7 @@ class VaultFormWidget(QWidget):
             """
         )
         btn_add_field.clicked.connect(lambda: self._add_custom_row("", ""))
-        custom_hdr_row.addWidget(btn_add_field)
+        custom_hdr_row.addWidget(btn_add_field, 0, Qt.AlignmentFlag.AlignVCenter)
 
         body_layout.addLayout(custom_hdr_row)
 
@@ -656,18 +599,37 @@ class VaultFormWidget(QWidget):
 
         body_layout.addWidget(self.custom_container)
 
-        # Add vertical stretch to pin everything snugly at top (NO WASTED GAPS!)
-        body_layout.addStretch(1)
-
-        self.scroll.setWidget(self.form_body)
-        self.main_layout.addWidget(self.scroll, 1)
-
-        # 3. Bottom Action Bar (Pinned cleanly at the bottom)
+        # 3. Action Buttons placed directly with the form
+        body_layout.addSpacing(6)
         actions_bar = QHBoxLayout()
-        actions_bar.setContentsMargins(0, 6, 0, 0)
+        actions_bar.setContentsMargins(0, 0, 0, 0)
         actions_bar.setSpacing(10)
 
-        btn_cancel = QPushButton("Cancel", self)
+        if self.editing_item:
+            btn_del = QPushButton("Delete", self.form_body)
+            btn_del.setFixedHeight(34)
+            btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_del.setStyleSheet(
+                """
+                QPushButton {
+                    background: rgba(239, 68, 68, 0.15);
+                    color: #f87171;
+                    border: 1px solid rgba(239, 68, 68, 0.35);
+                    border-radius: 6px;
+                    padding: 6px 14px;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background: #ef4444;
+                    color: #ffffff;
+                }
+                """
+            )
+            btn_del.clicked.connect(lambda: self.delete_requested.emit(self.editing_item.id))
+            actions_bar.addWidget(btn_del)
+
+        btn_cancel = QPushButton("Cancel", self.form_body)
         btn_cancel.setFixedHeight(34)
         btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_cancel.setStyleSheet(
@@ -690,7 +652,7 @@ class VaultFormWidget(QWidget):
         btn_cancel.clicked.connect(self.cancel_requested.emit)
         actions_bar.addWidget(btn_cancel, 1)
 
-        btn_save = QPushButton("Save Credential", self)
+        btn_save = QPushButton("Save Credential", self.form_body)
         btn_save.setFixedHeight(34)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_save.setStyleSheet(
@@ -710,9 +672,15 @@ class VaultFormWidget(QWidget):
             """
         )
         btn_save.clicked.connect(self._save)
-        actions_bar.addWidget(btn_save, 2)
+        actions_bar.addWidget(btn_save, 1 if self.editing_item else 2)
 
-        self.main_layout.addLayout(actions_bar)
+        body_layout.addLayout(actions_bar)
+
+        # Add vertical stretch to pin everything snugly (clean space below form)
+        body_layout.addStretch(1)
+
+        self.scroll.setWidget(self.form_body)
+        self.main_layout.addWidget(self.scroll, 1)
 
     def _show_empty_custom_hint(self) -> None:
         tokens = get_theme_tokens(self.config)
@@ -1109,6 +1077,7 @@ class VaultAppWidget(BaseAttachedApp):
 
     def _open_new_form(self) -> None:
         self._clear_active_form()
+        self.set_nav_header("New Credential", show_back=True, on_back=self._close_form)
         self._active_form = VaultFormWidget(self.config, item=None, parent=self.form_host)
         self._active_form.save_requested.connect(self._on_form_save)
         self._active_form.cancel_requested.connect(self._close_form)
@@ -1119,6 +1088,7 @@ class VaultAppWidget(BaseAttachedApp):
 
     def _open_edit_form(self, item: VaultItem) -> None:
         self._clear_active_form()
+        self.set_nav_header("Edit Credential", show_back=True, on_back=self._close_form)
         self._active_form = VaultFormWidget(self.config, item=item, parent=self.form_host)
         self._active_form.save_requested.connect(self._on_form_save)
         self._active_form.cancel_requested.connect(self._close_form)
@@ -1131,6 +1101,7 @@ class VaultAppWidget(BaseAttachedApp):
 
     def _close_form(self) -> None:
         self._clear_active_form()
+        self.set_nav_header("Vault", show_back=False)
         self.toolbar_widget.setVisible(True)
         self.view_stack.setCurrentIndex(0)
 
