@@ -419,6 +419,7 @@ class VaultFormWidget(QWidget):
 
     save_requested = Signal(VaultItem)
     cancel_requested = Signal()
+    delete_requested = Signal(str)
 
     def __init__(
         self,
@@ -430,10 +431,11 @@ class VaultFormWidget(QWidget):
         self.config = config
         self.editing_item = item
         self.custom_rows: List[tuple[QLineEdit, QLineEdit, QWidget]] = []
+        self.empty_custom_lbl: Optional[QLabel] = None
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(8)
+        self.main_layout.setSpacing(6)
 
         self._build_form()
 
@@ -442,10 +444,11 @@ class VaultFormWidget(QWidget):
 
         # 1. Navigation Header
         nav_header = QHBoxLayout()
-        nav_header.setContentsMargins(0, 0, 0, 0)
+        nav_header.setContentsMargins(0, 0, 0, 2)
         nav_header.setSpacing(8)
 
         btn_back = QPushButton("← Back", self)
+        btn_back.setFixedHeight(28)
         btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_back.setStyleSheet(
             f"""
@@ -454,7 +457,7 @@ class VaultFormWidget(QWidget):
                 color: {tokens.text_primary};
                 border: 1px solid {tokens.border_color};
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 2px 10px;
                 font-size: 11px;
                 font-weight: 600;
             }}
@@ -473,6 +476,30 @@ class VaultFormWidget(QWidget):
         nav_header.addWidget(hdr_lbl)
 
         nav_header.addStretch()
+
+        if self.editing_item:
+            btn_hdr_del = QPushButton("🗑️", self)
+            btn_hdr_del.setFixedSize(28, 28)
+            btn_hdr_del.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_hdr_del.setToolTip("Delete this credential")
+            btn_hdr_del.setStyleSheet(
+                """
+                QPushButton {
+                    background: rgba(239, 68, 68, 0.15);
+                    color: #f87171;
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                    border-radius: 6px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background: #ef4444;
+                    color: #ffffff;
+                }
+                """
+            )
+            btn_hdr_del.clicked.connect(lambda: self.delete_requested.emit(self.editing_item.id))
+            nav_header.addWidget(btn_hdr_del)
+
         self.main_layout.addLayout(nav_header)
 
         # 2. Main Scroll Area for form body (smooth scrolling on any window height)
@@ -492,60 +519,64 @@ class VaultFormWidget(QWidget):
 
         self.form_body = QWidget(self.scroll)
         body_layout = QVBoxLayout(self.form_body)
-        body_layout.setContentsMargins(0, 2, 4, 4)
-        body_layout.setSpacing(8)
+        body_layout.setContentsMargins(0, 4, 4, 4)
+        body_layout.setSpacing(10)
+
+        # Helper to group label and input tightly
+        def make_field(label_str: str, input_widget: QWidget) -> QWidget:
+            box = QWidget(self.form_body)
+            b_layout = QVBoxLayout(box)
+            b_layout.setContentsMargins(0, 0, 0, 0)
+            b_layout.setSpacing(4)
+            lbl = QLabel(label_str, box)
+            lbl.setStyleSheet(self._label_style(tokens))
+            b_layout.addWidget(lbl)
+            b_layout.addWidget(input_widget)
+            return box
 
         # Field 1: Title
-        lbl_title = QLabel("Title *", self.form_body)
-        lbl_title.setStyleSheet(self._label_style(tokens))
         self.edit_title = QLineEdit(self.form_body)
-        self.edit_title.setFixedHeight(30)
+        self.edit_title.setFixedHeight(32)
         self.edit_title.setPlaceholderText("e.g. AWS Production, GitHub Enterprise, Google")
         self.edit_title.setStyleSheet(self._input_style(tokens))
         if self.editing_item:
             self.edit_title.setText(self.editing_item.title)
-        body_layout.addWidget(lbl_title)
-        body_layout.addWidget(self.edit_title)
+        body_layout.addWidget(make_field("Title *", self.edit_title))
 
         # Field 2: Username / Email
-        lbl_user = QLabel("Username / Email", self.form_body)
-        lbl_user.setStyleSheet(self._label_style(tokens))
         self.edit_username = QLineEdit(self.form_body)
-        self.edit_username.setFixedHeight(30)
+        self.edit_username.setFixedHeight(32)
         self.edit_username.setPlaceholderText("e.g. admin@company.com or username")
         self.edit_username.setStyleSheet(self._input_style(tokens))
         if self.editing_item:
             self.edit_username.setText(self.editing_item.username)
-        body_layout.addWidget(lbl_user)
-        body_layout.addWidget(self.edit_username)
+        body_layout.addWidget(make_field("Username / Email", self.edit_username))
 
         # Field 3: Password + Generator
-        lbl_pass = QLabel("Password *", self.form_body)
-        lbl_pass.setStyleSheet(self._label_style(tokens))
-        body_layout.addWidget(lbl_pass)
+        pass_row = QWidget(self.form_body)
+        pass_layout = QHBoxLayout(pass_row)
+        pass_layout.setContentsMargins(0, 0, 0, 0)
+        pass_layout.setSpacing(6)
 
-        pass_row = QHBoxLayout()
-        pass_row.setSpacing(6)
-
-        self.edit_password = QLineEdit(self.form_body)
-        self.edit_password.setFixedHeight(30)
+        self.edit_password = QLineEdit(pass_row)
+        self.edit_password.setFixedHeight(32)
         self.edit_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.edit_password.setPlaceholderText("Enter or generate password")
         self.edit_password.setStyleSheet(self._input_style(tokens))
         if self.editing_item:
             self.edit_password.setText(self.editing_item.password)
-        pass_row.addWidget(self.edit_password, 1)
+        pass_layout.addWidget(self.edit_password, 1)
 
-        self.btn_eye = QPushButton("👁️", self.form_body)
-        self.btn_eye.setFixedSize(30, 30)
+        self.btn_eye = QPushButton("👁️", pass_row)
+        self.btn_eye.setFixedSize(32, 32)
         self.btn_eye.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_eye.setToolTip("Show / hide password")
         self.btn_eye.setStyleSheet(self._action_btn_style(tokens))
         self.btn_eye.clicked.connect(self._toggle_pass_echo)
-        pass_row.addWidget(self.btn_eye)
+        pass_layout.addWidget(self.btn_eye)
 
-        btn_gen = QPushButton("⚡ Gen", self.form_body)
-        btn_gen.setFixedHeight(30)
+        btn_gen = QPushButton("⚡ Gen", pass_row)
+        btn_gen.setFixedSize(62, 32)
         btn_gen.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_gen.setToolTip("Generate secure 20-character password")
         btn_gen.setStyleSheet(
@@ -555,7 +586,7 @@ class VaultFormWidget(QWidget):
                 color: #34d399;
                 border: 1px solid rgba(16, 185, 129, 0.35);
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 4px 8px;
                 font-size: 11px;
                 font-weight: 600;
             }
@@ -566,18 +597,18 @@ class VaultFormWidget(QWidget):
             """
         )
         btn_gen.clicked.connect(self._generate_password)
-        pass_row.addWidget(btn_gen)
+        pass_layout.addWidget(btn_gen)
 
-        body_layout.addLayout(pass_row)
+        body_layout.addWidget(make_field("Password *", pass_row))
 
         self.gen_notice = QLabel(self.form_body)
-        self.gen_notice.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 500; background: transparent; border: none;")
+        self.gen_notice.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 500; background: transparent; border: none; padding-left: 2px;")
         self.gen_notice.setVisible(False)
         body_layout.addWidget(self.gen_notice)
 
-        # Field 4: Custom Fields (Scrollable if keys grow more!)
+        # Field 4: Custom Fields (Scrollable naturally if keys grow!)
         custom_hdr_row = QHBoxLayout()
-        custom_hdr_row.setContentsMargins(0, 2, 0, 0)
+        custom_hdr_row.setContentsMargins(0, 4, 0, 0)
         custom_hdr_row.setSpacing(6)
 
         lbl_custom = QLabel("Custom Fields", self.form_body)
@@ -587,19 +618,22 @@ class VaultFormWidget(QWidget):
         custom_hdr_row.addStretch()
 
         btn_add_field = QPushButton("+ Add Field", self.form_body)
+        btn_add_field.setFixedHeight(24)
         btn_add_field.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_add_field.setStyleSheet(
             f"""
             QPushButton {{
-                background: transparent;
-                color: {tokens.accent_color};
-                border: none;
-                padding: 2px 6px;
+                background: rgba(59, 130, 246, 0.15);
+                color: #60a5fa;
+                border: 1px solid rgba(59, 130, 246, 0.35);
+                border-radius: 5px;
+                padding: 2px 10px;
                 font-size: 11px;
                 font-weight: 600;
             }}
             QPushButton:hover {{
-                text-decoration: underline;
+                background: #3b82f6;
+                color: #ffffff;
             }}
             """
         )
@@ -608,55 +642,38 @@ class VaultFormWidget(QWidget):
 
         body_layout.addLayout(custom_hdr_row)
 
-        # Dedicated Scroll Area for Custom Fields
-        self.custom_scroll = QScrollArea(self.form_body)
-        self.custom_scroll.setWidgetResizable(True)
-        self.custom_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.custom_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.custom_scroll.setMaximumHeight(160)
-        self.custom_scroll.setStyleSheet(
-            f"""
-            QScrollArea {{
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                background: rgba(0, 0, 0, 0.15);
-            }}
-            {get_scrollbar_style(tokens)}
-            """
-        )
-
-        self.custom_container = QWidget(self.custom_scroll)
+        # Custom Fields Rows Container
+        self.custom_container = QWidget(self.form_body)
         self.custom_layout = QVBoxLayout(self.custom_container)
-        self.custom_layout.setContentsMargins(6, 6, 6, 6)
-        self.custom_layout.setSpacing(4)
+        self.custom_layout.setContentsMargins(0, 0, 0, 0)
+        self.custom_layout.setSpacing(6)
 
         if self.editing_item and self.editing_item.custom_fields:
             for cf in self.editing_item.custom_fields:
                 self._add_custom_row(cf.key, cf.value)
         else:
-            self.empty_custom_lbl = QLabel("No custom fields yet. Click '+ Add Field' to add keys, PINs, or tokens.", self.custom_container)
-            self.empty_custom_lbl.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 11px; padding: 6px; background: transparent; border: none;")
-            self.custom_layout.addWidget(self.empty_custom_lbl)
+            self._show_empty_custom_hint()
 
-        self.custom_layout.addStretch()
-        self.custom_scroll.setWidget(self.custom_container)
-        body_layout.addWidget(self.custom_scroll)
+        body_layout.addWidget(self.custom_container)
+
+        # Add vertical stretch to pin everything snugly at top (NO WASTED GAPS!)
+        body_layout.addStretch(1)
 
         self.scroll.setWidget(self.form_body)
         self.main_layout.addWidget(self.scroll, 1)
 
-        # 3. Bottom Action Bar (Single, clear Save & Cancel)
+        # 3. Bottom Action Bar (Pinned cleanly at the bottom)
         actions_bar = QHBoxLayout()
-        actions_bar.setContentsMargins(0, 4, 0, 0)
-        actions_bar.setSpacing(8)
+        actions_bar.setContentsMargins(0, 6, 0, 0)
+        actions_bar.setSpacing(10)
 
         btn_cancel = QPushButton("Cancel", self)
-        btn_cancel.setFixedHeight(32)
+        btn_cancel.setFixedHeight(34)
         btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_cancel.setStyleSheet(
             f"""
             QPushButton {{
-                background: rgba(255, 255, 255, 0.06);
+                background: rgba(255, 255, 255, 0.07);
                 color: {tokens.text_secondary};
                 border: 1px solid {tokens.border_color};
                 border-radius: 6px;
@@ -665,16 +682,16 @@ class VaultFormWidget(QWidget):
                 font-weight: 500;
             }}
             QPushButton:hover {{
-                background: rgba(255, 255, 255, 0.12);
+                background: rgba(255, 255, 255, 0.14);
                 color: {tokens.text_primary};
             }}
             """
         )
         btn_cancel.clicked.connect(self.cancel_requested.emit)
-        actions_bar.addWidget(btn_cancel)
+        actions_bar.addWidget(btn_cancel, 1)
 
         btn_save = QPushButton("Save Credential", self)
-        btn_save.setFixedHeight(32)
+        btn_save.setFixedHeight(34)
         btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_save.setStyleSheet(
             f"""
@@ -688,17 +705,29 @@ class VaultFormWidget(QWidget):
                 font-weight: 600;
             }}
             QPushButton:hover {{
-                opacity: 0.9;
+                opacity: 0.92;
             }}
             """
         )
         btn_save.clicked.connect(self._save)
-        actions_bar.addWidget(btn_save, 1)
+        actions_bar.addWidget(btn_save, 2)
 
         self.main_layout.addLayout(actions_bar)
 
+    def _show_empty_custom_hint(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        self.empty_custom_lbl = QLabel(
+            "No custom fields yet. Click '+ Add Field' to add keys, PINs, or tokens.",
+            self.custom_container,
+        )
+        self.empty_custom_lbl.setWordWrap(True)
+        self.empty_custom_lbl.setStyleSheet(
+            f"color: {tokens.text_secondary}; font-size: 11px; font-style: italic; background: transparent; border: none; padding: 2px 0;"
+        )
+        self.custom_layout.addWidget(self.empty_custom_lbl)
+
     def _add_custom_row(self, key: str, val: str) -> None:
-        if hasattr(self, "empty_custom_lbl") and self.empty_custom_lbl:
+        if self.empty_custom_lbl:
             self.empty_custom_lbl.deleteLater()
             self.empty_custom_lbl = None
 
@@ -710,26 +739,26 @@ class VaultFormWidget(QWidget):
         row_layout.setSpacing(6)
 
         k_edit = QLineEdit(key, row_widget)
-        k_edit.setFixedHeight(26)
+        k_edit.setFixedHeight(28)
         k_edit.setPlaceholderText("Key (e.g. PIN)")
         k_edit.setFixedWidth(100)
-        k_edit.setStyleSheet(self._input_style(tokens, font_size=11, padding="2px 6px"))
+        k_edit.setStyleSheet(self._input_style(tokens, font_size=11, padding="3px 6px"))
 
         v_edit = QLineEdit(val, row_widget)
-        v_edit.setFixedHeight(26)
+        v_edit.setFixedHeight(28)
         v_edit.setEchoMode(QLineEdit.EchoMode.Password)
         v_edit.setPlaceholderText("Value / Secret")
-        v_edit.setStyleSheet(self._input_style(tokens, font_size=11, padding="2px 6px"))
+        v_edit.setStyleSheet(self._input_style(tokens, font_size=11, padding="3px 6px"))
 
         btn_eye_row = QPushButton("👁️", row_widget)
-        btn_eye_row.setFixedSize(24, 26)
+        btn_eye_row.setFixedSize(26, 28)
         btn_eye_row.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_eye_row.setToolTip("Show / hide value")
         btn_eye_row.setStyleSheet(self._action_btn_style(tokens))
         btn_eye_row.clicked.connect(lambda: self._toggle_row_echo(v_edit, btn_eye_row))
 
         btn_del = QPushButton("✕", row_widget)
-        btn_del.setFixedSize(24, 26)
+        btn_del.setFixedSize(26, 28)
         btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_del.setToolTip("Remove custom field")
         btn_del.setStyleSheet(
@@ -756,6 +785,8 @@ class VaultFormWidget(QWidget):
             if entry in self.custom_rows:
                 self.custom_rows.remove(entry)
             row_widget.deleteLater()
+            if not self.custom_rows:
+                self._show_empty_custom_hint()
 
         btn_del.clicked.connect(remove_row)
 
@@ -764,7 +795,7 @@ class VaultFormWidget(QWidget):
         row_layout.addWidget(btn_eye_row)
         row_layout.addWidget(btn_del)
 
-        self.custom_layout.insertWidget(max(0, self.custom_layout.count() - 1), row_widget)
+        self.custom_layout.addWidget(row_widget)
 
     def _toggle_row_echo(self, edit: QLineEdit, btn: QPushButton) -> None:
         if edit.echoMode() == QLineEdit.EchoMode.Password:
@@ -1091,6 +1122,8 @@ class VaultAppWidget(BaseAttachedApp):
         self._active_form = VaultFormWidget(self.config, item=item, parent=self.form_host)
         self._active_form.save_requested.connect(self._on_form_save)
         self._active_form.cancel_requested.connect(self._close_form)
+        self._active_form.delete_requested.connect(self._delete_item)
+        self._active_form.delete_requested.connect(self._close_form)
         self.form_layout.addWidget(self._active_form)
         self.toolbar_widget.setVisible(False)
         self.view_stack.setCurrentIndex(1)

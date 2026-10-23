@@ -238,4 +238,18 @@ def test_vault_app_widget_ui(qtbot, qapp, tmp_path: Path):
     widget._auto_clear_clipboard()
     assert QGuiApplication.clipboard().text() == ""
 
+    # Test Edit Form with Custom Fields
+    widget._open_edit_form(first_card.item)
+    assert widget.view_stack.currentIndex() == 1
+    form = widget._active_form
+    assert form is not None
+    # Add custom field
+    form._add_custom_row("Port", "6379")
+    assert len(form.custom_rows) >= 1
+    assert form.empty_custom_lbl is None
+
+    # Save and verify
+    form._save()
+    assert widget.view_stack.currentIndex() == 0
+
     widget.close()
