@@ -1,175 +1,732 @@
-"""Vault T(w)oo application attached drawer."""
+"""Vault application attached drawer.
+
+Provides zero-knowledge encrypted credential storage, authenticated AES-256-GCM
+operations, real-time search, inline add/edit forms, secure password generation,
+and clipboard auto-clearing.
+"""
 
 from __future__ import annotations
 
-import json
-from typing import List, Optional
+import secrets
+import string
+from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from dock_twoo.config import DockConfig
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
-from dock_twoo.ui.theme import get_theme_tokens
+from dock_twoo.ui.theme import create_app_font, get_theme_tokens
+from dock_twoo.vault.models import CustomField, VaultItem, VaultStore
+from dock_twoo.vault.storage import VaultStorageManager
+
+
+def generate_secure_password(length: int = 20) -> str:
+    """Generate a high-entropy cryptographically secure password."""
+    alphabet = string.ascii_letters + string.digits + "!@#$%&*-_=+"
+    while True:
+        password = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (
+            any(c.islower() for c in password)
+            and any(c.isupper() for c in password)
+            and any(c.isdigit() for c in password)
+            and any(c in "!@#$%&*-_=+" for c in password)
+        ):
+            return password
+
+
+class VaultToast(QWidget):
+    """Subtle floating notification inside the drawer."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._message = ""
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self.hide)
+        self.hide()
+
+    def show_message(self, message: str, duration_ms: int = 2000) -> None:
+        self._message = message
+        self.adjustSize()
+        if self.parentWidget():
+            parent_w = self.parentWidget().width()
+            parent_h = self.parentWidget().height()
+            self.move((parent_w - self.width()) // 2, parent_h - 60)
+        self.show()
+        self.raise_()
+        self._timer.start(duration_ms)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        path = QPainterPath()
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        path.addRoundedRect(rect, 8, 8)
+
+        painter.fillPath(path, QColor(24, 24, 27, 230))
+        painter.setPen(QPen(QColor(255, 255, 255, 60), 1))
+        painter.drawPath(path)
+
+        painter.setPen(QColor(255, 255, 255))
+        font = painter.font()
+        font.setPointSize(11)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self._message)
+        painter.end()
+
+    def sizeHint(self) -> QSize:
+        return QSize(max(180, len(self._message) * 9 + 28), 32)
 
 
 class VaultCard(QFrame):
-    """Modern credential card with masking and copy actions."""
+    """Modern credential card with clean column layout, masked secrets, and actions."""
 
-    def __init__(self, title: str, username: str, secret: str, custom_field: str = "", parent: Optional[QWidget] = None):
+    edit_requested = Signal(VaultItem)
+    delete_requested = Signal(str)  # item_id
+    toast_requested = Signal(str)
+
+    def __init__(
+        self,
+        item: VaultItem,
+        config: DockConfig,
+        parent: Optional[QWidget] = None,
+    ):
         super().__init__(parent)
-        self.title_str = title
-        self.username_str = username
-        self.secret_str = secret
-        self.custom_str = custom_field
-        self._revealed = False
+        self.item = item
+        self.config = config
+        self._revealed_fields: set[str] = set()
 
-        self._setup_ui()
-
-    def _setup_ui(self) -> None:
         self.setObjectName("VaultCard")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(14, 12, 14, 12)
+        self.main_layout.setSpacing(8)
+
+        self._setup_style()
+        self._build_ui()
+
+    def _setup_style(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        is_dark = self.config.get_effective_theme() == "dark"
+
+        bg_card = "rgba(255, 255, 255, 0.04)" if is_dark else "rgba(0, 0, 0, 0.03)"
+        border_card = "rgba(255, 255, 255, 0.08)" if is_dark else "rgba(0, 0, 0, 0.08)"
+        hover_border = tokens.accent_color
+
         self.setStyleSheet(
-            """
-            QFrame#VaultCard {
-                background: rgba(255, 255, 255, 0.04);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+            f"""
+            QFrame#VaultCard {{
+                background: {bg_card};
+                border: 1px solid {border_card};
                 border-radius: 12px;
-                padding: 12px;
-            }
-            QFrame#VaultCard:hover {
-                border-color: rgba(255, 255, 255, 0.16);
-                background: rgba(255, 255, 255, 0.06);
-            }
+            }}
+            QFrame#VaultCard:hover {{
+                border-color: {hover_border};
+            }}
             """
         )
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+    def _build_ui(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        is_dark = self.config.get_effective_theme() == "dark"
 
-        # Title row
-        title_row = QHBoxLayout()
-        title_lbl = QLabel(self.title_str, self)
-        title_lbl.setStyleSheet("font-size: 13px; font-weight: 600; color: #ffffff;")
-        title_row.addWidget(title_lbl)
-        title_row.addStretch()
+        # 1. Header Row (Title, origin badge, action buttons)
+        header_row = QHBoxLayout()
+        header_row.setSpacing(6)
 
-        copy_all_btn = QPushButton("Copy", self)
-        copy_all_btn.setFixedSize(50, 22)
-        copy_all_btn.setStyleSheet(
-            """
-            QPushButton {
+        title_lbl = QLabel(self.item.title, self)
+        title_font = create_app_font(self.config, size=13, weight=QFont.Weight.DemiBold)
+        title_lbl.setFont(title_font)
+        title_lbl.setStyleSheet(f"color: {tokens.text_primary};")
+        header_row.addWidget(title_lbl)
+
+        if self.item.origin != "user":
+            origin_badge = QLabel(self.item.origin.replace("_", " ").title(), self)
+            origin_badge.setStyleSheet(
+                """
                 background: rgba(59, 130, 246, 0.2);
                 color: #60a5fa;
                 border: 1px solid rgba(59, 130, 246, 0.4);
+                border-radius: 4px;
+                padding: 1px 5px;
+                font-size: 9px;
+                font-weight: 600;
+                """
+            )
+            header_row.addWidget(origin_badge)
+
+        header_row.addStretch()
+
+        # Action button: Edit
+        btn_edit = QPushButton("✏️", self)
+        btn_edit.setFixedSize(24, 24)
+        btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_edit.setToolTip("Edit credential")
+        btn_edit.setStyleSheet(self._icon_btn_style(tokens))
+        btn_edit.clicked.connect(lambda: self.edit_requested.emit(self.item))
+        header_row.addWidget(btn_edit)
+
+        # Action button: Delete
+        btn_del = QPushButton("🗑️", self)
+        btn_del.setFixedSize(24, 24)
+        btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_del.setToolTip("Delete credential")
+        btn_del.setStyleSheet(self._icon_btn_style(tokens))
+        btn_del.clicked.connect(self._confirm_delete)
+        header_row.addWidget(btn_del)
+
+        self.main_layout.addLayout(header_row)
+
+        # Thin divider
+        divider = QFrame(self)
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet(f"background: {tokens.border_color}; max-height: 1px;")
+        self.main_layout.addWidget(divider)
+
+        # 2. Username Row (if present)
+        if self.item.username:
+            user_row = self._create_field_row(
+                label_text="USER",
+                display_text=self.item.username,
+                is_masked=False,
+                field_id="username",
+                can_reveal=False,
+            )
+            self.main_layout.addWidget(user_row)
+
+        # 3. Password Row (Required)
+        pass_revealed = "password" in self._revealed_fields
+        pass_row = self._create_field_row(
+            label_text="PASS",
+            display_text=self.item.password,
+            is_masked=not pass_revealed,
+            field_id="password",
+            can_reveal=True,
+        )
+        self.main_layout.addWidget(pass_row)
+
+        # 4. Custom Fields Rows
+        for idx, cf in enumerate(self.item.custom_fields):
+            field_id = f"custom_{idx}"
+            cf_revealed = field_id in self._revealed_fields
+            cf_row = self._create_field_row(
+                label_text=cf.key.upper()[:8],
+                display_text=cf.value,
+                is_masked=not cf_revealed,
+                field_id=field_id,
+                can_reveal=True,
+            )
+            self.main_layout.addWidget(cf_row)
+
+    def _create_field_row(
+        self,
+        label_text: str,
+        display_text: str,
+        is_masked: bool,
+        field_id: str,
+        can_reveal: bool = False,
+    ) -> QWidget:
+        tokens = get_theme_tokens(self.config)
+
+        row_widget = QWidget(self)
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 1, 0, 1)
+        row_layout.setSpacing(8)
+
+        # Label badge
+        lbl = QLabel(label_text, row_widget)
+        lbl.setFixedWidth(54)
+        lbl.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;")
+        row_layout.addWidget(lbl)
+
+        # Value display
+        val_lbl = QLabel(row_widget)
+        val_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        if is_masked:
+            val_lbl.setText("••••••••••••")
+            val_lbl.setStyleSheet(f"color: {tokens.text_secondary}; font-family: monospace; letter-spacing: 2px;")
+        else:
+            val_lbl.setText(display_text)
+            val_lbl.setStyleSheet(f"color: {tokens.text_primary}; font-size: 12px; font-weight: 500;")
+        row_layout.addWidget(val_lbl)
+
+        # Reveal toggle
+        if can_reveal:
+            eye_btn = QPushButton("👁️" if is_masked else "🙈", row_widget)
+            eye_btn.setFixedSize(24, 22)
+            eye_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            eye_btn.setToolTip("Show/hide value")
+            eye_btn.setStyleSheet(self._icon_btn_style(tokens))
+            eye_btn.clicked.connect(lambda: self._toggle_reveal(field_id))
+            row_layout.addWidget(eye_btn)
+
+        # Copy button
+        copy_btn = QPushButton("Copy", row_widget)
+        copy_btn.setFixedSize(46, 22)
+        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        copy_btn.setToolTip(f"Copy {label_text.lower()} to clipboard")
+        copy_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: rgba(255, 255, 255, 0.08);
+                color: {tokens.text_primary};
+                border: 1px solid {tokens.border_color};
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {tokens.accent_color};
+                color: #ffffff;
+                border-color: {tokens.accent_color};
+            }}
+            """
+        )
+        copy_btn.clicked.connect(lambda: self._copy_to_clipboard(display_text, label_text))
+        row_layout.addWidget(copy_btn)
+
+        return row_widget
+
+    def _toggle_reveal(self, field_id: str) -> None:
+        if field_id in self._revealed_fields:
+            self._revealed_fields.remove(field_id)
+        else:
+            self._revealed_fields.add(field_id)
+
+        # Rebuild UI with toggled reveal
+        while self.main_layout.count():
+            child = self.main_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.layout():
+                while child.layout().count():
+                    sub = child.layout().takeAt(0)
+                    if sub.widget():
+                        sub.widget().deleteLater()
+        self._build_ui()
+
+    def _copy_to_clipboard(self, text: str, name: str) -> None:
+        QGuiApplication.clipboard().setText(text)
+        self.toast_requested.emit(f"Copied {name.title()} to clipboard")
+
+    def _confirm_delete(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Delete Credential",
+            f"Are you sure you want to permanently delete '{self.item.title}' from Vault?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.delete_requested.emit(self.item.id)
+
+    def _icon_btn_style(self, tokens) -> str:
+        return f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                border-radius: 4px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                background: rgba(255, 255, 255, 0.12);
+            }}
+        """
+
+
+class VaultFormWidget(QFrame):
+    """Inline form for creating or editing credentials."""
+
+    save_requested = Signal(VaultItem)
+    cancel_requested = Signal()
+
+    def __init__(
+        self,
+        config: DockConfig,
+        item: Optional[VaultItem] = None,
+        parent: Optional[QWidget] = None,
+    ):
+        super().__init__(parent)
+        self.config = config
+        self.editing_item = item
+        self.custom_rows: List[tuple[QLineEdit, QLineEdit, QWidget]] = []
+
+        self.setObjectName("VaultForm")
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(14, 14, 14, 14)
+        self.main_layout.setSpacing(10)
+
+        self._setup_style()
+        self._build_form()
+
+    def _setup_style(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        is_dark = self.config.get_effective_theme() == "dark"
+        bg_form = "rgba(20, 20, 24, 0.85)" if is_dark else "rgba(245, 245, 247, 0.95)"
+        border_col = tokens.accent_color
+
+        self.setStyleSheet(
+            f"""
+            QFrame#VaultForm {{
+                background: {bg_form};
+                border: 1.5px solid {border_col};
+                border-radius: 14px;
+            }}
+            """
+        )
+
+    def _build_form(self) -> None:
+        tokens = get_theme_tokens(self.config)
+
+        # Header
+        hdr_text = "Edit Credential" if self.editing_item else "Add New Credential"
+        hdr = QLabel(f"🔐 {hdr_text}", self)
+        hdr.setFont(create_app_font(self.config, size=13, weight=QFont.Weight.DemiBold))
+        hdr.setStyleSheet(f"color: {tokens.accent_color};")
+        self.main_layout.addWidget(hdr)
+
+        # Title Field
+        lbl_title = QLabel("Title *", self)
+        lbl_title.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 11px; font-weight: 600;")
+        self.edit_title = QLineEdit(self)
+        self.edit_title.setPlaceholderText("e.g. AWS Production Console, GitHub Enterprise")
+        self.edit_title.setStyleSheet(self._input_style(tokens))
+        if self.editing_item:
+            self.edit_title.setText(self.editing_item.title)
+        self.main_layout.addWidget(lbl_title)
+        self.main_layout.addWidget(self.edit_title)
+
+        # Username Field
+        lbl_user = QLabel("Username", self)
+        lbl_user.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 11px; font-weight: 600;")
+        self.edit_username = QLineEdit(self)
+        self.edit_username.setPlaceholderText("e.g. admin@company.com or username")
+        self.edit_username.setStyleSheet(self._input_style(tokens))
+        if self.editing_item:
+            self.edit_username.setText(self.editing_item.username)
+        self.main_layout.addWidget(lbl_user)
+        self.main_layout.addWidget(self.edit_username)
+
+        # Password Field + Generator
+        lbl_pass = QLabel("Password *", self)
+        lbl_pass.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 11px; font-weight: 600;")
+        self.main_layout.addWidget(lbl_pass)
+
+        pass_row = QHBoxLayout()
+        pass_row.setSpacing(6)
+
+        self.edit_password = QLineEdit(self)
+        self.edit_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.edit_password.setPlaceholderText("Enter or generate secure password")
+        self.edit_password.setStyleSheet(self._input_style(tokens))
+        if self.editing_item:
+            self.edit_password.setText(self.editing_item.password)
+        pass_row.addWidget(self.edit_password)
+
+        btn_eye = QPushButton("👁️", self)
+        btn_eye.setFixedSize(28, 28)
+        btn_eye.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_eye.setToolTip("Show / hide password")
+        btn_eye.setStyleSheet(self._action_btn_style(tokens))
+        btn_eye.clicked.connect(self._toggle_pass_echo)
+        pass_row.addWidget(btn_eye)
+
+        btn_gen = QPushButton("⚡ Gen", self)
+        btn_gen.setFixedSize(54, 28)
+        btn_gen.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_gen.setToolTip("Generate high-entropy secure password")
+        btn_gen.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: rgba(16, 185, 129, 0.2);
+                color: #34d399;
+                border: 1px solid rgba(16, 185, 129, 0.4);
                 border-radius: 6px;
                 font-size: 11px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: #10b981;
+                color: #ffffff;
+            }}
+            """
+        )
+        btn_gen.clicked.connect(self._generate_password)
+        pass_row.addWidget(btn_gen)
+
+        self.main_layout.addLayout(pass_row)
+
+        # Custom Fields section
+        lbl_custom = QLabel("Custom Keys & Values", self)
+        lbl_custom.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 11px; font-weight: 600; margin-top: 4px;")
+        self.main_layout.addWidget(lbl_custom)
+
+        self.custom_container = QVBoxLayout()
+        self.custom_container.setSpacing(6)
+        self.main_layout.addLayout(self.custom_container)
+
+        if self.editing_item:
+            for cf in self.editing_item.custom_fields:
+                self._add_custom_row(cf.key, cf.value)
+
+        btn_add_field = QPushButton("+ Add Field (Key & Value)", self)
+        btn_add_field.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_add_field.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: transparent;
+                color: {tokens.accent_color};
+                border: 1px dashed {tokens.accent_color};
+                border-radius: 6px;
+                padding: 5px;
+                font-size: 11px;
                 font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background: rgba(59, 130, 246, 0.1);
+            }}
+            """
+        )
+        btn_add_field.clicked.connect(lambda: self._add_custom_row("", ""))
+        self.main_layout.addWidget(btn_add_field)
+
+        # Bottom actions: Save & Cancel
+        actions_row = QHBoxLayout()
+        actions_row.setSpacing(8)
+
+        btn_save = QPushButton("Save Credential", self)
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: {tokens.accent_color};
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 14px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+            """
+        )
+        btn_save.clicked.connect(self._save)
+        actions_row.addWidget(btn_save)
+
+        btn_cancel = QPushButton("Cancel", self)
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancel.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: rgba(255, 255, 255, 0.08);
+                color: {tokens.text_secondary};
+                border: 1px solid {tokens.border_color};
+                border-radius: 6px;
+                padding: 7px 14px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background: rgba(255, 255, 255, 0.15);
+                color: {tokens.text_primary};
+            }}
+            """
+        )
+        btn_cancel.clicked.connect(self.cancel_requested.emit)
+        actions_row.addWidget(btn_cancel)
+
+        self.main_layout.addLayout(actions_row)
+
+    def _add_custom_row(self, key: str, val: str) -> None:
+        tokens = get_theme_tokens(self.config)
+
+        row_widget = QWidget(self)
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+
+        k_edit = QLineEdit(key, row_widget)
+        k_edit.setPlaceholderText("Key (e.g. PIN, Token)")
+        k_edit.setFixedWidth(110)
+        k_edit.setStyleSheet(self._input_style(tokens))
+
+        v_edit = QLineEdit(val, row_widget)
+        v_edit.setPlaceholderText("Value / Secret")
+        v_edit.setStyleSheet(self._input_style(tokens))
+
+        btn_del = QPushButton("✕", row_widget)
+        btn_del.setFixedSize(24, 28)
+        btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_del.setStyleSheet(
+            """
+            QPushButton {
+                background: rgba(239, 68, 68, 0.15);
+                color: #f87171;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background: #3b82f6;
+                background: #ef4444;
                 color: #ffffff;
             }
             """
         )
-        copy_all_btn.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.secret_str))
-        title_row.addWidget(copy_all_btn)
-        layout.addLayout(title_row)
 
-        # Username row
-        if self.username_str:
-            user_row = QHBoxLayout()
-            user_lbl = QLabel(f"User: {self.username_str}", self)
-            user_lbl.setStyleSheet("font-size: 11px; color: #8e8e9f;")
-            user_row.addWidget(user_lbl)
-            user_row.addStretch()
+        entry = (k_edit, v_edit, row_widget)
+        self.custom_rows.append(entry)
 
-            user_copy = QPushButton("Copy User", self)
-            user_copy.setFixedSize(65, 20)
-            user_copy.setStyleSheet(
-                """
-                QPushButton {
-                    background: transparent;
-                    color: #a1a1aa;
-                    border: none;
-                    font-size: 10px;
-                }
-                QPushButton:hover {
-                    color: #ffffff;
-                }
-                """
-            )
-            user_copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.username_str))
-            user_row.addWidget(user_copy)
-            layout.addLayout(user_row)
+        def remove_row():
+            if entry in self.custom_rows:
+                self.custom_rows.remove(entry)
+            row_widget.deleteLater()
 
-        # Password / Secret row
-        secret_row = QHBoxLayout()
-        self.secret_display = QLabel("••••••••••••••••", self)
-        self.secret_display.setStyleSheet("font-size: 11px; font-family: monospace; color: #cbd5e1;")
-        secret_row.addWidget(self.secret_display)
-        secret_row.addStretch()
+        btn_del.clicked.connect(remove_row)
 
-        self.toggle_eye = QPushButton("👁 Show", self)
-        self.toggle_eye.setFixedSize(60, 20)
-        self.toggle_eye.setStyleSheet(
-            """
-            QPushButton {
-                background: rgba(255, 255, 255, 0.06);
-                color: #cbd5e1;
-                border-radius: 4px;
-                border: none;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.12);
-            }
-            """
-        )
-        self.toggle_eye.clicked.connect(self._toggle_reveal)
-        secret_row.addWidget(self.toggle_eye)
-        layout.addLayout(secret_row)
+        row_layout.addWidget(k_edit)
+        row_layout.addWidget(v_edit)
+        row_layout.addWidget(btn_del)
 
-        # Custom field
-        if self.custom_str:
-            custom_lbl = QLabel(self.custom_str, self)
-            custom_lbl.setStyleSheet("font-size: 10px; color: #64748b; font-family: monospace;")
-            layout.addWidget(custom_lbl)
+        self.custom_container.addWidget(row_widget)
 
-    def _toggle_reveal(self) -> None:
-        self._revealed = not self._revealed
-        if self._revealed:
-            self.secret_display.setText(self.secret_str)
-            self.toggle_eye.setText("🔒 Hide")
+    def _toggle_pass_echo(self) -> None:
+        if self.edit_password.echoMode() == QLineEdit.EchoMode.Password:
+            self.edit_password.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
-            self.secret_display.setText("••••••••••••••••")
-            self.toggle_eye.setText("👁 Show")
+            self.edit_password.setEchoMode(QLineEdit.EchoMode.Password)
+
+    def _generate_password(self) -> None:
+        pwd = generate_secure_password(20)
+        self.edit_password.setText(pwd)
+        self.edit_password.setEchoMode(QLineEdit.EchoMode.Normal)
+
+    def _save(self) -> None:
+        title = self.edit_title.text().strip()
+        username = self.edit_username.text().strip()
+        password = self.edit_password.text()
+
+        if not title:
+            QMessageBox.warning(self, "Validation Error", "Title is required.")
+            self.edit_title.setFocus()
+            return
+        if not password:
+            QMessageBox.warning(self, "Validation Error", "Password is required.")
+            self.edit_password.setFocus()
+            return
+
+        custom_fields: List[CustomField] = []
+        for k_edit, v_edit, _ in self.custom_rows:
+            k = k_edit.text().strip()
+            v = v_edit.text()
+            if k:
+                custom_fields.append(CustomField(key=k, value=v))
+
+        if self.editing_item:
+            item = self.editing_item
+            item.title = title
+            item.username = username
+            item.password = password
+            item.custom_fields = custom_fields
+        else:
+            item = VaultItem(
+                title=title,
+                username=username,
+                password=password,
+                custom_fields=custom_fields,
+                origin="user",
+            )
+
+        self.save_requested.emit(item)
+
+    def _input_style(self, tokens) -> str:
+        return f"""
+            QLineEdit {{
+                background: rgba(0, 0, 0, 0.25);
+                color: {tokens.text_primary};
+                border: 1px solid {tokens.border_color};
+                border-radius: 6px;
+                padding: 6px 8px;
+                font-size: 12px;
+            }}
+            QLineEdit:focus {{
+                border-color: {tokens.accent_color};
+            }}
+        """
+
+    def _action_btn_style(self, tokens) -> str:
+        return f"""
+            QPushButton {{
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid {tokens.border_color};
+                border-radius: 6px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{
+                background: rgba(255, 255, 255, 0.16);
+            }}
+        """
 
 
 class VaultAppWidget(BaseAttachedApp):
-    """Vault T(w)oo drawer showing encrypted cards, live search, and credential management."""
+    """Vault application drawer providing zero-knowledge encrypted credential management."""
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
-        super().__init__("vault", "Vault T(w)oo", config, parent)
+        super().__init__("vault", "Vault", config, parent)
+        self.storage = VaultStorageManager()
+        self.store = self.storage.load_vault()
+
         self._cards: List[VaultCard] = []
+        self._is_locked: bool = False
+        self._active_form: Optional[VaultFormWidget] = None
+
+        # Clipboard auto-clear timer
+        self._clipboard_clear_timer = QTimer(self)
+        self._clipboard_clear_timer.setSingleShot(True)
+        self._clipboard_clear_timer.timeout.connect(self._auto_clear_clipboard)
+        self._last_copied_secret: Optional[str] = None
+
+        # Inactivity auto-lock timer
+        self._inactivity_timer = QTimer(self)
+        self._inactivity_timer.setSingleShot(True)
+        self._inactivity_timer.timeout.connect(self._on_inactivity_timeout)
+
         self._init_vault_ui()
+        self._reset_inactivity_timer()
 
     def _init_vault_ui(self) -> None:
         tokens = get_theme_tokens(self.config)
 
-        # Search Bar
-        self.search_bar = QLineEdit(self)
-        self.search_bar.setPlaceholderText("Search passwords, tokens, API keys...")
+        # Toast notification
+        self.toast = VaultToast(self)
+
+        # 1. Top Toolbar (Search, + New, Item Count)
+        self.toolbar_widget = QWidget(self)
+        toolbar = QHBoxLayout(self.toolbar_widget)
+        toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.setSpacing(8)
+
+        self.search_bar = QLineEdit(self.toolbar_widget)
+        self.search_bar.setPlaceholderText("Search passwords, tokens, keys...")
+        self.search_bar.setClearButtonEnabled(True)
         self.search_bar.setStyleSheet(
             f"""
             QLineEdit {{
@@ -177,7 +734,7 @@ class VaultAppWidget(BaseAttachedApp):
                 color: {tokens.text_primary};
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 8px;
-                padding: 8px 12px;
+                padding: 6px 10px;
                 font-size: 12px;
             }}
             QLineEdit:focus {{
@@ -186,44 +743,291 @@ class VaultAppWidget(BaseAttachedApp):
             """
         )
         self.search_bar.textChanged.connect(self._filter_cards)
-        self.content_layout.addWidget(self.search_bar)
+        toolbar.addWidget(self.search_bar, 1)
 
-        # Scroll Area for Cards
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.btn_new = QPushButton("+ New", self.toolbar_widget)
+        self.btn_new.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_new.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: {tokens.accent_color};
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                padding: 6px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+            """
+        )
+        self.btn_new.clicked.connect(self._open_new_form)
+        toolbar.addWidget(self.btn_new)
 
-        self.cards_container = QWidget(self.scroll)
+        self.badge_count = QLabel(f"{len(self.store.items)} items", self.toolbar_widget)
+        self.badge_count.setStyleSheet(
+            """
+            background: rgba(255, 255, 255, 0.08);
+            color: #94a3b8;
+            border-radius: 6px;
+            padding: 4px 7px;
+            font-size: 11px;
+            font-weight: 600;
+            """
+        )
+        toolbar.addWidget(self.badge_count)
+
+        self.content_layout.addWidget(self.toolbar_widget)
+
+        # 2. Main Stack (List View vs Locked View vs Form View)
+        self.view_stack = QStackedWidget(self)
+        self.content_layout.addWidget(self.view_stack, 1)
+
+        # Page 0: Cards Scroll Area
+        self.scroll_area = QScrollArea(self.view_stack)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        self.cards_container = QWidget(self.scroll_area)
         self.cards_layout = QVBoxLayout(self.cards_container)
         self.cards_layout.setContentsMargins(0, 4, 0, 4)
         self.cards_layout.setSpacing(10)
-
-        self._populate_sample_vault_items()
-
         self.cards_layout.addStretch()
-        self.scroll.setWidget(self.cards_container)
-        self.content_layout.addWidget(self.scroll, 1)
 
-    def _populate_sample_vault_items(self) -> None:
-        sample_items = [
-            ("GitHub Personal Access Token", "karthikrameshdev", "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", "Scope: repo, workflow, gist"),
-            ("Production Stripe API Key", "billing_admin", "sk_live_9488f780f29103c834a8e", "Webhook: whsec_live_99218204"),
-            ("AWS Root IAM Credentials", "admin@cloud.infra", "AKIA479102BF84EXAMPLE", "Region: us-east-1"),
-            ("OpenRouter Platform Key", "karthik.ramesh", "sk-or-v1-37b55f794d6969fd22631badf94095ac", "Model: anthropic/claude-3.5-sonnet"),
-            ("Database Cluster Connection", "postgres_master", "pg_prod_cluster_#a783!k", "Port: 5432, Host: db.internal"),
-        ]
+        self.scroll_area.setWidget(self.cards_container)
+        self.view_stack.addWidget(self.scroll_area)
 
-        for title, user, secret, custom in sample_items:
-            card = VaultCard(title, user, secret, custom, self.cards_container)
+        # Page 1: Form View (Add / Edit)
+        self.form_host = QWidget(self.view_stack)
+        self.form_layout = QVBoxLayout(self.form_host)
+        self.form_layout.setContentsMargins(0, 0, 0, 0)
+        self.view_stack.addWidget(self.form_host)
+
+        # Page 2: Locked View
+        self.locked_host = QWidget(self.view_stack)
+        self._build_locked_view()
+        self.view_stack.addWidget(self.locked_host)
+
+        self.refresh_cards()
+
+    def _build_locked_view(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        layout = QVBoxLayout(self.locked_host)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(16)
+
+        icon_lbl = QLabel("🔒", self.locked_host)
+        icon_lbl.setStyleSheet("font-size: 42px;")
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(icon_lbl)
+
+        title_lbl = QLabel("Vault is Locked", self.locked_host)
+        title_lbl.setFont(create_app_font(self.config, size=15, weight=QFont.Weight.DemiBold))
+        title_lbl.setStyleSheet(f"color: {tokens.text_primary};")
+        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_lbl)
+
+        desc_lbl = QLabel("Inactivity timer expired. Unlock to access credentials.", self.locked_host)
+        desc_lbl.setStyleSheet(f"color: {tokens.text_secondary}; font-size: 12px;")
+        desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(desc_lbl)
+
+        btn_unlock = QPushButton("Unlock Vault", self.locked_host)
+        btn_unlock.setFixedSize(140, 34)
+        btn_unlock.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_unlock.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: {tokens.accent_color};
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+            """
+        )
+        btn_unlock.clicked.connect(self._unlock_vault)
+        layout.addWidget(btn_unlock, 0, Qt.AlignmentFlag.AlignCenter)
+
+    def refresh_cards(self) -> None:
+        """Rebuild card widgets from store."""
+        for card in self._cards:
+            card.deleteLater()
+        self._cards.clear()
+
+        while self.cards_layout.count() > 1:
+            child = self.cards_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        items = self.store.items
+        self.badge_count.setText(f"{len(items)} items")
+
+        if not items:
+            empty_lbl = QLabel("No credentials in Vault.\nClick '+ New' to add one.", self.cards_container)
+            empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_lbl.setStyleSheet("color: #64748b; font-size: 13px; padding: 40px;")
+            self.cards_layout.insertWidget(0, empty_lbl)
+            return
+
+        for item in items:
+            card = VaultCard(item, self.config, self.cards_container)
+            card.edit_requested.connect(self._open_edit_form)
+            card.delete_requested.connect(self._delete_item)
+            card.toast_requested.connect(self._on_item_copied)
             self._cards.append(card)
-            self.cards_layout.addWidget(card)
+            self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
+
+        if self.search_bar.text():
+            self._filter_cards(self.search_bar.text())
 
     def _filter_cards(self, query: str) -> None:
-        query = query.lower()
+        q = query.strip().lower()
+        visible_count = 0
         for card in self._cards:
-            matches = (
-                query in card.title_str.lower()
-                or query in card.username_str.lower()
-                or query in card.custom_str.lower()
-            )
-            card.setHidden(not matches)
+            matches = card.item.matches_query(q)
+            card.setVisible(matches)
+            if matches:
+                visible_count += 1
+
+        self.badge_count.setText(f"{visible_count} of {len(self.store.items)}" if q else f"{len(self.store.items)} items")
+
+    def _open_new_form(self) -> None:
+        self._clear_active_form()
+        self._active_form = VaultFormWidget(self.config, item=None, parent=self.form_host)
+        self._active_form.save_requested.connect(self._on_form_save)
+        self._active_form.cancel_requested.connect(self._close_form)
+        self.form_layout.addWidget(self._active_form)
+        self.toolbar_widget.setVisible(False)
+        self.view_stack.setCurrentIndex(1)
+        self._active_form.edit_title.setFocus()
+
+    def _open_edit_form(self, item: VaultItem) -> None:
+        self._clear_active_form()
+        self._active_form = VaultFormWidget(self.config, item=item, parent=self.form_host)
+        self._active_form.save_requested.connect(self._on_form_save)
+        self._active_form.cancel_requested.connect(self._close_form)
+        self.form_layout.addWidget(self._active_form)
+        self.toolbar_widget.setVisible(False)
+        self.view_stack.setCurrentIndex(1)
+        self._active_form.edit_title.setFocus()
+
+    def _close_form(self) -> None:
+        self._clear_active_form()
+        self.toolbar_widget.setVisible(True)
+        self.view_stack.setCurrentIndex(0)
+
+    def _clear_active_form(self) -> None:
+        while self.form_layout.count():
+            child = self.form_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        self._active_form = None
+
+    def _on_form_save(self, item: VaultItem) -> None:
+        if any(i.id == item.id for i in self.store.items):
+            self.store.update(item)
+            self.toast.show_message("Updated credential")
+        else:
+            self.store.add(item)
+            self.toast.show_message("Added new credential")
+
+        self.storage.save_vault(self.store)
+        self._close_form()
+        self.refresh_cards()
+        self._reset_inactivity_timer()
+
+    def _delete_item(self, item_id: str) -> None:
+        if self.store.remove(item_id):
+            self.storage.save_vault(self.store)
+            self.refresh_cards()
+            self.toast.show_message("Deleted credential")
+            self._reset_inactivity_timer()
+
+    def _on_item_copied(self, message: str) -> None:
+        self.toast.show_message(message)
+        self._last_copied_secret = QGuiApplication.clipboard().text()
+
+        vault_settings = self.config.app_settings.get("vault", {})
+        timeout_sec = int(vault_settings.get("clear_clipboard_seconds", 30))
+        if timeout_sec > 0:
+            self._clipboard_clear_timer.start(timeout_sec * 1000)
+
+        self._reset_inactivity_timer()
+
+    def _auto_clear_clipboard(self) -> None:
+        clipboard = QGuiApplication.clipboard()
+        if self._last_copied_secret and clipboard.text() == self._last_copied_secret:
+            clipboard.clear()
+            self.toast.show_message("Clipboard cleared for security")
+        self._last_copied_secret = None
+
+    def _reset_inactivity_timer(self) -> None:
+        vault_settings = self.config.app_settings.get("vault", {})
+        timeout_min = int(vault_settings.get("auto_lock_minutes", 5))
+        if timeout_min > 0:
+            self._inactivity_timer.start(timeout_min * 60 * 1000)
+        else:
+            self._inactivity_timer.stop()
+
+    def _on_inactivity_timeout(self) -> None:
+        self.lock_vault()
+
+    def lock_vault(self) -> None:
+        self._is_locked = True
+        self.toolbar_widget.setVisible(False)
+        self.view_stack.setCurrentIndex(2)
+
+    def _unlock_vault(self) -> None:
+        self._is_locked = False
+        self.toolbar_widget.setVisible(True)
+        self.view_stack.setCurrentIndex(0)
+        self._reset_inactivity_timer()
+        self.toast.show_message("Vault Unlocked")
+
+    def update_config(self, config: DockConfig) -> None:
+        super().update_config(config)
+        self._setup_layout_tokens()
+        self.refresh_cards()
+        self._reset_inactivity_timer()
+
+    def _setup_layout_tokens(self) -> None:
+        tokens = get_theme_tokens(self.config)
+        self.search_bar.setStyleSheet(
+            f"""
+            QLineEdit {{
+                background: rgba(0, 0, 0, 0.25);
+                color: {tokens.text_primary};
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 6px 10px;
+                font-size: 12px;
+            }}
+            QLineEdit:focus {{
+                border-color: {tokens.accent_color};
+            }}
+            """
+        )
+        self.btn_new.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: {tokens.accent_color};
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                padding: 6px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+            """
+        )

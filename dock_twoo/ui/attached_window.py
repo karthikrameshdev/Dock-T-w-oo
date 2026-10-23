@@ -19,6 +19,7 @@ from dock_twoo.ui.apps import (
     BaseAttachedApp,
     BrainAppWidget,
     NotesAppWidget,
+    VaultAppWidget,
 )
 from dock_twoo.ui.theme import get_theme_tokens
 
@@ -57,9 +58,10 @@ class AttachedWindow(QWidget):
         self._init_apps()
 
     def _init_apps(self) -> None:
-        """Instantiate supported companion apps (Notes and Brain)."""
+        """Instantiate supported companion apps (Notes, Vault, and Brain)."""
         app_classes = {
             "notes": NotesAppWidget,
+            "vault": VaultAppWidget,
             "brain": BrainAppWidget,
         }
 

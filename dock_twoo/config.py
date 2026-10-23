@@ -73,13 +73,21 @@ class DockAppItem:
 
 
 def get_default_apps() -> List[DockAppItem]:
-    """Default dock app items: Notes at top, Settings and Brain at bottom with 3-dot dividers."""
+    """Default dock app items: Notes and Vault at top, Settings and Brain at bottom with 3-dot dividers."""
     return [
         DockAppItem(
             id="notes",
             name="Notes",
             icon="notes",
             tooltip="Notes",
+            enabled=True,
+            is_bottom=False,
+        ),
+        DockAppItem(
+            id="vault",
+            name="Vault",
+            icon="vault",
+            tooltip="Vault",
             enabled=True,
             is_bottom=False,
         ),
@@ -309,9 +317,28 @@ class ConfigManager(QObject):
                     self._config = DockConfig.from_dict(data)
                     # Migrate legacy configurations if they contain removed apps
                     app_ids = {a.id for a in self._config.apps}
-                    if "launcher" in app_ids or "vault" in app_ids or "calendar" in app_ids or len(self._config.apps) > 5:
+                    if "launcher" in app_ids or "calendar" in app_ids or len(self._config.apps) > 6:
                         self._config.apps = get_default_apps()
                         self.save()
+                    elif "vault" not in app_ids:
+                        # Insert vault after notes
+                        new_apps = []
+                        for a in self._config.apps:
+                            new_apps.append(a)
+                            if a.id == "notes":
+                                new_apps.append(
+                                    DockAppItem(
+                                        id="vault",
+                                        name="Vault",
+                                        icon="vault",
+                                        tooltip="Vault",
+                                        enabled=True,
+                                        is_bottom=False,
+                                    )
+                                )
+                        self._config.apps = new_apps
+                        self.save()
+
                     # Clean up any legacy tooltips or names containing "T(w)oo" for inner apps
                     needs_save = False
                     for app in self._config.apps:
@@ -320,6 +347,9 @@ class ConfigManager(QObject):
                             if app.id == "notes":
                                 app.name = "Notes"
                                 app.tooltip = "Notes"
+                            elif app.id == "vault":
+                                app.name = "Vault"
+                                app.tooltip = "Vault"
                             elif app.id == "brain":
                                 app.name = "Brain"
                                 app.tooltip = "Brain"
