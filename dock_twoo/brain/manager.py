@@ -20,6 +20,7 @@ from dock_twoo.brain.profiles import ProfileManager
 from dock_twoo.brain.providers import query_llm
 from dock_twoo.brain.speech import SpeechPlayback
 from dock_twoo.brain.storage import BrainStore
+from dock_twoo.brain.local_chat import get_local_chat
 
 
 class BrainManager(QObject):
@@ -83,12 +84,14 @@ class BrainManager(QObject):
         self.last_wake_time: float = 0.0
         self._last_wake_reply: str = ""
         self._query_generation = 0
+        self.last_response = {'generation':0, 'text':''}
 
         self.session_timer = QTimer(self)
         self.session_timer.setSingleShot(True)
         self.session_timer.timeout.connect(self._on_session_timeout)
 
         self.speech.finished.connect(self._on_speech_finished)
+        self.speech.failed.connect(self.status_changed)
 
         # Real-time microphone listening and wake word ('Brain') detection
         self.listener = AudioListener(
@@ -127,6 +130,7 @@ class BrainManager(QObject):
             self.listener.start()
         if start_services:
             self.shortcut_listener.start()
+            get_local_chat().start()
 
         if self.store.setting("companion_visible", True):
             self.show_mini_agent()
@@ -210,6 +214,11 @@ class BrainManager(QObject):
     @Slot()
     def _on_speech_finished(self) -> None:
         """Invoked when text-to-speech audio playback completes."""
+        if self.speech.last_error:
+            self.in_conversation_session = False
+            self.listener.arm_wake()
+            self.companion.set_activity("error")
+            return
         if self.reader.active:
             self.reader.speech_finished()
             return
@@ -298,10 +307,13 @@ class BrainManager(QObject):
         if not self.companion.isVisible():
             self._do_show_mini_agent()
         self.companion.turn_to_user()
-        # Wake is a silent acknowledgement. A spoken greeting here can mask
-        # the command the user is about to continue in the same statement.
-        self.listener.start_recording()
-        self.companion.set_activity("listening")
+        # This signal is delivered only after the entire wake statement ends.
+        # Inline commands go directly to _do_turn_complete without a greeting.
+        if self.store.setting("voice_reply", True):
+            self.speech.start(self.get_wake_greeting(self.listener.last_wake_owner_verified))
+        else:
+            self.listener.start_recording()
+            self.companion.set_activity("listening")
 
     def _on_wake_detected(self) -> None:
         """Invoked when user says 'Brain' or 'Hey Brain'."""
@@ -380,6 +392,8 @@ class BrainManager(QObject):
             return
 
         self.session_timer.stop()
+        self.listener.cancel_recording()
+        self.listener.set_output_active(True)
         self.activity_requested.emit("processing")
         self._query_generation += 1
         generation = self._query_generation
@@ -395,6 +409,7 @@ class BrainManager(QObject):
             if self.store.setting("voice_reply", True):
                 self.speech_start_requested.emit(reply)
             else:
+                self.listener.set_output_active(False)
                 self.listener.arm_wake()
                 self.activity_requested.emit("idle")
             return
@@ -419,12 +434,20 @@ class BrainManager(QObject):
                 if generation != self._query_generation:
                     return
                 self.conversation_history.append({"role": "assistant", "content": reply})
+                self.last_response = {'generation':generation, 'text':str(reply)}
+                self.reply_received.emit(str(reply))
                 if self.store.setting("voice_reply", True):
-                    self.speech.start(reply)
+                    if hasattr(reply,"lyrics"):
+                        self.speech.sing(reply.lyrics)
+                    else:
+                        self.speech.start(reply)
                 elif self.in_conversation_session:
+                    self.listener.set_output_active(False)
                     self.activity_requested.emit("listening")
                     self.listener.start_recording()
                 else:
+                    self.listener.set_output_active(False)
+                    self.listener.arm_wake()
                     self.activity_requested.emit("idle")
 
             self.run_on_main_thread(deliver_reply)
@@ -630,6 +653,8 @@ class BrainManager(QObject):
             },
             "voice_output": {"playing": self.speech.playing, "error": self.speech.last_error},
             "reading": self.reader.status(),
+            "language_model": get_local_chat().status(),
+            "last_response": dict(self.last_response),
             "character": {
                 "version": self.companion.model_view.version if self.companion.model_view else "",
                 "asset_hash": self.companion.model_view.asset_hash if self.companion.model_view else "",

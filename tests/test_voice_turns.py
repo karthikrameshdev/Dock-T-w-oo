@@ -99,6 +99,18 @@ def test_backup_window_activates_capture_without_executing_its_partial_text(tmp_
     assert wakes == []
 
 
+def test_backup_replays_the_silence_buffered_while_asr_was_running(tmp_path, qtbot):
+    listener = listener_for_test(tmp_path)
+    transcripts = iter(['Hey grain open the cursor app', 'Hey Brain open Cursor and type hello world'])
+    listener._transcribe_pcm = lambda _pcm: next(transcripts)
+    commands = []
+    listener.turn_completed.connect(commands.append)
+    listener._audio_timeline.extend([(index, SILENCE, False) for index in range(21, 41)])
+    listener._check_wake_word([SPEECH] * 20, frame_end=20)
+    qtbot.waitUntil(lambda: bool(commands))
+    assert commands == ['open Cursor and type hello world']
+
+
 def test_followup_capture_does_not_cut_off_at_twenty_seconds(tmp_path, qtbot):
     listener = listener_for_test(tmp_path)
     sizes = []
@@ -114,14 +126,13 @@ def test_followup_capture_does_not_cut_off_at_twenty_seconds(tmp_path, qtbot):
     assert commands == ['Research this entire topic']
 
 
-def test_bare_wake_is_silent_and_idle_timeout_never_interrupts_speech(tmp_path, qapp, monkeypatch):
+def test_completed_bare_wake_speaks_a_greeting_then_resumes_listening(tmp_path, qapp, monkeypatch):
     manager = BrainManager(store=BrainStore(tmp_path), start_services=False)
     spoken = []
     monkeypatch.setattr(manager.speech, 'start', spoken.append)
     manager._do_wake_detected()
-    assert spoken == []
-    assert manager.listener.is_recording
-    assert manager.companion.activity == 'listening'
+    assert len(spoken) == 1 and 'Buddy' in spoken[0]
+    assert not manager.session_timer.isActive()
     assert not manager.session_timer.isActive()
     manager._on_speech_finished()
     assert manager.listener.is_recording
@@ -183,13 +194,14 @@ def test_long_whisper_input_is_decoded_in_overlapping_windows(tmp_path):
     assert text == 'start of statement shared words middle of statement final section end of statement'
 
 
-def test_bare_address_in_followup_keeps_listening_without_speaking(tmp_path, qapp, monkeypatch):
+def test_bare_address_in_followup_acknowledges_without_starting_a_query(tmp_path, qapp, monkeypatch):
     manager = BrainManager(store=BrainStore(tmp_path), start_services=False)
     spoken = []
     monkeypatch.setattr(manager.speech, 'start', spoken.append)
     manager.in_conversation_session = True
     manager._do_turn_complete('Hey Brain')
-    assert not spoken and not manager.conversation_history
+    assert len(spoken) == 1 and not manager.conversation_history
+    manager._on_speech_finished()
     assert manager.listener.is_recording
     manager.stop_talking()
     manager.companion.close()

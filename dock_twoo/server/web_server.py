@@ -158,6 +158,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 }
             origin = self.headers.get("Origin")
             port = self.server.server_address[1]
+            if self.headers.get('X-Brain-Request') != 'local' or (origin and origin not in (f'http://127.0.0.1:{port}', f'http://localhost:{port}')):
+                status_dict.pop('last_response', None)
             if origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
                 check = status_dict.get("voice_input", {}).get("wake_diagnostics", {}).get("voice_check")
                 if check:
@@ -216,6 +218,31 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = self.path.split("?")[0]
+
+        if path == "/api/brain/request":
+            try:
+                port = self.server.server_address[1]
+                origin = self.headers.get('Origin')
+                if self.headers.get('X-Brain-Request') != 'local' or (origin and origin not in (f'http://127.0.0.1:{port}', f'http://localhost:{port}')):
+                    raise ValueError('Send requests from the local Brain console.')
+                length = int(self.headers.get('Content-Length', 0))
+                if not 0 < length <= 16000:
+                    raise ValueError('The request is empty or too long.')
+                body = json.loads(self.rfile.read(length))
+                text = body.get('text')
+                if not isinstance(text, str) or not text.strip() or len(text) > 2000:
+                    raise ValueError('Enter a request of up to 2000 characters.')
+                from dock_twoo.brain.manager import BrainManager
+                bm = BrainManager._instance
+                if bm is None:
+                    raise RuntimeError('Start the desktop application before sending a request.')
+                bm.turn_complete_requested.emit(text.strip())
+                self._set_headers(HTTPStatus.ACCEPTED, 'application/json')
+                self.wfile.write(b'{"success":true}')
+            except Exception as exc:
+                self._set_headers(HTTPStatus.BAD_REQUEST, 'application/json')
+                self.wfile.write(json.dumps({'success':False,'error':str(exc)}).encode())
+            return
 
         if path == "/api/config":
             try:

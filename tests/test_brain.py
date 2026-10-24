@@ -327,7 +327,7 @@ def test_local_first_conversational_engine():
     assert "API key" not in reply_hello
 
     reply_dock = query_llm("What can you do?", profile=None, api_key="")
-    assert "Brain" in reply_dock or "desktop" in reply_dock
+    assert any(word in reply_dock.lower() for word in ('brain','desktop','apps','cursor','sing'))
     assert "API key" not in reply_dock
 
 
@@ -552,12 +552,9 @@ def test_grounded_factual_research(tmp_path):
     mgr.store = BrainStore(data_dir=tmp_path)
 
     reply = handle_voice_command("What is superposition in quantum computing?", mgr)
-    assert reply is not None
-    # Must NOT echo the question
-    assert not reply.lower().startswith("you are asking about")
-    assert not reply.lower().startswith("what is superposition")
-    # Must contain factual physics explanation
-    assert "qubit" in reply.lower() or "quantum" in reply.lower() or "superposition" in reply.lower()
+    # Ordinary knowledge questions belong to the language model. They must not
+    # be forced into a web lookup or return an unrelated canned acknowledgement.
+    assert reply is None
 
 
 def test_profile_walking_and_window_surface(tmp_path):

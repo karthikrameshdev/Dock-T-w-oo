@@ -94,7 +94,7 @@ def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, st
             if remaining and all(word in aliases | {"hey", "hello", "hi"} for word in remaining):
                 command = ""
             return True, command
-    if words and words[0] in {"what", "when", "where", "how", "can", "open", "show", "take", "walk", "dance", "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn", "give", "go", "do", "research", "please", "help"}:
+    if words and words[0] in {"what", "when", "where", "how", "can", "open", "launch", "type", "sing", "hum", "show", "take", "walk", "dance", "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn", "give", "go", "do", "research", "please", "help"}:
         return True, text.strip()
     if len(words) <= 3:
         return True, ""
@@ -162,8 +162,11 @@ class AudioListener(QObject):
         self.models = LocalVoiceModels(model_dir or self.store.data_dir / "models")
         from dock_twoo.brain.wake import WakeDetector
         self.wake_detector = WakeDetector(self.models.model_dir, self.wake_word)
+        from dock_twoo.brain.endpoint_vad import NeuralEndpointVad
+        self.endpoint_vad = NeuralEndpointVad(self.models.model_dir)
         self._wake_preroll = deque(maxlen=20)
         self._backup_ring = deque(maxlen=40)
+        self._backup_voice_ring = deque(maxlen=40)
         self._backup_ticks = 0
         self._endpoint = TurnEndpoint()
         self._wake_capture = False
@@ -232,6 +235,7 @@ class AudioListener(QObject):
             except queue.Empty:
                 break
         self.wake_detector.start()
+        self.endpoint_vad.start()
         self.models.start_model_downloads()
         self.is_running = True
         self.stop_event.clear()
@@ -336,11 +340,13 @@ class AudioListener(QObject):
         self._wake_armed = self.wake_detection_enabled
         self._wake_preroll.clear()
         self._backup_ring.clear()
+        self._backup_voice_ring.clear()
         self._backup_ticks = 0
         self.ambient_speech_frames = []
         self.ambient_silence_count = 0
         self._audio_timeline.clear()
         self.wake_detector.reset()
+        self.endpoint_vad.reset()
 
     @capture_locked
     def suspend(self) -> None:
@@ -357,8 +363,10 @@ class AudioListener(QObject):
             self._ignore_audio_until = time.monotonic() + 0.3
             self._wake_preroll.clear()
             self._backup_ring.clear()
+            self._backup_voice_ring.clear()
             self._backup_ticks = 0
             self.wake_detector.reset()
+            self.endpoint_vad.reset()
 
     def set_wake_word(self, value: str) -> None:
         self.wake_word = value.lower().strip() or "brain"
@@ -493,10 +501,14 @@ class AudioListener(QObject):
             return
         # A partial ASR window may activate listening, but never execute a command.
         self._backup_ring.append(pcm)
+        self._backup_voice_ring.append(is_speech)
         self._backup_ticks += 1
         if self._backup_ticks >= 20:
             self._backup_ticks = 0
-            self._dispatch_wake_check(list(self._backup_ring))
+            if self.endpoint_vad.ready and sum(self._backup_voice_ring) < 2:
+                self.last_wake_decision = "ambient-no-speech"
+            else:
+                self._dispatch_wake_check(list(self._backup_ring))
 
     def _dispatch_wake_check(self, frames: list[bytes]) -> None:
         if not frames:
@@ -554,7 +566,7 @@ class AudioListener(QObject):
             "speech_checkpoint_cached": self.models.model_weights_cached(self.models.ASR_MODEL),
             "denoiser_checkpoint_cached": self.models.model_weights_cached(self.models.ENHANCER_MODEL),
             "wake_model": self.wake_detector.status(),
-            "recognizer_engine": "Whisper tiny.en INT8",
+            "recognizer_engine": "Whisper small.en INT8",
             "recognizer_ready": self.models.recognizer.ready,
             "input_device": self.input_device,
             "input_overflows": self.input_overflows,
@@ -566,6 +578,7 @@ class AudioListener(QObject):
             "capture_seconds": round(self._endpoint.elapsed, 2),
             "trailing_silence_seconds": round(self._endpoint.silence, 2),
             "endpoint_silence_seconds": self._endpoint.silence_required,
+            "speech_boundary_model": self.endpoint_vad.status(),
             "decoding": self._decode_token is not None,
             "backup_wake_checks": self.backup_wake_checks,
             "backup_wake_matches": self.backup_wake_matches,
@@ -574,6 +587,8 @@ class AudioListener(QObject):
 
     def _is_speech_frame(self, pcm: bytes, rms: float, threshold: float) -> bool:
         """Use WebRTC's noise-robust VAD when installed, with a low-volume energy fallback."""
+        if self.endpoint_vad.ready:
+            return self.endpoint_vad.feed(pcm)
         if self._vad is not None:
             try:
                 if rms < 2.0:
@@ -673,6 +688,13 @@ class AudioListener(QObject):
         )
         prefix_match = wake_prefix.search(text)
         if not prefix_match:
+            # A greeted wake name is sometimes spelled "grain" by Whisper in
+            # noise. Require both the greeting and an actionable following verb
+            # for this backup; an arbitrary "green" in ambient speech cannot wake.
+            prefix_match = re.search(
+                r"^\s*(?:hey|hello|hi)[\s,]+(?:grain|green|plane)[\s,]+(?=(?:open|sing|hum|can|could|what|go|walk|read|please)\b)",
+                text, re.I)
+        if not prefix_match:
             self.last_wake_decision = "transcript-without-wake-prefix"
             return
 
@@ -680,11 +702,18 @@ class AudioListener(QObject):
             if generation is not None and (generation != self._capture_generation or not self._wake_armed):
                 return
             # Preserve the audio that arrived while the backup ASR was decoding.
-            following = [pcm for seq, pcm, _voiced in self._audio_timeline
+            following = [(pcm, voiced) for seq, pcm, voiced in self._audio_timeline
                          if frame_end is not None and seq > frame_end]
             self.backup_wake_matches += 1
             self.last_wake_matches += 1
-            self._begin_wake_capture(list(frames) + following)
+            self._begin_wake_capture(list(frames) + [pcm for pcm, _voiced in following])
+            # Replay boundaries as well as PCM. The user may have completed the
+            # sentence while backup ASR was running; do not wait for them to
+            # speak again just to finish an already-buffered statement.
+            for pcm, voiced in following:
+                self._endpoint.feed(len(pcm) / 32000, voiced)
+            if self._endpoint.complete:
+                self._dispatch_capture()
 
     def _process_utterance(self, frames: list[bytes], generation: Optional[int] = None, revision: Optional[int] = None) -> None:
         """Decode the whole statement and reject stale results if speech resumed."""

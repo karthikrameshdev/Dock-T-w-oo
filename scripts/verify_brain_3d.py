@@ -43,7 +43,7 @@ release=json.loads((Path(__file__).resolve().parents[1] / 'dock_twoo/server/stat
 if args.all_actions:
     covered={action for _label, action, _yaw in checks}
     checks += [('library_'+action,action,0) for action in release['actions'] if action not in covered]
-checks += [('listening','idle',0),('thinking','idle',0),('reduced_motion','dance',0)]
+checks += [('online','idle',0),('offline','idle',0),('listening','idle',0),('thinking','idle',0),('reduced_motion','dance',0)]
 report = {'captures': [], 'errors': [], 'animation_probes': [], 'eye_pixels': {}}
 phase_probe = None
 probe_requested = False
@@ -100,6 +100,7 @@ def tick():
     widget.motion_duration = 1.6
     widget.blink_amount = 1.0 if label == 'blink_closed' else 0.0
     widget.activity = {'speech':'speaking','listening':'listening','thinking':'thinking'}.get(label,'idle')
+    view.connectivity.online = label != 'offline'
     widget.reduced_motion = label == 'reduced_motion'
     widget.mouth_level = .7 if label == 'speech' else 0.0
     if now-phase_start > .3 and not probe_requested:
@@ -130,6 +131,10 @@ def tick():
         runtime = json.loads(raw)
         try:
             assert runtime['action'] == {'speech':'talk','listening':'listen','thinking':'ponder'}.get(expected_label,expected_action), f'{expected_label}: controller action did not reach renderer'
+            if expected_label in ('online','offline','listening','thinking'):
+                expected_colors={'online':0x22c55e,'offline':0xef4444,'listening':0xfacc15,'thinking':0xa855f7}
+                assert runtime['indicator']['name']==expected_label
+                assert runtime['indicator']['color']==expected_colors[expected_label], f'{expected_label}: incorrect antenna color'
             if expected_label in ('front', 'eyes_reopened'):
                 assert min(runtime['eyeScales']) > .98, f'{expected_label}: eyes did not open'
             if expected_label == 'blink_closed':

@@ -162,7 +162,7 @@ def answer_locally(prompt: str) -> str:
     if any(k in p_lower for k in ("what time", "current time", "clock")):
         now = datetime.now()
         return f"It is currently {now.strftime('%-I:%M %p')}."
-    if any(k in p_lower for k in ("date", "what day", "today")):
+    if re.search(r"\b(?:what(?: is|\'s)? (?:the |today.s )?date|what day is (?:it|today)|current date|today.s date)\b", p_lower):
         now = datetime.now()
         return f"Today is {now.strftime('%A, %B %-d, %Y')}."
 
@@ -250,47 +250,20 @@ def query_llm(
         if provider in env_map:
             api_key = os.environ.get(env_map[provider], "")
 
-    # If local provider or no cloud API key (and not custom without key):
-    if provider == "local" or (not api_key and provider not in ("custom",)):
-        # Check if a local LLM endpoint (like Ollama on 11434) is reachable
-        try:
-            local_url = base_url if provider == "local" else PRESETS["local"]
-            endpoint = f"{local_url}/chat/completions"
-            messages = [{
-                "role": "system",
-                "content": (
-                    "You are Brain, a resident desktop voice assistant. Give concise, natural "
-                    "conversational answers in 1 or 2 sentences suitable for text-to-speech."
-                )
-            }]
-            if history:
-                messages.extend(history[-4:])
-            messages.append({"role": "user", "content": prompt})
-
-            payload = {
-                "model": model if model != "local" else "llama3.2:latest",
-                "messages": messages,
-                "temperature": 0.7,
-                "max_tokens": 150,
-            }
-            req = urllib.request.Request(
-                endpoint,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                choices = data.get("choices", [])
-                if choices:
-                    content = choices[0].get("message", {}).get("content", "").strip()
-                    if content:
-                        return content
-        except Exception:
-            # Local server not listening or timed out: fall back seamlessly to LocalVoiceEngine
-            pass
-
+    if re.search(r"\b(?:what time|current time|battery status|system resources|what day is|today.s date|current date)\b",prompt,re.I):
         return answer_locally(prompt)
+
+    # Built-in local responses remain fast; open-ended requests use a real model.
+    if provider == "local" or profile.get("local_only") or (not api_key and provider != "custom"):
+        from dock_twoo.brain.local_chat import get_local_chat
+        local_url = base_url if provider == "local" else PRESETS['local']
+        try:
+            return get_local_chat(local_url).chat(prompt, history, requested=model if provider == 'local' else 'local')
+        except Exception:
+            answer = answer_locally(prompt)
+            if 'repeat or rephrase' not in answer:
+                return answer
+            return "I heard you, but the local language model is unavailable. Please check the model status in Brain settings. I can still open apps, type text, sing an original song, and perform the built-in commands."
 
     # Anthropic Messages API
     if provider == "anthropic":

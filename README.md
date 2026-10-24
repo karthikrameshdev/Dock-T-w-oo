@@ -168,8 +168,8 @@ The head turns with the body while retaining the same live eyes and mouth.
 The base installation includes the local voice runtime. A small streaming
 Zipformer model listens for “Brain”, “Hey Brain”, “Hello Brain”, and “Hey Buddy”
 without waiting for dictation, silence detection, or a macOS Speech permission
-prompt. Whisper tiny.en INT8 transcribes commands locally on CPU. The wake assets
-are about 6 MB; command recognition adds about 105 MB. First launch downloads these
+prompt. Whisper small.en INT8 transcribes commands locally on CPU. The wake assets
+are about 6 MB; command recognition adds about 380 MB. First launch downloads these
 in background workers and Brain settings reports when each stage is ready.
 
 On Apple Silicon, optional models add MossFormer2-SE noise enhancement, Qwen3-TTS
@@ -184,7 +184,27 @@ is unavailable, replies use platform speech. Model downloads never
 run inside the microphone or speech playback path. Audio is processed locally;
 voice enrollment stores only a WavLM speaker vector. Set your first name in Brain
 settings and select **Enroll my voice** for speaker personalization. Wake names
-activate listening silently so Brain does not interrupt an inline command.
+start listening immediately. Brain waits for the complete statement before replying: a bare “Brain” gets a greeting; “Brain, open Cursor and type hello world” executes as one request. Silero VAD distinguishes speech from continuous background noise and allows natural pauses before ending the turn.
+
+Open-ended questions use an installed Ollama model. Brain starts the local Ollama
+service when available, discovers installed models, and prefers `qwen3:4b-instruct`.
+Install Ollama and run `ollama pull qwen3:4b-instruct` once if the language-model
+status in Brain settings says unavailable. No language-model download occurs in a
+voice request. Built-in time, movement, app opening, typing and singing work
+without waiting for a language model. “Sing a song for me” performs a short original
+song using the installed macOS singing voice. Typing into Cursor uses its native document integration to create a new
+scratch document and checks its contents; it never types into an Agent chat
+or submits text. macOS Accessibility permission is required to verify desktop typing. The **Ask Brain** field in the local console runs the same requests and displays the actual response, which helps distinguish microphone recognition from action execution.
+
+Brain's antenna shows green when online, red when offline or in error, yellow
+while listening, and purple while processing/thinking. Listening emits expanding
+rings; thinking uses rotating rings; online/offline use glow/pulse effects.
+Reduced motion keeps a steady color without moving rings. The status material is
+isolated from the artist's shared chest/scanner materials.
+
+The app allows only one resident instance per account to avoid competing
+microphone captures. The dock releases its cursor override outside its own area,
+so console buttons, selectors, toggles and sliders retain their hand pointer.
 
 On macOS, verify the cached models with generated speech, reduced volume, continuous
 noise, inline commands, and negative phrases without opening a microphone stream:

@@ -35,12 +35,26 @@ def main() -> int:
         raise RuntimeError(listener.wake_detector.error)
     if not listener.models.recognizer.load(allow_download=False):
         raise RuntimeError(listener.models.recognizer.error)
+    assert listener.endpoint_vad.load(allow_download=False), listener.endpoint_vad.error
     wakes, commands = [], []
+    transcripts = []
+    transcribe = listener._transcribe_pcm
+    def trace_generated_audio(pcm):
+        text = transcribe(pcm)
+        transcripts.append(text)
+        return text
+    listener._transcribe_pcm = trace_generated_audio
     listener.wake_detected.connect(lambda: wakes.append(True))
     listener.turn_completed.connect(commands.append)
     phrases = ['Brain', 'Hey Brain', 'Hello Brain', 'Hey Buddy',
                'Hey Brain what time is it', 'Bring me a cup of tea',
-               'The weather is beautiful today']
+               'The weather is beautiful today',
+               'Hey Brain sing a song for me',
+               'Hey Brain can you please sing a song for me',
+               'Hey Brain open the Cursor application and type hello world']
+    expected_commands = {4:'what time is it', 7:'sing a song for me',
+                         8:'can you please sing a song for me',
+                         9:'open the cursor application and type hello world'}
     report = []
     with tempfile.TemporaryDirectory(prefix='brain-voice-check-') as folder:
         for voice in ('Samantha', 'Daniel'):
@@ -57,22 +71,25 @@ def main() -> int:
                     listener._vad = webrtcvad.Vad(2)
                     wakes.clear()
                     commands.clear()
+                    transcripts.clear()
                     samples = np.concatenate([np.zeros(6400), pcm.astype(float) * gain, np.zeros(80000)])
                     samples += np.random.default_rng(42).normal(0, noise, len(samples))
                     samples = np.clip(samples, -32768, 32767).astype('<i2')
                     for offset in range(0, len(samples), 1600):
                         listener._handle_pcm_frame(samples[offset:offset + 1600].tobytes())
-                    deadline = time.monotonic() + 4
+                    deadline = time.monotonic() + 8
                     while time.monotonic() < deadline:
                         app.processEvents()
-                        if wakes or commands or listener._wake_armed:
+                        if wakes or commands:
+                            break
+                        if listener._wake_armed and not listener._wake_check_lock.locked():
                             break
                         time.sleep(.005)
                     normalized = [' '.join(text.lower().strip(' .?!').split()) for text in commands]
                     passed = (len(wakes) == 1 and not commands) if index < 4 else (
-                        not wakes and normalized == ['what time is it'] if index == 4 else not wakes and not commands)
+                        not wakes and normalized == [expected_commands[index]] if index in expected_commands else not wakes and not commands)
                     case = dict(voice=voice, phrase=phrase, condition=condition, passed=passed,
-                                wakes=len(wakes), commands=list(commands), stage=listener.last_wake_decision)
+                                wakes=len(wakes), commands=list(commands), transcripts=list(transcripts), stage=listener.last_wake_decision)
                     report.append(case)
                     print(('PASS' if passed else 'FAIL'), voice, condition, repr(phrase), flush=True)
     listener.stop()

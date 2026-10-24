@@ -14,6 +14,7 @@ from pathlib import Path
 import platform
 import tempfile
 import threading
+import time
 import wave
 from typing import Optional, Sequence
 
@@ -39,6 +40,8 @@ class LocalVoiceModels:
         self._asr = None
         self.recognizer = LocalRecognizer(self.model_dir)
         self._tts = None
+        self._tts_retry_after = 0.0
+        self.tts_fallback_reason = ""
         self._speaker = None
         self._processor = None
         self.errors: dict[str, str] = {}
@@ -272,37 +275,53 @@ class LocalVoiceModels:
             self.errors["recognizer"] = f"unavailable ({exc})"
             return ""
 
-    def synthesize_wav(self, message: str, path: Path | str, speaker: str = "Ryan") -> bool:
-        """Try expressive local Qwen3-TTS; caller can fall back to OS speech."""
-        if "PYTEST_CURRENT_TEST" in os.environ:
+    def synthesize_wav(self, message: str, path: Path | str, speaker: str = "Ryan", *, cancel=None, budget=None) -> bool:
+        """Bound local neural synthesis so an optional voice cannot mute Brain."""
+        if "PYTEST_CURRENT_TEST" in os.environ or "tts" in self.errors or self._tts is None:
             return False
-        if "tts" in self.errors:
+        if time.monotonic() < self._tts_retry_after or not self._tts_lock.acquire(blocking=False):
             return False
-        # A first greeting must never wait for a multi-gigabyte TTS download.
-        if self._tts is None:
+        cancel = cancel or threading.Event()
+        budget = budget if budget is not None else (1.5 if len(message) < 100 else 4.0)
+        done = threading.Event()
+        result = {}
+
+        def generate():
+            try:
+                chunks = self._tts.generate_custom_voice(
+                    text=message, speaker=speaker, language="English",
+                    instruct="Warm, natural, clear and conversational.",
+                    max_tokens=min(600, max(120, len(message) * 2)))
+                audio = next(iter(chunks), None)
+                if audio is None:
+                    raise RuntimeError("Qwen3-TTS returned no audio")
+                import numpy as np
+                samples = np.asarray(audio.audio, dtype=np.float32).reshape(-1)
+                result['pcm'] = (np.clip(samples, -1, 1) * 32767).astype('<i2').tobytes()
+                result['rate'] = int(getattr(audio, 'sample_rate', 24000))
+            except Exception as exc:
+                result['error'] = str(exc)
+            finally:
+                self._tts_lock.release()
+                done.set()
+
+        threading.Thread(target=generate, daemon=True, name='brain-optional-neural-voice').start()
+        deadline = time.monotonic() + budget
+        while not done.wait(.025):
+            if cancel.is_set():
+                raise InterruptedError("Speech cancelled")
+            if time.monotonic() >= deadline:
+                self._tts_retry_after = time.monotonic() + 60
+                self.tts_fallback_reason = "Neural voice exceeded the response budget; using local platform speech."
+                return False
+        if cancel.is_set():
+            raise InterruptedError("Speech cancelled")
+        if 'error' in result:
+            self.errors['tts'] = f"unavailable ({result['error']})"
             return False
-        try:
-            with self._tts_lock:
-                results = self._tts.generate_custom_voice(
-                    text=message,
-                    speaker=speaker,
-                    language="English",
-                    instruct="Warm, natural, clear and conversational, with gentle expression.",
-                    max_tokens=min(1200, max(120, len(message) * 2)),
-                )
-                result = next(iter(results), None)
-            if result is None:
-                raise RuntimeError("Qwen3-TTS returned no audio")
-            import numpy as np
-            audio = np.asarray(result.audio, dtype=np.float32).reshape(-1)
-            sample_rate = int(getattr(result, "sample_rate", 24000))
-            pcm = np.clip(audio, -1.0, 1.0)
-            pcm = (pcm * 32767.0).astype("<i2").tobytes()
-            self._to_wav(pcm, sample_rate, str(path))
-            return True
-        except Exception as exc:
-            self.errors["tts"] = f"unavailable ({exc})"
-            return False
+        self.tts_fallback_reason = ""
+        self._to_wav(result['pcm'], result['rate'], str(path))
+        return True
 
     def speaker_embedding(self, pcm: bytes, sample_rate: int = 16000) -> Optional[list[float]]:
         """Extract a WavLM x-vector from a voice sample; audio never leaves this device."""

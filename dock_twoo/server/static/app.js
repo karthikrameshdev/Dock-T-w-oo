@@ -1039,6 +1039,37 @@ async function initBrainConsole() {
   const hideBtn = document.getElementById('brainHideBtn');
   const talkBtn = document.getElementById('brainTalkBtn');
   const loopAnimBtn = document.getElementById('brainLoopAnimBtn');
+  let lastDisplayedResponseGeneration = 0;
+  document.getElementById('brainRequestForm')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = document.getElementById('brainRequestText');
+    const button = document.getElementById('brainRequestSend');
+    const status = document.getElementById('brainRequestStatus');
+    const text = input.value.trim();
+    if (!text) return;
+    button.disabled = true;
+    try {
+      const before = await (await fetch('/api/brain/status', {headers:{'X-Brain-Request':'local'}})).json();
+      const generation = before.last_response?.generation || 0;
+      const response = await fetch('/api/brain/request', {
+        method: 'POST', headers: {'Content-Type':'application/json', 'X-Brain-Request':'local'},
+        body: JSON.stringify({text}),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Brain could not accept this request');
+      status.textContent = 'Brain is processing your request and will respond aloud when voice replies are enabled.';
+      const deadline = Date.now() + 45000;
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const current = await (await fetch('/api/brain/status', {headers:{'X-Brain-Request':'local'}})).json();
+        if (current.last_response?.generation > generation) {
+          status.textContent = current.last_response.text;
+          break;
+        }
+      }
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
 
   // Profile management elements
   const activeProfileSel = document.getElementById('brainActiveProfile');
@@ -1091,6 +1122,8 @@ async function initBrainConsole() {
   const ownerNameInput = document.getElementById('brainOwnerName');
   const enrollVoiceBtn = document.getElementById('brainEnrollVoiceBtn');
   const enrollVoiceStatus = document.getElementById('brainEnrollVoiceStatus');
+  const retentionDaysSel = document.getElementById('brainRetentionDays');
+  const retentionMbSel = document.getElementById('brainRetentionMb');
 
   let cachedProfiles = [];
   let cachedCatalog = {};
@@ -1550,6 +1583,8 @@ async function initBrainConsole() {
         text += ` Speech output needs attention: ${data.voice_output.error}`;
         color = '#f87171';
       }
+      const language = data.language_model;
+      if (language) text += ` Language model: ${language.model || "preparing"} (${language.state}).`;
       voiceInputStatus.textContent = text;
       voiceInputStatus.style.color = color;
     }
@@ -1563,9 +1598,14 @@ async function initBrainConsole() {
 
   async function loadBrainStatus() {
     try {
-      const res = await fetch('/api/brain/status');
+      const res = await fetch('/api/brain/status', {headers:{'X-Brain-Request':'local'}});
       const data = await res.json();
       if (!data) return;
+
+      if (data.last_response?.generation > lastDisplayedResponseGeneration) {
+        document.getElementById('brainRequestStatus').textContent = data.last_response.text;
+        lastDisplayedResponseGeneration = data.last_response.generation;
+      }
 
       renderBrainRuntime(data);
 

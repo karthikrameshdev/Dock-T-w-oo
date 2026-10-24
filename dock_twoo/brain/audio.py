@@ -115,7 +115,7 @@ def synthesize(
     path_obj.parent.mkdir(parents=True, exist_ok=True)
 
     if voice_models is not None and system_is_macos():
-        if voice_models.synthesize_wav(clean_msg, path_obj):
+        if voice_models.synthesize_wav(clean_msg, path_obj, cancel=cancel):
             if cancel.is_set():
                 raise InterruptedError("Speech cancelled.")
             return SpeechClip.read(path_obj)
@@ -181,3 +181,22 @@ def synthesize(
 
 def system_is_macos() -> bool:
     return platform.system().lower() == "darwin"
+
+
+def synthesize_song(lyrics: str, path: Path | str, cancel: threading.Event) -> SpeechClip:
+    """Sing original lyrics with the installed macOS melodic novelty voice."""
+    if platform.system().lower() != 'darwin':
+        raise RuntimeError('The local singing voice is currently available on macOS only.')
+    path = Path(path)
+    process = subprocess.Popen(['say','-v','Good News','-o',str(path),
+        '--file-format=WAVE','--data-format=LEI16@22050','--',lyrics],
+        stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+    deadline=time.monotonic()+20
+    while process.poll() is None:
+        if cancel.is_set() or time.monotonic()>deadline:
+            process.terminate()
+            raise InterruptedError('Song cancelled or timed out')
+        time.sleep(.025)
+    if process.returncode:
+        raise RuntimeError('The macOS singing voice is not available on this computer.')
+    return SpeechClip.read(path)

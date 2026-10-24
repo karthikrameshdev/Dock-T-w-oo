@@ -1,0 +1,9 @@
+simulation: brain-local-slow
+routing: path
+mocks:
+  - routeKey: ollama
+    path: ../mocks/ollama/config.yaml
+    scenarios:
+      - overrides:
+          conditions:
+            latency: {delay_ms: 1500}

@@ -156,12 +156,14 @@ def test_external_websites_cannot_read_diagnostic_transcripts(test_server, monke
     from types import SimpleNamespace
     from dock_twoo.brain.manager import BrainManager
     def status():
-        return {'voice_input': {'wake_diagnostics': {'voice_check': {'heard': [{'heard': 'Hey Brain'}]}}}}
+        return {'last_response': {'generation':1,'text':'Private conversation'}, 'voice_input': {'wake_diagnostics': {'voice_check': {'heard': [{'heard': 'Hey Brain'}]}}}}
     monkeypatch.setattr(BrainManager, '_instance', SimpleNamespace(get_status=status))
     _, port, _ = test_server
     request = urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/status', headers={'Origin': 'https://example.com'})
     with urllib.request.urlopen(request, timeout=3) as response:
-        assert json.load(response)['voice_input']['wake_diagnostics']['voice_check']['heard'] == []
+        result=json.load(response)
+        assert result['voice_input']['wake_diagnostics']['voice_check']['heard'] == []
+        assert 'last_response' not in result
 
 
 def test_reader_actions_require_local_controls_and_dispatch_to_manager(test_server, monkeypatch):
@@ -194,3 +196,21 @@ def test_reader_action_reports_missing_desktop_manager(test_server, monkeypatch)
     with pytest.raises(urllib.error.HTTPError) as error:
         urllib.request.urlopen(request, timeout=3)
     assert 'not running' in json.loads(error.value.read())['error']
+
+
+def test_text_requests_are_local_validated_and_queued(test_server, monkeypatch):
+    from types import SimpleNamespace
+    from dock_twoo.brain.manager import BrainManager
+    calls=[]
+    monkeypatch.setattr(BrainManager, '_instance', SimpleNamespace(turn_complete_requested=SimpleNamespace(emit=calls.append)))
+    _,port,_=test_server
+    url=f'http://127.0.0.1:{port}/api/brain/request'
+    def request(text, headers):
+        return urllib.request.Request(url,data=json.dumps({'text':text}).encode(),headers={'Content-Type':'application/json',**headers})
+    for text,headers in [('Open Cursor',{}),('Open Cursor',{'X-Brain-Request':'local','Origin':'https://example.com'}),('',{'X-Brain-Request':'local'}),(7,{'X-Brain-Request':'local'}),('x'*2001,{'X-Brain-Request':'local'})]:
+        with pytest.raises(urllib.error.HTTPError):
+            urllib.request.urlopen(request(text,headers),timeout=3)
+    assert calls==[]
+    with urllib.request.urlopen(request('  Open the Cursor application and type hello world  ',{'X-Brain-Request':'local','Origin':f'http://127.0.0.1:{port}'}),timeout=3) as response:
+        assert response.status==202 and json.load(response)['success']
+    assert calls==['Open the Cursor application and type hello world']

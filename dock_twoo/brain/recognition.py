@@ -8,11 +8,11 @@ from pathlib import Path
 
 
 class LocalRecognizer:
-    MODEL_ID = "csukuangfj/sherpa-onnx-whisper-tiny.en"
-    REVISION = "d026532c022fa99fd789d6b32446a1df7b6bfc43"
-    ENCODER = "tiny.en-encoder.int8.onnx"
-    DECODER = "tiny.en-decoder.int8.onnx"
-    TOKENS = "tiny.en-tokens.txt"
+    MODEL_ID = "csukuangfj/sherpa-onnx-whisper-small.en"
+    REVISION = "d9533f69affd85061aee349af7fea5cb2996dbbe"
+    ENCODER = "small.en-encoder.int8.onnx"
+    DECODER = "small.en-decoder.int8.onnx"
+    TOKENS = "small.en-tokens.txt"
     FILES = (ENCODER, DECODER, TOKENS)
 
     def __init__(self, model_dir: Path | str):

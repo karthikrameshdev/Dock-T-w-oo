@@ -6,8 +6,9 @@ import argparse
 import os
 import signal
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QLockFile
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
@@ -55,6 +56,15 @@ def main() -> int:
     app.setApplicationName("Dock T(w)oo")
     app.setOrganizationName("DockTwoo")
     app.setQuitOnLastWindowClosed(False)
+
+    # A second resident instance competes for the microphone and speaks over
+    # the first one, even when its web console cannot bind the occupied port.
+    lock_dir = Path.home() / '.dock2'
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    instance_lock = QLockFile(str(lock_dir / 'application.lock'))
+    if not instance_lock.tryLock(0):
+        print('Dock T(w)oo is already running. Use its dock or console.')
+        return 0
 
     # Hide from macOS default bottom dock panel (top bar & floating dock only)
     ScreenManager.configure_macos_accessory()

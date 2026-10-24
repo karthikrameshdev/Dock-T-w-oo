@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
+import { HeadIndicator } from './indicator.js';
 import { FaceOverlay, SpeechOverlay } from './face.js';
 import { RoomEnvironment } from './vendor/environments/RoomEnvironment.js';
 
@@ -7,9 +8,9 @@ const embedded = new URLSearchParams(location.search).has('embedded');
 document.querySelector('#controls').hidden = embedded;
 if (embedded) document.querySelector('#controls').style.display = 'none';
 else document.body.classList.add('preview');
-let bridge, model, mixer, current, clips = {}, bones = {}, mouth, mouthIndex, bulb, face, speech, flash, release;
+let bridge, model, mixer, current, clips = {}, bones = {}, mouth, mouthIndex, bulb, face, speech, flash, release, indicator;
 const mouthMeshes=[];
-let state = {action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
+let state = {online:embedded?null:true, action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-3.3,3.3,3.3,-3.3,.1,50);
 camera.position.set(0,2.45,10); camera.lookAt(0,2.45,0);
@@ -32,6 +33,9 @@ window.setBrainState = payload => {state={...state,...payload};};
 const select=document.querySelector('#action');
 select.addEventListener('change',()=>{state.action=select.value;previewTime=0;});
 document.querySelector('#yaw').addEventListener('input',event=>state.yaw=Number(event.target.value));
+document.querySelector('#indicatorPreview').addEventListener('change',event=>{
+  const mode=event.target.value;state.online=mode!=='offline';state.activity=mode==='online'?'idle':mode;
+});
 let previewTime=0;
 const clock=new THREE.Timer();
 async function loadCharacter(){
@@ -51,8 +55,9 @@ async function loadCharacter(){
     if(node.isMesh){node.frustumCulled=false;node.castShadow=false;node.receiveShadow=false;}
     if(node.morphTargetDictionary?.mouth_open!==undefined){mouthMeshes.push(node);mouth=node;mouthIndex=node.morphTargetDictionary.mouth_open;}
     if(node.name.replaceAll('_',' ')==='Camera flash'){node.material=node.material.clone();flash=node.material;}
-    if(node.name==='Antenna_bulb' || node.name==='Antenna bulb'){bulb=node.material;}
+    if(node.name==='Antenna_bulb' || node.name==='Antenna bulb'){bulb=node;}
   });
+  if(bulb)indicator=new HeadIndicator(model,bulb,bones.antenna);
   face = new FaceOverlay(bones); speech = new SpeechOverlay(mouthMeshes);
   for(const clip of gltf.animations){
     for(const track of clip.tracks)track.name=track.name.replace('.morphTargetInfluences','.authoredMorphTargetInfluences');
@@ -93,7 +98,7 @@ function frame(){
   const progress=action.time/action.getClip().duration;
   if(flash)flash.emissiveIntensity=name==='camera' ? 1+14*Math.exp(-(((progress-.58)/.025)**2)) : 1;
 
-  if(bulb){const color={listening:0x21e8db,thinking:0xab8cea,processing:0xf4c36b,error:0xf77778,offline:0x8794a0}[state.activity]||0x71f6ff;bulb.color.setHex(color);bulb.emissive?.setHex(color);}
+  window.brainDiagnostics.indicator=indicator?.update(state,previewTime);
   window.brainDiagnostics.renderedFrames++;
   window.brainDiagnostics.eyeScales = face.scales();
   window.brainDiagnostics.action = name;
@@ -105,7 +110,7 @@ function frame(){
   window.brainDiagnostics.propScales=Object.fromEntries(['propmagnifier','propcamera','proptablet','propscan','jetL','jetR'].map(key=>[key,bones[key]?.scale.x ?? 0]));
   window.brainDiagnostics.poseSignature=Object.values(bones).flatMap(bone=>[...bone.position.toArray(),...bone.quaternion.toArray(),...bone.scale.toArray()]);
   window.brainDiagnostics.handPositions = ['handL','handR'].map(name=>bones[name]?.getWorldPosition(new THREE.Vector3()).toArray());
-  model.traverse(node=>{if(node.isMesh){if(node.material.opacity<1 || node.material.transparent)window.brainDiagnostics.translucent=true;}if(node.isBone && ![...node.position.toArray(),...node.quaternion.toArray(),...node.scale.toArray()].every(Number.isFinite))window.brainDiagnostics.nonFinite=true;});
+  model.traverse(node=>{if(node.isMesh && !node.userData.statusEffect){if(node.material.opacity<1 || node.material.transparent)window.brainDiagnostics.translucent=true;}if(node.isBone && ![...node.position.toArray(),...node.quaternion.toArray(),...node.scale.toArray()].every(Number.isFinite))window.brainDiagnostics.nonFinite=true;});
   renderer.render(scene,camera);
 }
 frame();

@@ -498,12 +498,16 @@ class DockWindow(QWidget):
         MacOSCursorHelper.set_pointing_hand()
 
     def _restore_default_cursor(self) -> None:
-        """Safely restore the default system arrow cursor."""
-        if self._has_hand_cursor_override:
-            while QGuiApplication.overrideCursor() is not None:
-                QGuiApplication.restoreOverrideCursor()
-            self._has_hand_cursor_override = False
-        MacOSCursorHelper.set_arrow()
+        """Release our own hover cursor without overriding another app's cursor."""
+        if not self._has_hand_cursor_override:
+            return
+        self._has_hand_cursor_override = False
+        if QGuiApplication.overrideCursor() is not None:
+            QGuiApplication.restoreOverrideCursor()
+        # Never force the WindowServer arrow while hovering the browser, an
+        # editor, or another app. Its control owns the cursor at that position.
+        if self.geometry().contains(QCursor.pos()):
+            MacOSCursorHelper.set_arrow()
 
     def _is_mouse_over(self) -> bool:
         cursor = QCursor.pos()

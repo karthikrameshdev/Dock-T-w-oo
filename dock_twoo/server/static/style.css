@@ -1574,3 +1574,14 @@ body.theme-light .role-routing-item {
   border-color: var(--accent);
   font-weight: 600;
 }
+
+/* Covers control hit areas, nested icons, editable controls and dynamic CTAs. */
+:is(button, a[href], select, input, textarea, label[for], label:has(input), summary,
+    [role="button"], [role="tab"], [role="switch"], [role="checkbox"], [role="option"],
+    [data-action], [data-tab], [data-page], [tabindex]:not([tabindex="-1"])),
+:is(button, a[href], label[for], label:has(input), [role="button"], [role="tab"],
+    [role="switch"], [data-action], [data-tab], [data-page]) * {
+  cursor: pointer !important;
+}
+input[type="range"]::-webkit-slider-runnable-track { cursor: pointer !important; }
+input[type="range"]::-moz-range-track { cursor: pointer !important; }

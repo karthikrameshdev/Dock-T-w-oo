@@ -27,6 +27,8 @@ class CharacterView(QWebEngineView):
     def __init__(self, companion):
         super().__init__(companion)
         self.companion = companion
+        from dock_twoo.brain.connectivity import Connectivity
+        self.connectivity = Connectivity(self)
         self.ready = False
         self.error = ''
         self.version = ''
@@ -96,7 +98,7 @@ class CharacterView(QWebEngineView):
         if not c.isVisible():
             return
         progress = min(1, max(0, (time.monotonic() - c.motion_started) / max(.01, c.motion_duration)))
-        state = dict(reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
+        state = dict(online=self.connectivity.online, reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
                      distance=c.gait_distance, blink=c.blink_amount,
                      mouth=c.mouth_level if c.activity == 'speaking' else 0,
                      gazeX=max(-1, min(1, c._gaze_offset.x() / .018)),

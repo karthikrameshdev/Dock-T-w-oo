@@ -68,39 +68,16 @@ def get_process_memory_usage(app_query: str) -> Tuple[int, float]:
     return match_count, total_rss_kb / 1024.0
 
 
-def run_computer_action(app_name: str, message: Optional[str] = None) -> bool:
-    """Open a native desktop application and optionally type keystrokes into it."""
-    clean_app = app_name.strip()
-    if not clean_app:
-        return False
+def run_computer_action(app_name: str, message: Optional[str] = None):
+    from dock_twoo.brain.computer_actions import run_desktop_request
+    return run_desktop_request(app_name, message)
 
-    if platform.system() == "Darwin":
-        try:
-            # 1. Open application
-            subprocess.run(["open", "-a", clean_app], timeout=5, check=True)
-            if message:
-                # 2. Keystroke message via System Events
-                # Escape double quotes and backslashes for AppleScript
-                escaped_msg = message.replace("\\", "\\\\").replace('"', '\\"')
-                script = f'''
-                tell application "{clean_app}" to activate
-                delay 0.5
-                tell application "System Events"
-                    keystroke "{escaped_msg}"
-                end tell
-                '''
-                subprocess.run(["osascript", "-e", script], timeout=5, check=True)
-            return True
-        except Exception:
-            return False
-    elif platform.system() == "Windows":
-        try:
-            os.system(f"start {clean_app}")
-            return True
-        except Exception:
-            return False
 
-    return False
+class VoicePerformance(str):
+    def __new__(cls, message, lyrics):
+        instance=super().__new__(cls,message)
+        instance.lyrics=lyrics
+        return instance
 
 
 def execute_web_research(query: str, active_profile: Optional[Dict[str, Any]] = None, history: Optional[List[Dict[str, str]]] = None) -> str:
@@ -209,7 +186,7 @@ def execute_web_research(query: str, active_profile: Optional[Dict[str, Any]] = 
         if k in clean_q.lower():
             return text
 
-    return f"{clean_q.capitalize()} is an active field of development with significant ongoing advancements."
+    return "I could not retrieve reliable sources for that research. Please try a more specific topic or check the network connection."
 
 
 def handle_voice_command(user_text: str, manager: BrainManager, history: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
@@ -217,7 +194,9 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
     
     Returns spoken reply string if a dedicated voice command matched, or None to fall back to general LLM.
     """
-    text = user_text.strip().lower()
+    from dock_twoo.brain.computer_actions import normalize_request, parse_desktop_request
+    original = normalize_request(user_text)
+    text = original.lower()
     # Strip leading "brain" or "hey brain"
     clean_text = re.sub(r"^(hey\s+brain|brain)[,\s]*", "", text, flags=re.I).strip()
     if not clean_text:
@@ -226,6 +205,14 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
         return "Yeah, I'm here. Tell me."
 
     companion = manager.companion
+    desktop = parse_desktop_request(original)
+    if desktop and desktop.app.lower() not in ('notes','vault','settings','console'):
+        result = run_computer_action(desktop.app, desktop.text)
+        if hasattr(result,'message'):return result.message
+        return f"Opened {desktop.app} and entered your message." if result and desktop.text else f"Opening {desktop.app}." if result else f"Could not launch or control {desktop.app}."
+    if re.match(r"^(?:sing|hum)\b", clean_text):
+        return VoicePerformance("Here is a short original song for you.",
+            "Hello world, a brand new day. Little steps will lead the way. Side by side we wander on. You and Brain, a brighter song.")
 
     # Match explicit animation requests before "play" is interpreted as ball play.
     from dock_twoo.brain.animation import ACTIONS
@@ -282,7 +269,7 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
         companion.play_with_prop("balloon")
         return "Playing with a floating neon balloon!"
 
-    if re.search(r"\b(play\s+with\s+ball|play\s+with\s+the\s+ball|play\s+ball|kick\s+ball|kick\s+the\s+ball|play)\b", clean_text):
+    if re.search(r"\b(play\s+with\s+ball|play\s+with\s+the\s+ball|play\s+ball|kick\s+ball|kick\s+the\s+ball)\b", clean_text) or clean_text.strip(' .!?')=='play':
         companion.play_ball()
         return "Playing with the energy ball on your desktop!"
 
@@ -405,11 +392,7 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
 
     # 7. Grounded Research & Explanations:
     # "what is <topic>", "explain <topic>", "tell me about <topic>", "how does <topic> work", etc.
-    is_research = bool(re.search(
-        r"\b(research|search\s+google\s+for|search\s+for|google|explain\s+to\s+me|explain|tell\s+me\s+about|what\s+is|what\s+are|what\s+does|how\s+does|how\s+do|who\s+is|who\s+was|why\s+is|why\s+does)\b",
-        clean_text,
-        flags=re.I,
-    )) or any(k in clean_text for k in ("superposition", "quantum computing", "quantum", "entanglement", "qubit", "qubits"))
+    is_research = bool(re.search(r"\b(research|search\s+(?:the\s+)?web|search\s+google\s+for|search\s+for|google)\b", clean_text, re.I))
 
     if is_research:
         active_prof = manager.profile_mgr.get_active_profile()

@@ -491,6 +491,14 @@
                   <span>✕ Hide Mini Agent</span>
                 </button>
               </div>
+              <form id="brainRequestForm" class="form-row" style="margin-top: 16px;">
+                <div class="form-group flex-1">
+                  <label for="brainRequestText">Ask Brain</label>
+                  <input id="brainRequestText" class="text-input" type="text" maxlength="2000" placeholder="Sing a song, open Cursor, or ask a question" autocomplete="off">
+                </div>
+                <button type="submit" class="btn btn-primary" id="brainRequestSend">Send to Brain</button>
+              </form>
+              <p id="brainRequestStatus" class="field-desc" role="status">Type a request here or speak to Brain. Both use the same assistant.</p>
             </div>
 
             <!-- Hands-Free Wake Word -->
@@ -500,7 +508,7 @@
 
               <div class="toggle-card-item">
                 <div>
-                  <label class="toggle-title">Enable Wake Word Detection</label>
+                  <label class="toggle-title" for="brainWakeWordToggle">Enable Wake Word Detection</label>
                   <p class="field-desc">Trigger Brain automatically when speaking the wake phrase</p>
                 </div>
                 <input type="checkbox" id="brainWakeWordToggle" checked class="modern-toggle">
@@ -571,7 +579,7 @@
 
               <div class="toggle-card-item">
                 <div>
-                  <label class="toggle-title">Speak Answers Aloud</label>
+                  <label class="toggle-title" for="brainSpeakRepliesToggle">Speak Answers Aloud</label>
                   <p class="field-desc">Play speech audio with synchronized robot mouth animation</p>
                 </div>
                 <input type="checkbox" id="brainSpeakRepliesToggle" checked class="modern-toggle">

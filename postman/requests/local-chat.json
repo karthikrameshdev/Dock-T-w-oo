@@ -1,0 +1,1 @@
+{"model":"qwen3:4b-instruct","messages":[{"role":"user","content":"In one short sentence, explain why rainbows have colors."}],"stream":false,"think":false,"options":{"num_predict":80,"num_ctx":2048}}

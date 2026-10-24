@@ -12,7 +12,7 @@ import time
 from typing import Optional
 
 from PySide6.QtCore import QObject, Signal, Slot, QTimer
-from dock_twoo.brain.audio import SpeechClip, synthesize, whistle_clip
+from dock_twoo.brain.audio import SpeechClip, synthesize, synthesize_song, whistle_clip
 
 
 class SpeechPlayback(QObject):
@@ -42,11 +42,14 @@ class SpeechPlayback(QObject):
         """Start speech synthesis and playback of text."""
         self._start(text[:1000])
 
+    def sing(self, lyrics: str) -> None:
+        self._start(lyrics, song=True)
+
     def whistle(self) -> None:
         """Play robot whistle clip."""
         self._start(None)
 
-    def _start(self, text: Optional[str]) -> None:
+    def _start(self, text: Optional[str], *, song=False) -> None:
         self.stop()
         self.last_error = ""
         token = self.generation
@@ -54,7 +57,7 @@ class SpeechPlayback(QObject):
         self.activity.emit("thinking")
         self.worker = threading.Thread(
             target=self._play_worker,
-            args=(token, text, cancel),
+            args=(token, text, cancel, song),
             daemon=True,
             name="brain-speech",
         )
@@ -70,12 +73,14 @@ class SpeechPlayback(QObject):
         self.progress.emit(0.0)
         self.activity.emit("idle")
 
-    def _play_worker(self, token: int, text: Optional[str], cancel: threading.Event) -> None:
+    def _play_worker(self, token: int, text: Optional[str], cancel: threading.Event, song=False) -> None:
         error = ""
         try:
             with tempfile.TemporaryDirectory(prefix="dock-twoo-brain-speech-") as folder:
                 wav_path = Path(folder) / "speech.wav"
-                if text is None:
+                if song:
+                    clip = synthesize_song(text, wav_path, cancel)
+                elif text is None:
                     clip = whistle_clip()
                 else:
                     clip = synthesize(text, wav_path, cancel, self.voice_models)
@@ -175,6 +180,7 @@ class SpeechPlayback(QObject):
             return
         self.generation += 1
         self.playing = False
+        self.last_error = error
         self.mouth.emit(0.0)
         self.activity.emit("idle")
         if error:
