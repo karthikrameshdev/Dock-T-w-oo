@@ -273,6 +273,16 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
                 store = _get_safe_brain_store()
                 updated = store.update_settings(body)
+                from dock_twoo.brain.manager import BrainManager
+                if BrainManager._instance is not None:
+                    bm = BrainManager._instance
+                    if "mascot_corner" in body:
+                        bm.companion.travel_to_corner(body["mascot_corner"])
+                    if "companion_visible" in body:
+                        if body["companion_visible"]:
+                            bm.show_mini_agent()
+                        else:
+                            bm.hide_mini_agent()
                 self._set_headers(HTTPStatus.OK, "application/json")
                 self.wfile.write(json.dumps({"success": True, "settings": updated}).encode("utf-8"))
             except Exception as e:
@@ -310,6 +320,9 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                         bm.hide_mini_agent()
                     elif action == "talk":
                         bm.start_talking()
+                    elif action in ("move", "corner"):
+                        corner_name = body.get("name") or body.get("corner", "top_left")
+                        bm.companion.travel_to_corner(corner_name)
                     elif action == "animation":
                         anim_name = body.get("name", "wave")
                         bm.action_requested.emit(anim_name)

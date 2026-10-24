@@ -598,6 +598,51 @@ def test_tightened_resource_gating():
     assert "cpu" in explicit_reply.lower() or "battery" in explicit_reply.lower() or "memory" in explicit_reply.lower()
 
 
+def test_top_left_corner_voice_command(tmp_path):
+    """Verify voice commands for top-left corner with hyphens, with/without corner, etc."""
+    from dock_twoo.brain.commands import handle_voice_command
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    companion = mgr.companion
+
+    # "go to the top-left corner"
+    rep1 = handle_voice_command("Brain, go to the top-left corner", mgr)
+    assert rep1 is not None
+    assert "top left" in rep1.lower()
+    assert companion.action == "walk"
+
+    # "go to top-left"
+    rep2 = handle_voice_command("go to top-left", mgr)
+    assert rep2 is not None
+    assert "top left" in rep2.lower()
+
+    # "move to top left corner"
+    rep3 = handle_voice_command("move to top left corner", mgr)
+    assert rep3 is not None
+    assert "top left" in rep3.lower()
+
+
+def test_afconvert_flac_encoding(tmp_path):
+    """Verify afconvert FLAC conversion produces valid FLAC audio data."""
+    import speech_recognition as sr
+    import wave
+
+    test_wav = tmp_path / "test.wav"
+    with wave.open(str(test_wav), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(b"\x00\x00" * 3200)
+
+    with sr.AudioFile(str(test_wav)) as src:
+        r = sr.Recognizer()
+        aud = r.record(src)
+    flac_bytes = aud.get_flac_data()
+    assert len(flac_bytes) > 0
+    assert flac_bytes[:4] == b"fLaC"
+
+
+
 
 
 

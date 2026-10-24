@@ -110,6 +110,9 @@ class BrainManager(QObject):
             self.listener.start()
         self.shortcut_listener.start()
 
+        if self.store.setting("companion_visible", True):
+            self.show_mini_agent()
+
     @Slot(str)
     def _do_speech_start(self, reply: str) -> None:
         self.speech.start(reply)

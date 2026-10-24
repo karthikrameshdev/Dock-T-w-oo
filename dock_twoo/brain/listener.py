@@ -16,6 +16,45 @@ from typing import Callable, Optional
 from PySide6.QtCore import QObject, Signal
 
 
+def _patch_speech_recognition_flac() -> None:
+    """Ensure SpeechRecognition uses native macOS afconvert instead of obsolete x86 flac-mac on ARM64."""
+    try:
+        import os, platform, subprocess, tempfile
+        import speech_recognition as sr
+        if platform.system() == "Darwin":
+            def native_get_flac_data(self, convert_rate=None, convert_width=None):
+                wav_data = self.get_wav_data(convert_rate, convert_width)
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wf:
+                    wf.write(wav_data)
+                    wav_path = wf.name
+                flac_path = wav_path + ".flac"
+                try:
+                    subprocess.run(
+                        ["/usr/bin/afconvert", "-f", "flac", "-d", "flac", wav_path, flac_path],
+                        check=True,
+                        capture_output=True,
+                    )
+                    with open(flac_path, "rb") as ff:
+                        flac_data = ff.read()
+                    if flac_data.startswith(b"\x00\x00\x00\x00") and len(flac_data) >= 8:
+                        flac_data = b"fLaC" + flac_data[4:]
+                    return flac_data
+                finally:
+                    for p in (wav_path, flac_path):
+                        if os.path.exists(p):
+                            try:
+                                os.unlink(p)
+                            except Exception:
+                                pass
+
+            sr.AudioData.get_flac_data = native_get_flac_data
+    except Exception:
+        pass
+
+
+_patch_speech_recognition_flac()
+
+
 class AudioListener(QObject):
     """Monitors microphone stream for wake word ('Brain'), user speech, and fast VAD turn completion."""
 
@@ -38,7 +77,7 @@ class AudioListener(QObject):
         self.wake_word = wake_word.lower().strip()
         self.is_running = False
         self.is_recording = False
-        self.noise_floor = 75.0
+        self.noise_floor = 30.0
         self.speech_frames = []
         self.ambient_speech_frames = []
         self.ambient_silence_count = 0
@@ -57,10 +96,16 @@ class AudioListener(QObject):
             self.turn_completed.connect(on_turn_complete)
 
     def _init_native_speech(self) -> None:
-        """Initialize Apple Speech framework for instant offline on-device speech transcription."""
+        """Initialize Apple Speech framework for instant offline on-device speech transcription if authorized."""
         try:
             import Speech
             from Foundation import NSLocale
+            # Only use SFSpeechRecognizer if authorization has been explicitly granted (status == 3)
+            # Otherwise it hangs waiting for permission or triggers TCC SIGABRT on unsigned Python binaries
+            if hasattr(Speech.SFSpeechRecognizer, "authorizationStatus"):
+                if Speech.SFSpeechRecognizer.authorizationStatus() != 3:
+                    self._sf_recognizer = None
+                    return
             loc = NSLocale.localeWithLocaleIdentifier_("en-US")
             rec = Speech.SFSpeechRecognizer.alloc().initWithLocale_(loc)
             if rec and rec.isAvailable():
@@ -159,7 +204,7 @@ class AudioListener(QObject):
         self.audio_level.emit(norm_level)
 
         # Dynamic sensitivity: adapt to ambient room noise floor
-        speech_threshold = max(75.0, self.noise_floor * 1.45)
+        speech_threshold = max(35.0, self.noise_floor * 1.30)
         is_speech = rms > speech_threshold
 
         if not self.is_recording:
@@ -168,12 +213,12 @@ class AudioListener(QObject):
                 self.noise_floor = 0.97 * self.noise_floor + 0.03 * min(rms, 180.0)
                 if self.ambient_speech_frames:
                     self.ambient_silence_count += 1
-                    # 5 consecutive 100ms silence chunks = 0.5s pause after speech
-                    if self.ambient_silence_count >= 5:
+                    # 3 consecutive 100ms silence chunks = 0.3s pause after speech for snappy response
+                    if self.ambient_silence_count >= 3:
                         frames = list(self.ambient_speech_frames)
                         self.ambient_speech_frames = []
                         self.ambient_silence_count = 0
-                        if len(frames) >= 3:
+                        if len(frames) >= 2:
                             threading.Thread(target=self._check_wake_word, args=(frames,), daemon=True).start()
             else:
                 self.ambient_silence_count = 0
@@ -190,8 +235,8 @@ class AudioListener(QObject):
             else:
                 if self.has_spoken:
                     self.silence_count += 1
-                    # 6 consecutive 100ms silence chunks = 0.6s silence after speech -> turn complete!
-                    if self.silence_count >= 6:
+                    # 5 consecutive 100ms silence chunks = 0.5s silence after speech -> turn complete!
+                    if self.silence_count >= 5:
                         self.stop_recording()
                 elif len(self.speech_frames) > 70:
                     # Recording started but user didn't speak within 7s -> timeout
@@ -200,18 +245,18 @@ class AudioListener(QObject):
     def _check_wake_word(self, frames: list[bytes]) -> None:
         """Transcribe ambient utterance to detect wake word ('Brain') or full command."""
         raw_pcm = b"".join(frames)
-        if len(raw_pcm) < 16000 * 2 * 0.25:
+        if len(raw_pcm) < 16000 * 2 * 0.18:
             return
         text = self._transcribe_pcm(raw_pcm).strip()
         if not text:
             return
 
-        wake_match = re.search(r"\b(brain|hey\s+brain|brian|brin|rain|bran|drain)\b", text, re.IGNORECASE)
+        wake_match = re.search(r"\b(brain|hey\s+brain|brian|brin|rain|bran|drain|ray|rayne)\b", text, re.IGNORECASE)
         if wake_match:
             self.ambient_speech_frames = []
             self.ambient_silence_count = 0
             # Check if user spoke a full command or just called the wake name
-            clean_cmd = re.sub(r"^(hey\s+brain|brain|brian|brin|rain|bran|drain)[,\s]*", "", text, flags=re.IGNORECASE).strip()
+            clean_cmd = re.sub(r"^(hey\s+brain|brain|brian|brin|rain|bran|drain|ray|rayne)[,\s]*", "", text, flags=re.IGNORECASE).strip()
             if not clean_cmd:
                 # User said "Brain" and paused: wake up and greet!
                 self.wake_detected.emit()

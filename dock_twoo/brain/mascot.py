@@ -269,8 +269,19 @@ class Companion(QWidget):
             y = max(int(area.top()) + 10, min(y, int(area.bottom()) - self.height() - 10))
             self.move(x, y)
         else:
-            default_x = int(area.right()) - self.width() - 40
-            default_y = int(area.bottom()) - self.height() - 50
+            corner = self.store.setting("mascot_corner", "bottom_right").lower()
+            if "top_left" in corner or "left_top" in corner:
+                default_x = int(area.left()) + 40
+                default_y = int(area.top()) + 40
+            elif "top_right" in corner or "right_top" in corner:
+                default_x = int(area.right()) - self.width() - 40
+                default_y = int(area.top()) + 40
+            elif "bottom_left" in corner or "left_bottom" in corner:
+                default_x = int(area.left()) + 40
+                default_y = int(area.bottom()) - self.height() - 50
+            else:
+                default_x = int(area.right()) - self.width() - 40
+                default_y = int(area.bottom()) - self.height() - 50
             self.move(default_x, default_y)
         self.home = self.pos()
         pin_native(self)
@@ -523,11 +534,12 @@ class Companion(QWidget):
         if progress >= 1.0:
             arrived = self.arrival
             looping = self.animation_loop
+            was_turned = (self.turn_progress > 0.05 or self.turn_target != 0.0)
             self.stop_motion(clear_sequence=False)
-            if self.turn_target != 0.0:
-                self.turn_to_user()
             if arrived:
                 arrived()
+            elif was_turned:
+                self.turn_to_user()
             if looping and self.animation_loop and self.activity == "idle":
                 self.animation_index = (self.animation_index + 1) % len(PLAYLIST)
                 if self.animation_index == 0:
@@ -793,6 +805,7 @@ class Companion(QWidget):
         valid_style = style if style in ("jump", "fly", "walk", "roll", "glide") else "walk"
         duration = 1.3 if valid_style == "jump" else (1.6 if valid_style == "fly" else 2.2)
         self.play_action(valid_style, destination=target, duration=duration)
+        self.arrival = lambda: self.turn_to_user()
 
     def walk_window_surface(self, target_type: str = "auto") -> None:
         """Walk along the top edge border of an active application window or text box in side profile."""

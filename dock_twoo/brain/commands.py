@@ -280,12 +280,18 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
         companion.push_window()
         return "Sneaking up to give your window a playful push!"
 
+    # Normalize hyphenated directions ("top-left" -> "top left", "bottom-right" -> "bottom right")
+    clean_text = re.sub(r"\b(top|bottom)[-\s]+(left|right)\b", r"\1 \2", clean_text)
+
     # 3. Mascot Movement Commands ("jump to left corner", "walk towards top right", "fly to right", etc.)
-    move_match = re.search(r"\b(jump|walk|fly|glide|roll|run|go|move)\b\s+(?:from\s+[\w\s]+\s+)?(?:to|towards|into)?\s*(the\s+)?(top\s+left|top\s+right|bottom\s+left|bottom\s+right|left\s+corner|right\s+corner|top\s+corner|bottom\s+corner|left|right|center|top|bottom)\b", clean_text)
+    move_match = re.search(
+        r"\b(jump|walk|fly|glide|roll|run|go|move|head)\b\s+(?:from\s+[\w\s]+\s+)?(?:to|towards|into)?\s*(?:the\s+)?(top\s+left|top\s+right|bottom\s+left|bottom\s+right|left\s+corner|right\s+corner|top\s+corner|bottom\s+corner|left|right|center|top|bottom)\s*(?:corner)?\b",
+        clean_text,
+    )
     if move_match:
         style = move_match.group(1)
-        dest = move_match.group(3).replace("corner", "").strip()
-        if style in ("go", "move", "run"):
+        dest = move_match.group(2).replace("corner", "").strip()
+        if style in ("go", "move", "run", "head"):
             style = "walk"
         companion.travel_to_corner(dest, style=style)
         return f"{style.capitalize()}ing to the {dest}!"
