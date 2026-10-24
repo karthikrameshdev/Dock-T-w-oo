@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dock T(w)oo — Settings Console</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="usage.css">
   <link rel="icon" type="image/svg+xml" href="/icons/logo.svg">
   <style>
     /* High-priority hand symbol (cursor: pointer) across all interactive console elements */
@@ -98,6 +99,8 @@
               <span class="nav-icon">📐</span>
               <span class="nav-label">Companion Drawers</span>
             </button>
+            <button class="nav-item" data-page="page-dashboard"><span class="nav-icon">◴</span><span class="nav-label">Dashboard</span></button>
+            <button class="nav-item" data-page="page-activity"><span class="nav-icon">≋</span><span class="nav-label">Activity Tracker</span></button>
             <button class="nav-item" data-page="page-brain">
               <span class="nav-icon">🧠</span>
               <span class="nav-label">Brain Voice Agent</span>
@@ -370,6 +373,14 @@
         </div>
 
         <!-- Page 5: Notes App Settings -->
+        <div class="page-view" id="page-dashboard">
+          <div class="page-header"><h2>Cloud usage dashboard</h2><p>Understand your cloud usage. Local speech and vision models have no token metrics.</p></div>
+          <div id="cloudUsageDashboard"></div>
+        </div>
+        <div class="page-view" id="page-activity">
+          <div class="page-header"><h2>Activity Tracker</h2><p>Follow each request, cloud exchange, recovery attempt and local tool result.</p></div>
+          <div id="brainActivityTracker"></div>
+        </div>
         <div class="page-view" id="page-tasks">
           <div class="page-header"><h2>Tasks</h2><p>Record work by day. Ask Brain to add items or summarize a date.</p></div>
           <div class="settings-card">
@@ -1074,6 +1085,8 @@
     <div id="toast" class="toast">Settings applied successfully</div>
   </div>
 
+  <script src="usage.js"></script>
+  <script src="activity.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

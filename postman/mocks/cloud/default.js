@@ -17,7 +17,12 @@ http.createServer((req,res)=>{
   }
   let calls=[];
   const make=(name,args)=>({id:'call_'+responses.length+'_'+calls.length,name,arguments:args});
-  if(text.includes('invalid-arguments') && !responses.length)calls.push(make('read_file',{wrong:'bad'}));
+  if(text.includes('loop-errors'))calls.push(make('read_file',{invalid:'argument '+responses.length}));
+  else if(text.includes('loop-observe'))calls.push(make('observe_desktop',{}));
+  else if(text.includes('progress-budget'))calls.push(make('read_file',{path:text.match(/folder=(.+)/)?.[1]+'/one.txt',offset:responses.length}));
+  else if(text.includes('open-and-type') && !responses.length)calls.push(make('open_app',{name:'Cursor',text:'hello world'}));
+  else if(text.includes('open-and-type'))calls.push(make('finish',{text:'Opened Cursor and verified hello world.',emotion:'happy'}));
+  else if(text.includes('invalid-arguments') && !responses.length)calls.push(make('read_file',{wrong:'bad'}));
   else if(text.includes('invalid-arguments'))calls.push(make('finish',{text:'The invalid tool was rejected and reported correctly.',emotion:'concerned'}));
   else if(text.includes('record-work') && !responses.length)calls.push(make('add_task',{title:'Implemented cloud agent',date:'2026-01-05',status:'done'}));
   else if(text.includes('recall-work') && !responses.length)calls.push(make('list_tasks',{date:'2026-01-05'}));
@@ -32,8 +37,9 @@ http.createServer((req,res)=>{
     calls.push(make('finish',{text:'Verified folder summary: '+contents,emotion:'happy',gesture:'nod'}));
   }
   let output;
-  if(anthropic)output={id:'msg_fixture',type:'message',role:'assistant',model:data.model,stop_reason:'tool_use',content:calls.map(c=>({type:'tool_use',id:c.id,name:c.name,input:c.arguments})),usage:{input_tokens:1,output_tokens:1}};
-  else output={id:'chat_fixture',object:'chat.completion',choices:[{finish_reason:'tool_calls',message:{role:'assistant',content:null,tool_calls:calls.map(c=>({type:'function',id:c.id,function:{name:c.name,arguments:JSON.stringify(c.arguments)}}))}}]};
+  if(anthropic)output={id:'msg_fixture',type:'message',role:'assistant',model:data.model,stop_reason:'tool_use',content:calls.map(c=>({type:'tool_use',id:c.id,name:c.name,input:c.arguments})),usage:{input_tokens:200,output_tokens:40,cache_read_input_tokens:50,cache_creation_input_tokens:20}};
+  else output={id:'chat_fixture',object:'chat.completion',model:data.model,usage:{prompt_tokens:200,completion_tokens:40,total_tokens:240,prompt_tokens_details:{cached_tokens:50},completion_tokens_details:{reasoning_tokens:10}},choices:[{finish_reason:'tool_calls',message:{role:'assistant',content:null,tool_calls:calls.map(c=>({type:'function',id:c.id,function:{name:c.name,arguments:JSON.stringify(c.arguments)}}))}}]};
+  if(text.includes('no-usage'))delete output.usage;
   res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(output));
  });
 }).listen(process.env.PORT||4501);

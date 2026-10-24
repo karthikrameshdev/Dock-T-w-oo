@@ -213,6 +213,24 @@ prevention (`caffeinate -d -i` on macOS). It releases its own assertion when dis
 or when Dock exits. It does not disable manual locks or managed security policies.
 It is also available in the console and as a cloud-agent tool.
 
+The **Dashboard** icon between Keep Awake and Settings opens an attached cloud
+usage drawer. The console has the same dashboard plus **Activity Tracker**.
+Choose this month (default), seven days, or From/To dates. Charts show cloud input,
+output, daily consumption, models and API outcomes. Counts come from provider
+usage for the full sent payload and generated output; local speech/vision has no
+token metrics. Missing usage and currency costs remain explicitly unavailable.
+
+Activity Tracker records accepted voice transcripts and typed requests, every
+cloud payload/response, local tool results, recovery calls and stop reasons.
+Credentials are redacted and fixed system instructions are represented by size
+and fingerprint. Detailed traces expire after seven days; compact daily totals
+remain. Tracking starts with this update; older usage cannot be reconstructed.
+
+Three stalled cloud turns stop the request without another paid call. Defaults
+also cap a request at eight cloud calls, a 24,000-token budget guard and 1,024 output
+tokens per call. Activity Tracker exposes these limits. Preflight token estimates
+protect the budget, while displayed totals use provider-reported counts only.
+
 The **Ask Brain** field uses the same agent as speech. Connection failures,
 unsupported app controls and missing OS permissions return explicit errors.
 Local reactions follow the model's emotion/gesture choice and use the artist's

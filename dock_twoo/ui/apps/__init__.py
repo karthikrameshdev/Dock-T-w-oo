@@ -1,5 +1,6 @@
 """Apps package for Dock T(w)oo."""
 
+from dock_twoo.ui.apps.dashboard_app import DashboardAppWidget
 from dock_twoo.ui.apps.tasks_app import TasksAppWidget
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
 from dock_twoo.ui.apps.brain_app import BrainAppWidget
@@ -15,6 +16,7 @@ __all__ = [
     "BaseAttachedApp",
     "NotesAppWidget",
     "TasksAppWidget",
+    "DashboardAppWidget",
     "VaultAppWidget",
     "BrainAppWidget",
     "CalendarAppWidget",

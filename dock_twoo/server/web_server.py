@@ -38,6 +38,17 @@ def get_static_dir() -> Path:
     return Path(__file__).resolve().parent / "static"
 
 
+class ConsoleHTTPServer(ThreadingHTTPServer):
+    # Several console tabs, the native dashboard and the character renderer can
+    # load together. The default five-connection backlog drops those bursts.
+    request_queue_size = 64
+
+    def __init__(self,*args,**kwargs):
+        self.activity_store = None
+        self.activity_store_lock = threading.Lock()
+        super().__init__(*args,**kwargs)
+
+
 class ConsoleRequestHandler(BaseHTTPRequestHandler):
     """Handles static files and REST API requests for Web Console."""
 
@@ -74,6 +85,28 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
+        if path in ('/api/activity','/api/usage') or path.startswith('/api/activity/'):
+            if not self._local_control() or self.headers.get('X-Brain-Request') != 'local':
+                self._json(403,{'error':'Use the local application controls.'});return
+            try:
+                from urllib.parse import parse_qs,urlsplit
+                from dock_twoo.brain.activity import ActivityStore
+                from dock_twoo.brain.manager import BrainManager
+                manager=BrainManager._instance
+                tracker=getattr(manager,'activity',None)
+                if tracker is None:
+                    with self.server.activity_store_lock:
+                        root=self.config_manager.config.get_brain_dir()/'activity'
+                        if self.server.activity_store is None or self.server.activity_store.root!=root:
+                            self.server.activity_store=ActivityStore(root)
+                        tracker=self.server.activity_store
+                query=parse_qs(urlsplit(self.path).query)
+                if path=='/api/activity':result=tracker.list(offset=query.get('offset',[0])[0])
+                elif path=='/api/usage':result=tracker.metrics(start=query.get('from',[None])[0],end=query.get('to',[None])[0],period=query.get('period',['month'])[0])
+                else:result=tracker.detail(path.removeprefix('/api/activity/'))
+                self._json(200,result)
+            except (ValueError,TypeError) as exc:self._json(400,{'error':str(exc)})
+            return
         if path in ('/api/brain/model','/api/tasks','/api/keep-awake'):
             if not self._local_control():
                 self._json(HTTPStatus.FORBIDDEN,{'success':False,'error':'Use the local application console.'});return
@@ -303,7 +336,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 bm = BrainManager._instance
                 if bm is None:
                     raise RuntimeError('Start the desktop application before sending a request.')
-                bm.turn_complete_requested.emit(text.strip())
+                if hasattr(bm,'submit_request'):bm.submit_request(text.strip(),'console')
+                else:bm.turn_complete_requested.emit(text.strip())
                 self._set_headers(HTTPStatus.ACCEPTED, 'application/json')
                 self.wfile.write(b'{"success":true}')
             except Exception as exc:
@@ -409,6 +443,9 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 store = _get_safe_brain_store()
                 if any(key in body for key in ('cloud_keys', 'cloud_model', 'profiles', 'active_profile')):
                     raise ValueError('Use the Cloud Model form to configure the single provider securely.')
+                for key,low,high in (('agent_max_steps',1,12),('agent_token_budget',2000,64000),('agent_no_progress_turns',2,3),('agent_max_output_tokens',128,2048)):
+                    if key in body and (type(body[key]) is not int or not low<=body[key]<=high):
+                        raise ValueError(f'{key} must be an integer between {low} and {high}.')
                 updated = store.update_settings(body)
                 from dock_twoo.brain.manager import BrainManager
                 if BrainManager._instance is not None:
@@ -566,7 +603,7 @@ class WebConsoleServer:
         )
 
         try:
-            self.server = ThreadingHTTPServer((self.host, self.port), handler_cls)
+            self.server = ConsoleHTTPServer((self.host, self.port), handler_cls)
             self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
             self.thread.start()
             print(f"[Dock T(w)oo] Web Console running at http://{self.host}:{self.port}")

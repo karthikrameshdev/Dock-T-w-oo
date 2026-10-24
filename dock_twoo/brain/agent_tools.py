@@ -23,7 +23,7 @@ TOOLS=[
  tool('search_files','Find matching filenames beneath a specific folder; supports glob patterns.',{'path':S,'pattern':S,'offset':I},['path','pattern']),
  tool('read_file','Read local text, PDF, DOCX or HTML. Continue at next_offset until done; image bytes are never sent to cloud.',{'path':S,'offset':I},['path']),
  tool('write_file','Create a new UTF-8 document. Existing files are never overwritten.',{'path':S,'text':S},['path','text']),
- tool('open_app','Open an installed app. Optional text creates a new scratch document in supported editors.',{'name':S,'text':S},['name']),
+ tool('open_app','Open an installed app. For open-and-type requests supply text in this same call; supported editors get a new scratch document.',{'name':S,'text':S},['name']),
  tool('open_url','Open a user-requested HTTPS web page in the browser.',{'url':S},['url']),
  tool('observe_desktop','Get a fresh text accessibility tree with control ids; no screenshot is uploaded.'),
  tool('click','Click a control from the latest observation; observe again afterwards.',{'observation':S,'control':S},['observation','control']),
@@ -43,7 +43,7 @@ TOOLS=[
  tool('add_note','Create a note in the existing Notes application.',{'title':S,'body':S},['title','body']),
  tool('list_notes','Read existing Notes, optionally filtering by text.',{'query':S}),
  tool('keep_awake','Enable or disable prevention of idle display/system sleep. Manual locks remain possible.',{'enabled':{'type':'boolean'}},['enabled']),
- tool('open_dock_app','Open Dock Notes, Tasks, Vault, or its Settings/Control console.',{'app':{'type':'string','enum':['notes','tasks','vault','settings','brain']}},['app']),
+ tool('open_dock_app','Open Dock Notes, Tasks, Vault, Dashboard, or its Settings/Control console.',{'app':{'type':'string','enum':['notes','tasks','vault','settings','brain','dashboard']}},['app']),
  tool('finish','Finish the task with the spoken answer and an appropriate reaction. Only claim actions confirmed by tool results.',
       {'text':S,'emotion':{'type':'string','enum':['neutral','happy','excited','curious','concerned','calm']},
        'gesture':{'type':'string','enum':['none','nod','wave','handshake','celebrate','whistle','think','read']},
@@ -95,6 +95,20 @@ class LocalTools:
                 return outcome.get('result')
         cancel.set()
         raise RuntimeError('The application did not accept the action in time.')
+
+    def desktop_pid(self,cancel):
+        def resolve():
+            from AppKit import NSWorkspace
+            current=NSWorkspace.sharedWorkspace().frontmostApplication()
+            pid=int(current.processIdentifier()) if current else None
+            if pid is not None and pid!=os.getpid():return pid
+            # Brain's overlay/drawer can be foreground. Retain the external
+            # document beneath it; never introspect Qt WebEngine on its worker.
+            backend=getattr(getattr(self.manager,'reader',None),'backend',None)
+            target=backend.remember_frontmost() if backend else None
+            if target and target.pid!=os.getpid():return target.pid
+            raise RuntimeError('Open or focus the target application first. For open-and-type requests use open_app with both name and text.')
+        return self.on_main(resolve,cancel)
 
     def execute(self,name,args,cancel):
         validate_arguments(name,args)
@@ -176,7 +190,7 @@ class LocalTools:
             return {'requested_app':args['app']}
         if name=='open_app':
             target=args['name'].lower().strip()
-            if target in ('settings','control','dock settings','brain settings','notes','tasks','vault'):
+            if target in ('settings','control','dock settings','brain settings','notes','tasks','vault','dashboard'):
                 return self.execute('open_dock_app',{'app':'settings' if target in ('settings','control','dock settings','brain settings') else target},cancel)
             if target in ('mac settings','macos settings','system settings'):args={**args,'name':'System Settings'}
             if target=='windows settings':
@@ -192,6 +206,8 @@ class LocalTools:
             if address.scheme!='https' or not address.hostname or address.username or address.password:raise ValueError('Use a public HTTPS URL without embedded credentials.')
             if not webbrowser.open(url):raise RuntimeError('The browser could not open the URL.')
             return {'opened':url,'page_loaded_verified':False}
+        if self.manager and hasattr(self.manager,'run_on_main_thread') and name in ('observe_desktop','click','type_text','press_key','scroll','drag','get_selected_text'):
+            self.driver.frontmost_pid=lambda:self.desktop_pid(cancel)
         if name=='observe_desktop':return self.driver.observe()
         if name=='click':return self.driver.click(**args)
         if name=='type_text':return self.driver.type_text(**args)

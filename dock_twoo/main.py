@@ -56,6 +56,9 @@ def main() -> int:
     app.setApplicationName("Dock T(w)oo")
     app.setOrganizationName("DockTwoo")
     app.setQuitOnLastWindowClosed(False)
+    from dock_twoo.ui.lifecycle import GuiGarbageCollector
+    gui_gc=GuiGarbageCollector(app)
+    app.aboutToQuit.connect(lambda:gui_gc.stop(restore=False))
 
     # A second resident instance competes for the microphone and speaks over
     # the first one, even when its web console cannot bind the occupied port.
@@ -81,6 +84,7 @@ def main() -> int:
     from dock_twoo.brain import get_brain_manager
     brain=get_brain_manager()
     app.aboutToQuit.connect(brain.shutdown)
+    app.aboutToQuit.connect(lambda:print("[Dock T(w)oo] Clean application shutdown",flush=True))
 
     # Start Web Console Server
     web_server = WebConsoleServer(config_mgr)

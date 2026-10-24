@@ -1,13 +1,14 @@
 """Local macOS accessibility driver. No pixels or audio go to a provider."""
 from __future__ import annotations
 import platform
+import os
 import time
 import uuid
 from collections import deque
 
 class DesktopDriver:
     def __init__(self):
-        self.observation='';self.pid=None;self.controls={};self.created=0
+        self.observation='';self.pid=None;self.controls={};self.created=0;self.frontmost_pid=None
 
     def _native(self):
         if platform.system()!='Darwin':raise RuntimeError('This desktop driver currently requires macOS.')
@@ -24,20 +25,28 @@ class DesktopDriver:
         return value if error==0 else None
 
     def _frontmost(self):
+        if self.frontmost_pid is not None:
+            pid=int(self.frontmost_pid())
+            if pid==os.getpid():raise RuntimeError('Brain cannot automate its own embedded browser. Open or focus the target application first.')
+            app=self.AX.AXUIElementCreateApplication(pid)
+            self.AX.AXUIElementSetMessagingTimeout(app,.35)
+            return app,pid
         app=self.get(self.AX.AXUIElementCreateSystemWide(),'AXFocusedApplication')
         if app is None:
-            # Some native apps do not implement AXFocusedApplication on the
-            # system object. Pump this worker's AppKit notifications before
-            # reading NSWorkspace so its foreground snapshot cannot stay stale.
+            # Do not run an AppKit event loop from the agent worker. The live
+            # agent resolves foreground state through its GUI-thread dispatcher.
             from AppKit import NSWorkspace
-            from Foundation import NSRunLoop,NSDate
-            NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(.01))
             current=NSWorkspace.sharedWorkspace().frontmostApplication()
             if current is None:raise RuntimeError('No active application is available.')
             pid=int(current.processIdentifier())
-            return self.AX.AXUIElementCreateApplication(pid),pid
+            if pid==os.getpid():raise RuntimeError('Focus the target application before desktop observation.')
+            app=self.AX.AXUIElementCreateApplication(pid)
+            self.AX.AXUIElementSetMessagingTimeout(app,.35)
+            return app,pid
         error,pid=self.AX.AXUIElementGetPid(app,None)
         if error:raise RuntimeError('The active application could not be identified.')
+        if pid==os.getpid():raise RuntimeError('Focus the target application before desktop observation.')
+        self.AX.AXUIElementSetMessagingTimeout(app,.35)
         return app,pid
 
     def observe(self):
@@ -160,6 +169,7 @@ class DesktopDriver:
 
     def selected_text(self,pid=None):
         self._native()
+        if pid==os.getpid():raise RuntimeError('Select text in an external document first.')
         app=self.AX.AXUIElementCreateApplication(pid) if pid is not None else self._frontmost()[0]
         focused=self.get(app,'AXFocusedUIElement')
         if 'Secure' in str(self.get(focused,'AXRole') or '') or self.get(focused,'AXSubrole')=='AXSecureTextField':raise PermissionError('Password text is not readable.')

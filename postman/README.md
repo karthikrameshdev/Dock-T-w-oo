@@ -30,3 +30,19 @@ endpoint: the loopback exception exists only in explicit test clients.
 
 Local speech/vision verification: `.venv/bin/python scripts/verify_local_media.py`.
 This uses cached models and generated speech/images; it records no microphone.
+
+
+## Credit protection and tracing
+
+The fixture also exercises endless invalid actions and unchanged observations.
+Each stops after exactly three HTTP model calls, without a paid final-response
+call. A changing file-read sequence demonstrates the separate total-call limit.
+The combined open/type scenario verifies that the real local-tool dispatch sends
+both arguments to one editor integration; the OS integration is isolated in that
+fixture. Successful responses carry synthetic provider usage in both protocols;
+the production ledger counts full input/output totals, including cached input,
+and preserves monthly aggregates after seven-day trace expiry.
+
+`brain-activity.openapi.json` specifies the local trace and usage endpoints.
+All require the local request header; foreign origins are rejected. No live
+configured-provider credits are used by these tests.

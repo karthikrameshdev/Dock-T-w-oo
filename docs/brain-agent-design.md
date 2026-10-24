@@ -36,8 +36,8 @@ pull/scroll effects run between pages; target/document changes stop reading.
 
 Verification separates unit checks, the real agent against local Postman provider
 simulations, real local model synthesis/transcription, native UI actions, and live
-cloud calls. No cloud key is currently configured, so live provider inference is
-reported as unverified until a user configures it in the console.
+cloud calls. Provider-contract checks use local Postman fixtures so verification
+does not spend credits on the configured cloud account.
 
 Tasks persist in SQLite under the configured storage root, shared by the native
 Tasks drawer, web console and agent. ISO dates/ranges and pagination allow exact
@@ -57,3 +57,45 @@ ViT-GPT2 INT8 image captions. OCR is Apple Vision on macOS. Captioning can miss 
 misdescribe objects; neither captions nor accessibility guarantee access to every
 app. Native CUA and page reading currently require macOS. Windows supports Keep
 Awake and opening its Settings, but its full accessibility driver is not implemented.
+
+
+Credit protection stops after three cloud turns without measurable progress,
+including repeated errors or unchanged observations with new IDs. The default
+request budget is eight cloud calls, 24,000 tokens with a conservative preflight
+estimate, and 1,024 output tokens per call. Controls permit 2–3 stalled turns,
+1–12 total calls, 2,000–64,000 budget tokens and 128–2,048 output tokens. Provider
+errors have no automatic HTTP retry. A local stop explanation never adds a model
+call. Whole requests also have a 120-second scheduling budget; in-flight requests
+are bounded by a 25-second transport timeout. Already-submitted calls may still
+be billed after cancellation; their returned usage is recorded when available.
+
+The Activity Tracker stores actual transcribed requests, outgoing conversation
+and tool payloads, returned responses, tool outcomes, retries and stop reasons.
+The fixed system instruction text is represented by length and SHA-256, and
+provider keys/auth fields are redacted. Full input token accounting still uses
+the provider's count of the real request, including instructions, history and
+tool schemas. Token values are never inferred from visible text for the ledger.
+Unknown usage is explicit. When a provider total exceeds its input/output
+breakdown, the difference is shown as unclassified rather than guessed. Cached and reasoning details are already part of
+input/output totals, so are not added twice. Anthropic input sums uncached,
+cache creation and cache read usage. Only explicit USD costs or OpenRouter's
+reported USD costs are displayed; the app does not invent pricing or balances.
+
+Compressed detailed traces expire after seven days, with a 128 MiB payload quota
+that can prune the oldest completed traces sooner. Durable daily aggregates keep
+monthly/custom date charts available without retaining old conversation text.
+The native Dashboard drawer and console share local accessible SVG charts. There
+is no remote chart service and no local speech/vision token accounting. Historical
+usage before tracing was introduced cannot be reconstructed.
+
+A newer request cancels queued work from the previous one. The agent serializes
+cloud calls so repeated requests cannot stack overlapping paid calls while an
+earlier network request is still finishing. Local reading also cancels prior
+agent work. Cancellation cannot undo a request already submitted to a provider.
+
+The status API snapshots Qt widget/browser state on the GUI thread. Cyclic
+QObject collection is scheduled there too. Desktop observation resolves the
+foreground process through the GUI dispatcher, excludes Brain's own embedded
+browser before any accessibility query, and applies a per-application messaging
+timeout. This keeps console polling and worker-driven desktop observation from
+entering WebEngine on an unrelated thread.

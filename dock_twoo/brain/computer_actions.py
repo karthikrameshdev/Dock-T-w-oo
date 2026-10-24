@@ -74,7 +74,7 @@ def run_desktop_request(app_name,text=None):
             binary=path/'Contents/Resources/app/bin'/('cursor' if path.stem.casefold()=='cursor' else 'code')
             if binary.is_file():
                 subprocess.run([str(binary),'--reuse-window','--classic','-'],input=text,text=True,
-                               check=True,capture_output=True,timeout=20)
+                               check=True,capture_output=True,timeout=10)
                 if not AX.AXIsProcessTrusted():
                     return ActionResult(False,f'{path.stem} received your text in a new scratch document, but Accessibility permission is needed to verify the editor contents.')
                 AX.AXUIElementSetMessagingTimeout(AX.AXUIElementCreateSystemWide(),.5)
@@ -82,7 +82,7 @@ def run_desktop_request(app_name,text=None):
                     if element is None:return None
                     error,value=AX.AXUIElementCopyAttributeValue(element,key,None)
                     return value if error==0 else None
-                deadline=time.monotonic()+10
+                deadline=time.monotonic()+8
                 ide_opened=False
                 while time.monotonic()<deadline:
                     apps=AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_(bundle)
@@ -105,8 +105,8 @@ def run_desktop_request(app_name,text=None):
                                         ide_opened=True
                                         time.sleep(.8)
                                         subprocess.run([str(binary),'--reuse-window','--classic','-'],input=text,text=True,
-                                                       check=True,capture_output=True,timeout=20)
-                                        deadline=time.monotonic()+10
+                                                       check=True,capture_output=True,timeout=10)
+                                        deadline=min(deadline+2,time.monotonic()+4)
                                     break
                                 pending.extend(attr(node,'AXChildren') or [])
                     time.sleep(.2)
@@ -125,7 +125,9 @@ def run_desktop_request(app_name,text=None):
             # NSWorkspace caches foreground state on worker threads without an
             # AppKit run loop. Ask WindowServer's accessibility tree each time.
             focused_app=get(system,'AXFocusedApplication')
-            if focused_app is None:return None
+            if focused_app is None:
+                app=AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+                return int(app.processIdentifier()) if app is not None else None
             error,pid=AX.AXUIElementGetPid(focused_app,None)
             return pid if error==0 else None
         deadline=time.monotonic()+6

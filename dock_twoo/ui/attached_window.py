@@ -20,6 +20,7 @@ from dock_twoo.ui.apps import (
     BrainAppWidget,
     NotesAppWidget,
     TasksAppWidget,
+    DashboardAppWidget,
     VaultAppWidget,
 )
 from dock_twoo.ui.theme import get_theme_tokens
@@ -63,6 +64,7 @@ class AttachedWindow(QWidget):
         app_classes = {
             "notes": NotesAppWidget,
             "tasks": TasksAppWidget,
+            "dashboard": DashboardAppWidget,
             "vault": VaultAppWidget,
             "brain": BrainAppWidget,
         }

@@ -1,0 +1,131 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Brain local Activity Tracker and cloud usage",
+    "version": "1.0.0",
+    "description": "Loopback and explicit local header required. Detailed traces expire after seven days; daily totals remain. No local STT/TTS tokens."
+  },
+  "paths": {
+    "/api/activity": {
+      "get": {
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated requests with cloud call/model/recovery counts"
+          },
+          "400": {
+            "description": "Invalid range or expired activity"
+          },
+          "403": {
+            "description": "Local application controls required"
+          }
+        }
+      }
+    },
+    "/api/activity/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sent conversation/tools, fixed-system-instruction hash, returned payloads and local results"
+          },
+          "400": {
+            "description": "Invalid range or expired activity"
+          },
+          "403": {
+            "description": "Local application controls required"
+          }
+        }
+      }
+    },
+    "/api/usage": {
+      "get": {
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily/model cloud aggregates with explicit unknown usage"
+          },
+          "400": {
+            "description": "Invalid range or expired activity"
+          },
+          "403": {
+            "description": "Local application controls required"
+          }
+        }
+      }
+    }
+  }
+}

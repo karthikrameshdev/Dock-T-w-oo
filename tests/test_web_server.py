@@ -281,3 +281,21 @@ def test_console_serves_new_native_icons(test_server):
     for name in ('logo','tasks','coffee'):
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/icons/{name}.svg',timeout=3) as response:
             assert response.status==200 and '<svg' in response.read().decode()
+
+
+def test_activity_and_usage_endpoints_are_local_and_share_the_ledger(test_server):
+    from dock_twoo.brain.activity import ActivityStore
+    _,port,mgr=test_server
+    store=ActivityStore(mgr.config.get_brain_dir()/'activity');ident=store.start('An isolated test request','console')
+    call=store.begin_call(ident,{'provider':'custom','model':'fixture'},{'messages':[{'role':'user','content':'hello'}]})
+    store.end_call(call,{'usage':{'prompt_tokens':10,'completion_tokens':4,'total_tokens':14}},'openai');store.finish(ident,'complete','Done')
+    for path in ('/api/activity','/api/activity/'+ident,'/api/usage'):
+        url=f'http://127.0.0.1:{port}'+path
+        for headers in ({},{'X-Brain-Request':'local','Origin':'https://example.com'}):
+            with pytest.raises(urllib.error.HTTPError) as error:urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=3)
+            assert error.value.code==403
+        with urllib.request.urlopen(urllib.request.Request(url,headers={'X-Brain-Request':'local'}),timeout=3) as response:
+            data=json.load(response)
+            if path=='/api/activity':assert data['runs'][0]['cloud_calls']==1
+            elif path=='/api/usage':assert data['summary']['total_tokens']==14
+            else:assert data['run']['request']=='An isolated test request' and len(data['events'])==2

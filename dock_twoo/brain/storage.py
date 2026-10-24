@@ -51,7 +51,11 @@ class BrainStore:
             "active_profile": "cloud",
             "profiles": [],
             "voice_name": "af_heart",
-            "agent_max_steps": 64,
+            "agent_max_steps": 8,
+            "agent_budget_version": 1,
+            "agent_no_progress_turns": 3,
+            "agent_token_budget": 24000,
+            "agent_max_output_tokens": 1024,
 
         }
 
@@ -63,6 +67,10 @@ class BrainStore:
         try:
             with open(self.settings_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            if data.get('agent_budget_version') != 1:
+                try:data['agent_max_steps'] = min(8,max(1,int(data.get('agent_max_steps',8))))
+                except (TypeError,ValueError):data['agent_max_steps'] = 8
+                data['agent_budget_version'] = 1
             # Ensure defaults for any missing keys
             for k, v in defaults.items():
                 if k not in data:

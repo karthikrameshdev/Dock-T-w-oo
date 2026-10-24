@@ -67,6 +67,13 @@ class BrainManager(QObject):
             start_services = False
         self.store = store or BrainStore()
         self.profile_mgr = ProfileManager(self.store)
+        from dock_twoo.brain.activity import ActivityStore
+        self.activity = ActivityStore(self.store.data_dir/'activity')
+        if start_services:self.activity.recover_interrupted()
+        self.activity_cleanup = QTimer(self)
+        self.activity_cleanup.setInterval(60*60*1000)
+        self.activity_cleanup.timeout.connect(self.activity.prune)
+        if start_services:self.activity_cleanup.start()
         self.speech = SpeechPlayback(self)
         self.speech.store = self.store
 
@@ -133,7 +140,7 @@ class BrainManager(QObject):
         self.reader = DesktopReader(self)
         if not start_services:
             self.reader.remember_timer.stop()
-        self.agent = BrainAgent(self.profile_mgr, self)
+        self.agent = BrainAgent(self.profile_mgr, self, tracker=self.activity)
         self.animation_director = AnimationDirector(self)
         self.reader.failed.connect(self._on_reading_failed)
         self.reader.finished.connect(self._on_reading_finished)
@@ -310,7 +317,8 @@ class BrainManager(QObject):
         return reply
 
     @Slot()
-    def _do_wake_detected(self) -> None:
+    def _do_wake_detected(self, source='voice', transcript=None) -> None:
+        self._agent_cancel.set()
         self._query_generation += 1
         self.in_conversation_session = True
         self.conversation_history.clear()
@@ -323,6 +331,10 @@ class BrainManager(QObject):
         # Inline commands go directly to _do_turn_complete without a greeting.
         reply = NOT_CONFIGURED if self.profile_mgr.get_active_profile()['status']=='not configured' else self.get_wake_greeting(self.listener.last_wake_owner_verified)
         self._publish_response(reply)
+        transcript = transcript or getattr(self.listener,'last_completed_transcript','') or 'Brain'
+        self.listener.last_completed_transcript = ''
+        wake_run = self.activity.start(transcript,source)
+        self.activity.finish(wake_run,'complete',reply)
         if self.store.setting("voice_reply", True):
             self.speech.start(reply)
         else:
@@ -375,35 +387,52 @@ class BrainManager(QObject):
         else:
             self.main_thread_action_requested.emit(fn)
 
+    def submit_request(self, text: str, source='console') -> None:
+        self.run_on_main_thread(lambda:self._do_turn_complete(text,source))
+
     @Slot(str)
-    def _do_turn_complete(self, user_text: str) -> None:
+    def _do_turn_complete(self, user_text: str, source='voice') -> None:
         if user_text and not self.companion.isVisible():
             # Ambient wake-prefixed commands arrive here without a separate wake event.
             self._do_show_mini_agent()
 
         if re.fullmatch(r"\s*(?:(?:hey|hello|hi)\s+)?(?:brain|buddy)[.!?,\s]*", user_text, re.I):
-            self._do_wake_detected()
+            self._do_wake_detected(source,user_text)
             return
+
+        if user_text:self._agent_cancel.set()
+        transcript = user_text
+        if source == 'voice':
+            transcript = getattr(self.listener,'last_completed_transcript','') or user_text
+            self.listener.last_completed_transcript = ''
+        run_id = self.activity.start(transcript or '[Speech was not understood]',source)
+        def local_done(message):self.activity.finish(run_id,'complete',message)
 
         from dock_twoo.brain.computer_actions import normalize_request
         reading_text = re.sub(r'^(?:okay|ok|alright)[,\s]+','',normalize_request(user_text),flags=re.I).strip(' .!?')
         if re.fullmatch(r'read\s+(?:(?:this|the|current)\s+)?(?:text|page|screen|document)', reading_text, re.I):
             self.start_reading('window')
+            local_done('Reading the active window locally.')
             return
         literal = re.fullmatch(r'read\s+(?:this\s+text|aloud)\s*:\s*(.+)',reading_text,re.I|re.S)
         if literal:
             self.read_text(literal.group(1))
+            local_done('Reading supplied text locally.')
             return
         if re.fullmatch(r"\s*(?:hey\s+)?(?:brain[,\s]+)?read\s+(?:the\s+)?(?:desktop|(?:active\s+)?window)[.!?\s]*", user_text, re.I):
             self.start_reading("window")
+            local_done("Reading the active window locally.")
             return
         if re.fullmatch(r"\s*(?:(?:hey\s+)?brain[,\s]+)?(?:please\s+)?read\s+(?:the\s+)?selected\s+text[.!?\s]*", user_text, re.I):
             self.start_reading("selected")
+            local_done("Reading selected text locally.")
             return
         if re.fullmatch(r"\s*(?:brain[,\s]+)?stop\s+reading[.!?\s]*", user_text, re.I):
             self.stop_reading()
+            local_done("Reading stopped.")
             return
         if not user_text:
+            self.activity.finish(run_id,"error",reason="Speech could not be transcribed.")
             # Real speech with no usable transcript gets a clarification only
             # after endpointing; idle silence never reaches this path.
             if self.in_conversation_session:
@@ -435,6 +464,7 @@ class BrainManager(QObject):
             self.in_conversation_session = False
             self.conversation_history.clear()
             reply = "Goodbye! Standing by on your desktop whenever you need me."
+            local_done(reply)
             self._publish_response(reply)
             if self.store.setting("voice_reply", True):
                 self.speech_start_requested.emit(reply)
@@ -447,7 +477,7 @@ class BrainManager(QObject):
         def run_turn():
             try:
                 self.activity_requested.emit("thinking")
-                reply = self.agent.run(user_text, history=history, cancel=agent_cancel)
+                reply = self.agent.run(user_text, history=history, cancel=agent_cancel, source=source, run_id=run_id)
             except InterruptedError:
                 return
             except Exception as exc:
@@ -531,6 +561,7 @@ class BrainManager(QObject):
     def shutdown(self):
         self.stop_talking()
         self.reader.remember_timer.stop()
+        self.activity_cleanup.stop()
         self.listener.stop()
         self.shortcut_listener.stop()
         self.companion.close()
@@ -698,8 +729,17 @@ class BrainManager(QObject):
         webbrowser.open("http://127.0.0.1:28842/#brain")
 
     def get_status(self) -> Dict[str, Any]:
-        """Return runtime status for Web Console."""
-        return {
+        """Read GUI state on its owning thread, not the HTTP server worker."""
+        if QThread.currentThread()!=self.thread():
+            import copy
+            ready=threading.Event();outcome={}
+            def snapshot():
+                try:outcome['status']=self.get_status()
+                finally:ready.set()
+            self.run_on_main_thread(snapshot)
+            if ready.wait(3) and 'status' in outcome:return outcome['status']
+            return copy.deepcopy(getattr(self,'_status_cache',{'name':'Brain','activity':'busy','error':'The desktop UI is busy.'}))
+        status = {
             "name": "Brain",
             "is_mini_agent_visible": self.companion.isVisible(),
             "activity": self.companion.activity,
@@ -730,6 +770,9 @@ class BrainManager(QObject):
             "profiles": self.profile_mgr.get_profiles(),
             "settings": self.store.get_all(),
         }
+        import copy
+        self._status_cache=copy.deepcopy(status)
+        return status
 
     def apply_voice_settings(self, changes: Dict[str, Any]) -> None:
         """Apply saved voice controls to the live listener on the GUI thread."""

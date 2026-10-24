@@ -631,6 +631,7 @@ class AudioListener(QObject):
         )
         if generation is not None and generation != self._capture_generation:
             return
+        self.last_completed_transcript = text
         if command:
             self.last_wake_decision = "wake-command-detected"
             self.turn_completed.emit(command)
@@ -727,6 +728,7 @@ class AudioListener(QObject):
                 if enhanced != raw_pcm:
                     transcription = self._transcribe_pcm(enhanced)
             if self._accept_capture(generation, revision):
+                self.last_completed_transcript = transcription or ""
                 self._record_voice_check(transcription, "complete statement")
                 self.turn_completed.emit(transcription.strip() if transcription else "")
         except Exception as exc:

@@ -105,7 +105,7 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
     assert "vault" in dock._icon_buttons
     assert "settings" in dock._icon_buttons
     assert "brain" in dock._icon_buttons
-    assert len(dock._icon_buttons) == 6
+    assert len(dock._icon_buttons) == 7
     assert "tasks" in dock._icon_buttons and "keep_awake" in dock._icon_buttons
 
     # Simulate clicking notes icon
@@ -399,4 +399,15 @@ def test_repeated_voice_open_keeps_tasks_visible(qtbot,tmp_path):
     assert dock.attached_window.is_showing_app('tasks')
     dock._open_voice_app('tasks')
     assert dock.attached_window.is_showing_app('tasks') and dock.attached_window.isVisible()
+    dock.attached_window.close();dock.close()
+
+
+def test_dashboard_has_a_native_drawer_between_keep_awake_and_settings(qtbot,tmp_path):
+    from dock_twoo.ui.apps.dashboard_app import DashboardAppWidget
+    mgr=ConfigManager(config_path=tmp_path/'config.json');mgr.update({'storage_path':str(tmp_path/'storage')})
+    ids=[item.id for item in mgr.config.apps]
+    assert ids.index('keep_awake')<ids.index('dashboard')<ids.index('settings')
+    dock=DockWindow(mgr);qtbot.addWidget(dock);dock.show();dock._open_voice_app('dashboard')
+    assert dock.attached_window.is_showing_app('dashboard')
+    assert isinstance(dock.attached_window.stack.currentWidget(),DashboardAppWidget)
     dock.attached_window.close();dock.close()
