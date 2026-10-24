@@ -488,8 +488,116 @@ def test_interactive_energy_ball(tmp_path):
     assert companion.desktop_ball.vel_x == 450.0
     assert companion.desktop_ball.vel_y == -350.0
 
+    ball = companion.desktop_ball
     companion.stop_ball()
-    assert companion.desktop_ball.active is False
+    assert ball.active is False
+    assert companion.desktop_ball is None
+
+
+def test_dynamic_wake_greeting(tmp_path):
+    """Verify first vs subsequent realistic greetings when activating Brain."""
+    from dock_twoo.brain.commands import handle_voice_command
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    mgr.wake_count = 0
+    mgr.last_wake_time = 0.0
+    mgr._last_wake_reply = ""
+
+    # First activation: welcoming greeting
+    first_reply = mgr.get_wake_greeting()
+    assert any(w in first_reply for w in ("like to do", "help you today", "working on"))
+    assert mgr.wake_count == 1
+
+    # Second activation: natural active short response
+    second_reply = mgr.get_wake_greeting()
+    assert any(w in second_reply.lower() for w in ("here", "tell me", "listening", "mind", "what's up", "all ears", "go ahead"))
+    assert mgr.wake_count == 2
+    assert second_reply != first_reply
+
+    # Third activation via handle_voice_command("Brain", mgr)
+    third_reply = handle_voice_command("Brain", mgr)
+    assert any(w in third_reply.lower() for w in ("here", "tell me", "listening", "mind", "what's up", "all ears", "go ahead"))
+    assert third_reply != second_reply
+
+
+def test_props_voice_commands_lifecycle(tmp_path):
+    """Verify voice commands for keeping toys inside, playing with props, and stopping."""
+    from dock_twoo.brain.commands import handle_voice_command
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    companion = mgr.companion
+
+    # 1. Play with hammer
+    rep_hammer = handle_voice_command("Brain, play with hammer", mgr)
+    assert rep_hammer is not None
+    assert "hammer" in rep_hammer.lower()
+    assert companion.active_prop is not None
+    assert companion.active_prop.prop_type == "hammer"
+
+    # 2. Keep the ball/prop inside
+    rep_stow = handle_voice_command("keep the ball inside", mgr)
+    assert rep_stow is not None
+    assert "storage" in rep_stow.lower() or "away" in rep_stow.lower()
+
+    # 3. Play with parachute
+    rep_parachute = handle_voice_command("Brain, deploy parachute", mgr)
+    assert rep_parachute is not None
+    assert "parachute" in rep_parachute.lower()
+    assert companion.active_prop.prop_type == "parachute"
+
+    # 4. Stop playing
+    rep_stop = handle_voice_command("stop playing", mgr)
+    assert rep_stop is not None
+
+    # 5. Play with balloon
+    rep_balloon = handle_voice_command("play with balloon", mgr)
+    assert rep_balloon is not None
+    assert "balloon" in rep_balloon.lower()
+    assert companion.active_prop.prop_type == "balloon"
+
+
+def test_carry_prop_and_window_push(tmp_path):
+    """Verify carry-and-play, naughty window push, and walking on text box commands."""
+    from dock_twoo.brain.commands import handle_voice_command
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    companion = mgr.companion
+
+    # 1. Carry prop to top right
+    rep_carry = handle_voice_command("go to the top right and then play", mgr)
+    assert rep_carry is not None
+    assert "top right" in rep_carry.lower()
+    assert companion.action == "walk"
+
+    # 2. Window push
+    rep_push = handle_voice_command("push the window", mgr)
+    assert rep_push is not None
+    assert "push" in rep_push.lower()
+
+    # 3. Walk on text box
+    rep_text_box = handle_voice_command("walk on top of text box", mgr)
+    assert rep_text_box is not None
+    assert "text box" in rep_text_box.lower()
+
+
+def test_tightened_resource_gating():
+    """Verify that generic words do NOT dump hardware/resources, but explicit requests do."""
+    from dock_twoo.brain.providers import answer_locally
+
+    # Generic statements should not trigger system resource dump
+    general_reply = answer_locally("How is the system today?")
+    assert "cpu" not in general_reply.lower()
+    assert "battery" not in general_reply.lower()
+
+    general_reply2 = answer_locally("Give me a status update")
+    assert "cpu" not in general_reply2.lower()
+    assert "battery" not in general_reply2.lower()
+
+    # Explicit resource request SHOULD trigger resource summary
+    explicit_reply = answer_locally("what are my resources?")
+    assert "cpu" in explicit_reply.lower() or "battery" in explicit_reply.lower() or "memory" in explicit_reply.lower()
+
+
 
 
 

@@ -168,23 +168,19 @@ class AudioListener(QObject):
                 self.noise_floor = 0.97 * self.noise_floor + 0.03 * min(rms, 180.0)
                 if self.ambient_speech_frames:
                     self.ambient_silence_count += 1
-                    # When speech finishes (200ms of trailing silence), test utterance for wake word!
-                    if self.ambient_silence_count >= 2:
+                    # 5 consecutive 100ms silence chunks = 0.5s pause after speech
+                    if self.ambient_silence_count >= 5:
                         frames = list(self.ambient_speech_frames)
                         self.ambient_speech_frames = []
                         self.ambient_silence_count = 0
-                        if len(frames) >= 2:
+                        if len(frames) >= 3:
                             threading.Thread(target=self._check_wake_word, args=(frames,), daemon=True).start()
             else:
                 self.ambient_silence_count = 0
                 self.ambient_speech_frames.append(pcm)
-                # Keep maximum 18 frames (~1.8s) so candidate does not grow indefinitely
-                if len(self.ambient_speech_frames) > 18:
+                # Keep up to 80 frames (~8 seconds) to capture complete spoken commands without truncation
+                if len(self.ambient_speech_frames) > 80:
                     self.ambient_speech_frames.pop(0)
-                # If speech has been ongoing for 8 frames, test rolling candidate too
-                if len(self.ambient_speech_frames) in (8, 14):
-                    frames = list(self.ambient_speech_frames)
-                    threading.Thread(target=self._check_wake_word, args=(frames,), daemon=True).start()
         else:
             # Active turn recording
             self.speech_frames.append(pcm)
@@ -202,17 +198,26 @@ class AudioListener(QObject):
                     self.stop_recording()
 
     def _check_wake_word(self, frames: list[bytes]) -> None:
-        """Transcribe candidate frame to detect wake word ('Brain')."""
+        """Transcribe ambient utterance to detect wake word ('Brain') or full command."""
         raw_pcm = b"".join(frames)
-        if len(raw_pcm) < 16000 * 2 * 0.2:
+        if len(raw_pcm) < 16000 * 2 * 0.25:
             return
-        text = self._transcribe_pcm(raw_pcm).lower().strip()
+        text = self._transcribe_pcm(raw_pcm).strip()
         if not text:
             return
-        if re.search(r"\b(brain|hey\s+brain|brian|brin|rain|bran|drain)\b", text, re.IGNORECASE):
+
+        wake_match = re.search(r"\b(brain|hey\s+brain|brian|brin|rain|bran|drain)\b", text, re.IGNORECASE)
+        if wake_match:
             self.ambient_speech_frames = []
             self.ambient_silence_count = 0
-            self.wake_detected.emit()
+            # Check if user spoke a full command or just called the wake name
+            clean_cmd = re.sub(r"^(hey\s+brain|brain|brian|brin|rain|bran|drain)[,\s]*", "", text, flags=re.IGNORECASE).strip()
+            if not clean_cmd:
+                # User said "Brain" and paused: wake up and greet!
+                self.wake_detected.emit()
+            else:
+                # User spoke a full statement (e.g. "Brain, do this"): process directly without interrupting!
+                self.turn_completed.emit(text)
 
     def _process_utterance(self, frames: list[bytes]) -> None:
         """Transcribe full user statement and emit turn_completed."""

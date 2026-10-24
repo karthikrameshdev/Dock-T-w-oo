@@ -221,23 +221,64 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
     # Strip leading "brain" or "hey brain"
     clean_text = re.sub(r"^(hey\s+brain|brain)[,\s]*", "", text, flags=re.I).strip()
     if not clean_text:
-        return "Hey Karthik, I'm right here. What would you like me to do?"
+        if hasattr(manager, "get_wake_greeting"):
+            return manager.get_wake_greeting()
+        return "Yeah, I'm here. Tell me."
 
     companion = manager.companion
 
     # 1. Window Top Border & Text Box Walking
-    if re.search(r"\b(walk\s+on\s+window|walk\s+on\s+the\s+window|walk\s+on\s+top\s+of\s+window|walk\s+on\s+top\s+of\s+the\s+window|walk\s+on\s+text\s+box|walk\s+on\s+top\s+of\s+text\s+box|walk\s+on\s+the\s+text\s+box)\b", clean_text):
-        companion.walk_window_surface()
+    if re.search(r"\b(walk\s+on\s+(?:the\s+|top\s+of\s+(?:the\s+)?)?text\s*box|walk\s+on\s+(?:the\s+|top\s+of\s+(?:the\s+)?)?input\s*box)\b", clean_text):
+        companion.walk_window_surface(target_type="text_box")
+        return "Walking on top of the text box in side profile!"
+
+    if re.search(r"\b(walk\s+on\s+window|walk\s+on\s+the\s+window|walk\s+on\s+top\s+of\s+window|walk\s+on\s+top\s+of\s+the\s+window)\b", clean_text):
+        companion.walk_window_surface(target_type="window")
         return "Walking across the window top border in side profile!"
 
-    # 2. Interactive Energy Ball Play
+    # 2. Interactive Prop Play, Stow & Carry Actions
+    # 2a. Stow Prop / Put Away Inside
+    if re.search(r"\b(keep\s+(?:the\s+)?(?:ball|prop|toy)\s+inside|put\s+away\s+(?:the\s+)?(?:ball|prop|toy|toys)|put\s+(?:the\s+)?(?:ball|prop|toy|toys)\s+(?:away|inside|back)|stop\s+playing(?:\s+ball)?|stop\s+ball)\b", clean_text):
+        companion.put_away_prop()
+        return "Putting the toy away into storage!"
+
+    # 2b. Carry Prop to Desktop Corner & Play ("carry the ball to top right and play", "go to the top right and play")
+    carry_match = re.search(
+        r"\b(?:carry|take|bring|move|go)\s+(?:(?:the\s+)?(ball|toy|prop|hammer|balloon|parachute)\s+)?(?:to\s+(?:the\s+)?)?(top\s+left|top\s+right|bottom\s+left|bottom\s+right|left|right|top|bottom)\s+(?:and\s+(?:then\s+)?play|to\s+play)\b",
+        clean_text,
+    )
+    if not carry_match:
+        carry_match = re.search(
+            r"\b(?:carry|take|bring)\s+(?:the\s+)?(ball|toy|prop|hammer|balloon|parachute)\s+to\s+(?:the\s+)?(top\s+left|top\s+right|bottom\s+left|bottom\s+right|left|right|top|bottom)\b",
+            clean_text,
+        )
+    if carry_match:
+        prop_item = carry_match.group(1) or "ball"
+        dest_corner = carry_match.group(2)
+        companion.carry_prop_to(dest_corner, prop_type=prop_item)
+        return f"Carrying the {prop_item} to the {dest_corner} to play!"
+
+    # 2c. Play with Specific Props (Hammer, Parachute, Balloon, Ball)
+    if re.search(r"\b(play\s+with\s+(?:the\s+)?hammer|hammer|break\s+something|tap\s+window|tap\s+the\s+window)\b", clean_text):
+        companion.play_with_prop("hammer")
+        return "Taking out the cyber hammer to tap on the window!"
+
+    if re.search(r"\b(parachute|deploy\s+(?:the\s+)?parachute|float\s+down|glide\s+down|fly\s+with\s+parachute)\b", clean_text):
+        companion.play_with_prop("parachute")
+        return "Deploying parachute and floating gently down!"
+
+    if re.search(r"\b(balloon|play\s+with\s+(?:the\s+)?balloon|float\s+balloon)\b", clean_text):
+        companion.play_with_prop("balloon")
+        return "Playing with a floating neon balloon!"
+
     if re.search(r"\b(play\s+with\s+ball|play\s+with\s+the\s+ball|play\s+ball|kick\s+ball|kick\s+the\s+ball|play)\b", clean_text):
         companion.play_ball()
         return "Playing with the energy ball on your desktop!"
 
-    if re.search(r"\b(stop\s+ball|stop\s+playing\s+ball|put\s+away\s+ball|put\s+the\s+ball\s+away)\b", clean_text):
-        companion.stop_ball()
-        return "Put away the energy ball."
+    # 2d. Naughty Window Push / Shrink
+    if re.search(r"\b(push\s+(?:the\s+)?window|shrink\s+(?:the\s+)?window|naughty|naughty\s+window)\b", clean_text):
+        companion.push_window()
+        return "Sneaking up to give your window a playful push!"
 
     # 3. Mascot Movement Commands ("jump to left corner", "walk towards top right", "fly to right", etc.)
     move_match = re.search(r"\b(jump|walk|fly|glide|roll|run|go|move)\b\s+(?:from\s+[\w\s]+\s+)?(?:to|towards|into)?\s*(the\s+)?(top\s+left|top\s+right|bottom\s+left|bottom\s+right|left\s+corner|right\s+corner|top\s+corner|bottom\s+corner|left|right|center|top|bottom)\b", clean_text)

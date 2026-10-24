@@ -166,8 +166,20 @@ def answer_locally(prompt: str) -> str:
         now = datetime.now()
         return f"Today is {now.strftime('%A, %B %-d, %Y')}."
 
-    # System status & resources
-    if any(k in p_lower for k in ("system", "resource", "cpu", "ram", "memory", "battery", "status update", "hardware", "performance")):
+    # System status & resources (only when user explicitly asks for system resources/hardware)
+    explicit_resource_queries = (
+        "what are my resources",
+        "system resources",
+        "cpu usage",
+        "ram usage",
+        "memory usage",
+        "check resources",
+        "battery status",
+        "hardware usage",
+        "resource usage",
+        "check system resources",
+    )
+    if any(k in p_lower for k in explicit_resource_queries):
         return get_system_summary()
 
     # Capabilities / Who are you / What can you do

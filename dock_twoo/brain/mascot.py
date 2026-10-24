@@ -191,7 +191,10 @@ class Companion(QWidget):
         self.turn_progress: float = 0.0  # 0.0 = front, 0.5 = 3/4 turn, 1.0 = side profile
         self.turn_target: float = 0.0
         self.on_turn_finished = None
+        self.active_prop = None
         self.desktop_ball = None
+        self.last_user_interaction: float = time.monotonic()
+        self.idle_alerted: bool = False
 
         # Dimension specifications matching the original artwork scale
         self.art_width = 168
@@ -244,8 +247,12 @@ class Companion(QWidget):
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
+        if self.active_prop:
+            self.active_prop.dismiss()
+            self.active_prop = None
         if self.desktop_ball:
             self.desktop_ball.dismiss()
+            self.desktop_ball = None
 
     def _restore_placement(self) -> None:
         screen = QApplication.primaryScreen()
@@ -347,6 +354,12 @@ class Companion(QWidget):
         if state != prev:
             self.processing_started = time.monotonic()
 
+        if state in ("listening", "thinking", "processing", "speaking"):
+            if self.active_prop and self.active_prop.active:
+                self.active_prop.dismiss()
+                self.active_prop = None
+                self.desktop_ball = None
+
         if self.animation_loop and state != "idle":
             self.stop_motion()
 
@@ -392,6 +405,10 @@ class Companion(QWidget):
         """Smoothly turn character back to face the user directly (front profile)."""
         if not self.isVisible():
             self.show()
+        if self.active_prop and self.active_prop.active:
+            self.active_prop.dismiss()
+            self.active_prop = None
+            self.desktop_ball = None
         self.stop_motion()
         self.gaze = None  # Direct eye contact with user
         self.turn_target = 0.0
@@ -569,32 +586,36 @@ class Companion(QWidget):
         ):
             return
 
+        # Check for extended idle (> 15 minutes of user inactivity)
+        now = time.monotonic()
+        if now - self.last_user_interaction > 900 and not self.idle_alerted:
+            self.idle_alerted = True
+            self.call_out_idle_user()
+            return
+
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry()
 
         choice = random.random()
-        if choice < 0.16:
-            # Stroll along open application window / text box border
+        if choice < 0.20:
+            # Stroll along open application window or text box roof
             self.walk_window_surface()
             return
-        elif choice < 0.28:
-            # Play with energy ball
-            self.play_ball()
+        elif choice < 0.35:
+            # Play with toys/props (ball, hammer, parachute, balloon)
+            toy = random.choice(["ball", "hammer", "parachute", "balloon"])
+            self.play_with_prop(toy)
             return
         elif choice < 0.46:
+            # Playful naughty window push & pull interaction
+            self.push_window()
+            return
+        elif choice < 0.60:
             # Go climb onto dock
             target = self._get_dock_target(area)
             action = "walk"
             followup = lambda: self.play_action("climb_dock")
-        elif choice < 0.50:
-            # Inspect window with laser beam
-            target = QPoint(
-                random.randint(int(area.left()) + 80, max(int(area.left()) + 80, int(area.right()) - self.width() - 80)),
-                random.randint(int(area.top()) + 80, max(int(area.top()) + 80, int(area.bottom()) - self.height() - 80)),
-            )
-            action = "walk"
-            followup = lambda: self.play_action("inspect_window")
-        elif choice < 0.72:
+        elif choice < 0.74:
             # Grab and replace text playfully
             target = QPoint(
                 random.randint(int(area.left()) + 60, max(int(area.left()) + 60, int(area.right()) - self.width() - 60)),
@@ -621,6 +642,85 @@ class Companion(QWidget):
         self.play_action(action, target, duration)
         self.roam_action = True
         self.arrival = followup
+
+    def call_out_idle_user(self) -> None:
+        """Call out playfully to user if idle for an extended period (> 15 minutes)."""
+        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+        target = QPoint(int(area.center().x()) - self.width() // 2, int(area.center().y()) - self.height() // 2)
+
+        def on_arrive():
+            self.play_action("wave", duration=2.0)
+            idle_phrases = [
+                "Hey, where are you? You have not been here for a long time. Can we connect, or do you need anything done?",
+                "Hey Karthik, I haven't seen you around for a while! Let me know if you need anything.",
+                "Hey! Just checking in since you've been away. Ready whenever you are!",
+            ]
+            self.manager.speech.start(random.choice(idle_phrases))
+
+        self.play_action("walk", destination=target, duration=2.0)
+        self.arrival = on_arrive
+
+    def push_window(self) -> None:
+        """Playful naughty interaction: companion walks to active window edge, pushes it to shrink width, then pulls it back!"""
+        if self.reduced_motion:
+            return
+        from dock_twoo.brain.vision import get_primary_surface
+        import subprocess
+
+        surface = get_primary_surface()
+        target_x = max(100, surface.right_x - 35)
+        target_y = max(100, surface.rect.center().y() - 110)
+
+        def do_push():
+            self.facing = -1.0
+            self.play_action("sensor_scan", duration=1.2)
+
+            script_shrink = '''
+            tell application "System Events"
+                set frontApp to first application process whose frontmost is true
+                tell frontApp
+                    if (count of windows) > 0 then
+                        set {w, h} to size of front window
+                        set size of front window to {w - 45, h}
+                        return w
+                    end if
+                end tell
+            end tell
+            '''
+            script_restore = '''
+            on run argv
+                set origW to (item 1 of argv) as integer
+                tell application "System Events"
+                    set frontApp to first application process whose frontmost is true
+                    tell frontApp
+                        if (count of windows) > 0 then
+                            set {w, h} to size of front window
+                            set size of front window to {origW, h}
+                        end if
+                    end tell
+                end tell
+            end run
+            '''
+            try:
+                out = subprocess.check_output(["osascript", "-e", script_shrink], text=True, timeout=2.0).strip()
+                orig_w = int(out)
+            except Exception:
+                orig_w = 0
+
+            def do_pull_back():
+                if orig_w > 0:
+                    try:
+                        subprocess.check_call(["osascript", "-e", script_restore, str(orig_w)], timeout=2.0)
+                    except Exception:
+                        pass
+                self.play_action("celebrate", duration=1.5)
+                self.arrival = lambda: self.turn_to_user()
+
+            QTimer.singleShot(1400, do_pull_back)
+
+        self.play_action("walk", destination=QPoint(target_x, target_y), duration=1.8)
+        self.arrival = do_push
 
     def _get_dock_target(self, area: QRectF) -> QPoint:
         """Find a target location near the desktop dock edge to inspect dock icons."""
@@ -673,15 +773,24 @@ class Companion(QWidget):
         valid_style = style if style in ("jump", "fly", "walk", "roll", "glide") else "walk"
         duration = 1.3 if valid_style == "jump" else (1.6 if valid_style == "fly" else 2.2)
         self.play_action(valid_style, destination=target, duration=duration)
-    def walk_window_surface(self) -> None:
+
+    def walk_window_surface(self, target_type: str = "auto") -> None:
         """Walk along the top edge border of an active application window or text box in side profile."""
         if self.reduced_motion:
             return
-        from dock_twoo.brain.vision import get_primary_surface
-        surface = get_primary_surface()
+        from dock_twoo.brain.vision import get_primary_surface, get_text_box_surface
 
+        if target_type == "text_box":
+            surface = get_text_box_surface()
+        elif target_type == "window":
+            surface = get_primary_surface()
+        else:
+            surface = get_text_box_surface() if random.random() < 0.5 else get_primary_surface()
+
+        # Place robot boots directly on top of surface_y (feet are at y=224 in widget)
+        feet_offset = 224
+        start_y = surface.surface_y - feet_offset
         start_x = surface.left_x + 15
-        start_y = surface.surface_y - self.height() + 25
 
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
@@ -690,8 +799,6 @@ class Companion(QWidget):
 
         end_x = max(start_x + 80, min(surface.right_x - self.width() - 15, int(area.right()) - self.width() - 10))
         end_y = start_y
-
-        self.facing = 1.0
 
         def start_side_walk():
             walk_dist = abs(end_x - start_x)
@@ -714,26 +821,74 @@ class Companion(QWidget):
 
     def play_ball(self) -> None:
         """Spawn the interactive desktop energy ball and playfully chase/kick it across the screen."""
+        self.play_with_prop("ball")
+
+    def play_with_prop(self, prop_type: str = "ball", destination: Optional[QPoint] = None) -> None:
+        """Spawn and play with an interactive desktop prop (ball, hammer, parachute, balloon)."""
         if self.reduced_motion:
             return
-        from dock_twoo.brain.ball import DesktopBall
-        if self.desktop_ball is None:
-            self.desktop_ball = DesktopBall(self)
+        from dock_twoo.brain.props import DesktopProp
+        if self.active_prop is None:
+            self.active_prop = DesktopProp(self, prop_type=prop_type)
+        else:
+            self.active_prop.prop_type = prop_type
+
+        self.desktop_ball = self.active_prop
 
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
 
-        spawn_dir = 1.0 if self.x() < area.center().x() else -1.0
-        bx = self.x() + (120 if spawn_dir > 0 else -60)
-        by = self.y() + 80
-        self.desktop_ball.spawn(bx, by, vx=spawn_dir * 180, vy=-220)
-        self.chase_and_kick_ball()
-
-    def chase_and_kick_ball(self) -> None:
-        if self.reduced_motion or not self.desktop_ball or not self.desktop_ball.active:
+        if prop_type == "parachute":
+            start_x = self.x()
+            start_y = max(int(area.top()) + 20, self.y() - 280)
+            self.move(start_x, start_y)
+            self.active_prop.spawn(start_x, start_y - 65, vx=0, vy=0, prop_type="parachute")
+            self.play_action("fly", duration=3.5)
             return
 
-        b_center = self.desktop_ball.center_point()
+        elif prop_type == "hammer":
+            facing = self.facing
+            hx = self.x() + (80 if facing > 0 else -40)
+            hy = self.y() + 60
+            self.active_prop.spawn(hx, hy, prop_type="hammer")
+
+            def do_tap():
+                if self.active_prop and self.active_prop.active:
+                    self.active_prop.strike()
+                    self.play_action("nod", duration=0.8)
+                    QTimer.singleShot(900, lambda: self.active_prop.strike() if self.active_prop else None)
+                    QTimer.singleShot(1800, lambda: self.put_away_prop())
+
+            self.play_action("walk", destination=destination, duration=1.5)
+            self.arrival = do_tap
+            return
+
+        elif prop_type == "balloon":
+            facing = self.facing
+            bx = self.x() + (70 if facing > 0 else -30)
+            by = self.y() - 50
+            self.active_prop.spawn(bx, by, prop_type="balloon")
+            self.play_action("explore", duration=3.0)
+            self.arrival = lambda: QTimer.singleShot(4000, lambda: self.put_away_prop())
+            return
+
+        else:  # ball
+            spawn_dir = 1.0 if self.x() < area.center().x() else -1.0
+            bx = self.x() + (120 if spawn_dir > 0 else -60)
+            by = self.y() + 80
+            self.active_prop.spawn(bx, by, vx=spawn_dir * 180, vy=-220, prop_type="ball")
+            self.chase_and_kick_ball()
+
+    def chase_and_kick_ball(self) -> None:
+        if self.reduced_motion or not self.active_prop or not self.active_prop.active:
+            return
+
+        # Auto-stow after 3 kicks so ball is never abandoned!
+        if self.active_prop.kick_count >= 3:
+            self.put_away_prop()
+            return
+
+        b_center = self.active_prop.center_point()
         self.gaze = b_center
 
         facing = 1.0 if b_center.x() >= self.geometry().center().x() else -1.0
@@ -750,27 +905,72 @@ class Companion(QWidget):
         dur = max(1.0, min(2.5, dist / 220.0))
 
         def do_kick():
-            if not self.desktop_ball or not self.desktop_ball.active:
+            if not self.active_prop or not self.active_prop.active:
                 return
             self.play_action("kick_ball", duration=1.0)
             impulse_x = self.facing * random.uniform(320, 520)
             impulse_y = -random.uniform(380, 560)
-            self.desktop_ball.kick(impulse_x, impulse_y)
+            self.active_prop.kick(impulse_x, impulse_y)
 
             def post_kick():
-                if self.desktop_ball and self.desktop_ball.active:
+                if self.active_prop and self.active_prop.active and self.active_prop.kick_count < 3:
                     QTimer.singleShot(1200, self.chase_and_kick_ball)
                 else:
-                    self.turn_to_user()
+                    self.put_away_prop()
             self.arrival = post_kick
 
         self.play_action("chase_ball", destination=QPoint(target_x, target_y), duration=dur)
         self.arrival = do_kick
 
+    def put_away_prop(self, on_stowed=None) -> None:
+        """Tuck away the active desktop prop/toy into robot storage compartment."""
+        if not self.active_prop or not self.active_prop.active:
+            if on_stowed:
+                on_stowed()
+            return
+
+        prop = self.active_prop
+
+        def finish_stow():
+            prop.dismiss()
+            self.active_prop = None
+            self.desktop_ball = None
+            self.turn_to_user()
+            if on_stowed:
+                on_stowed()
+
+        p_center = prop.center_point()
+        target_x = p_center.x() - self.width() // 2
+        target_y = p_center.y() - self.height() + 35
+        self.play_action("walk", destination=QPoint(target_x, target_y), duration=1.2)
+        self.arrival = finish_stow
+
+    def carry_prop_to(self, corner: str, prop_type: str = "ball") -> None:
+        """Carry a toy to a specific desktop corner and start playing there."""
+        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+        c = corner.lower().replace("-", "_").replace(" ", "_")
+        margin = 60
+        if "top_right" in c or "right_top" in c:
+            dest = QPoint(int(area.right()) - self.width() - margin, int(area.top()) + margin)
+        elif "top_left" in c or "left_top" in c:
+            dest = QPoint(int(area.left()) + margin, int(area.top()) + margin)
+        elif "bottom_left" in c or "left_bottom" in c:
+            dest = QPoint(int(area.left()) + margin, int(area.bottom()) - self.height() - margin)
+        elif "bottom_right" in c or "right_bottom" in c:
+            dest = QPoint(int(area.right()) - self.width() - margin, int(area.bottom()) - self.height() - margin)
+        else:
+            dest = QPoint(int(area.center().x()) - self.width() // 2, int(area.center().y()) - self.height() // 2)
+
+        def start_play():
+            self.play_with_prop(prop_type)
+
+        self.play_action("walk", destination=dest, duration=2.2)
+        self.arrival = start_play
+
     def stop_ball(self) -> None:
-        """Dismiss the desktop energy ball."""
-        if self.desktop_ball:
-            self.desktop_ball.dismiss()
+        """Dismiss and stow any active desktop prop."""
+        self.put_away_prop()
         self.turn_to_user()
 
     def _idle_gesture(self) -> None:

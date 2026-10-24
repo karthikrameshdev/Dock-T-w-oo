@@ -75,6 +75,9 @@ class BrainManager(QObject):
         self._is_listening: bool = False
         self.in_conversation_session: bool = False
         self.conversation_history: List[Dict[str, str]] = []
+        self.wake_count: int = 0
+        self.last_wake_time: float = 0.0
+        self._last_wake_reply: str = ""
 
         self.session_timer = QTimer(self)
         self.session_timer.setSingleShot(True)
@@ -193,6 +196,42 @@ class BrainManager(QObject):
         self.listener.stop_recording()
         self.activity_requested.emit("idle")
 
+    def get_wake_greeting(self) -> str:
+        """Generate a natural, realistic spoken response when activated by the wake word 'Brain'."""
+        now = time.monotonic()
+        # Initial welcoming greeting if first call or after extended inactivity (> 25 minutes)
+        is_first = (self.wake_count == 0) or (self.last_wake_time > 0 and (now - self.last_wake_time > 1500))
+        self.wake_count += 1
+        self.last_wake_time = now
+
+        if is_first:
+            initial_options = [
+                "Hey Karthik, what would you like to do?",
+                "Hey Karthik! How can I help you today?",
+                "Hey Karthik, what are we working on today?",
+            ]
+            reply = random.choice(initial_options)
+            self._last_wake_reply = reply
+            return reply
+
+        # Subsequent responses: realistic, active, conversational, and concise
+        subsequent_options = [
+            "Yeah, I'm here. Tell me.",
+            "I'm listening, Karthik.",
+            "Right here. What's on your mind?",
+            "Yeah, what's up?",
+            "All ears, tell me.",
+            "I'm here, Karthik. What do you need?",
+            "Yeah, go ahead.",
+            "Right here with you. Tell me.",
+            "Listening, Karthik. Go ahead.",
+        ]
+        # Avoid repeating the same greeting twice consecutively
+        choices = [opt for opt in subsequent_options if opt != self._last_wake_reply]
+        reply = random.choice(choices if choices else subsequent_options)
+        self._last_wake_reply = reply
+        return reply
+
     @Slot()
     def _do_wake_detected(self) -> None:
         self.in_conversation_session = True
@@ -202,9 +241,9 @@ class BrainManager(QObject):
         if not self.companion.isVisible():
             self._do_show_mini_agent()
         self.companion.turn_to_user()
-        self.companion.set_activity("listening")
-        # Greet user immediately and start listening for their statement!
-        self.speech.start("Hey Karthik, I'm listening.")
+        # Greet user realistically and start listening for their statement!
+        greeting = self.get_wake_greeting()
+        self.speech.start(greeting)
 
     def _on_wake_detected(self) -> None:
         """Invoked when user says 'Brain' or 'Hey Brain'."""

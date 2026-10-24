@@ -18,6 +18,7 @@ class DesktopSurface:
     surface_y: int
     left_x: int
     right_x: int
+    kind: str = "window"  # "window" or "text_box"
 
 
 def get_desktop_surfaces(exclude_wid: int = 0) -> List[DesktopSurface]:
@@ -64,6 +65,7 @@ def get_desktop_surfaces(exclude_wid: int = 0) -> List[DesktopSurface]:
                         surface_y=y,
                         left_x=x,
                         right_x=x + w,
+                        kind="window",
                     )
                 )
         except Exception:
@@ -86,6 +88,7 @@ def get_desktop_surfaces(exclude_wid: int = 0) -> List[DesktopSurface]:
                 surface_y=mid_y,
                 left_x=mid_x,
                 right_x=mid_x + mid_w,
+                kind="window",
             )
         )
 
@@ -96,3 +99,23 @@ def get_primary_surface() -> DesktopSurface:
     """Get the most prominent active window surface on the desktop."""
     surfaces = get_desktop_surfaces()
     return surfaces[0]
+
+
+def get_text_box_surface(primary_window: Optional[DesktopSurface] = None) -> DesktopSurface:
+    """Detect or calculate the active input text box surface at the bottom of the primary window."""
+    win = primary_window or get_primary_surface()
+    # Typical input text box in chat apps (ChatGPT, Slack, Messages, Chrome) is located near the bottom
+    box_w = min(720, max(360, int(win.rect.width() * 0.65)))
+    box_h = 75
+    box_x = win.rect.center().x() - box_w // 2
+    # The top rim of the text box
+    box_top_y = win.rect.bottom() - 110
+    return DesktopSurface(
+        owner=win.owner,
+        title=f"{win.title} (Input Box)",
+        rect=QRect(box_x, box_top_y, box_w, box_h),
+        surface_y=box_top_y,
+        left_x=box_x,
+        right_x=box_x + box_w,
+        kind="text_box",
+    )
