@@ -1,0 +1,28 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "Brain local Tasks work log", "version": "1.1.0", "description": "Loopback application API. Date boundaries are inclusive ISO calendar dates. Search is literal in titles and details. Summaries and task detail editing use the same persistent store."},
+  "paths": {
+    "/api/tasks": {
+      "get": {
+        "parameters": [
+          {"name":"date","in":"query","schema":{"type":"string","format":"date"}},
+          {"name":"start","in":"query","schema":{"type":"string","format":"date"}},
+          {"name":"end","in":"query","schema":{"type":"string","format":"date"}},
+          {"name":"query","in":"query","schema":{"type":"string"}},
+          {"name":"status","in":"query","schema":{"type":"string","enum":["todo","in_progress","done"]}},
+          {"name":"offset","in":"query","schema":{"type":"integer","minimum":0,"default":0}}
+        ],
+        "responses": {
+          "200":{"description":"Up to 100 tasks ordered by newest work date, with next_offset, total matching tasks, and counts per status across the whole filtered set."},
+          "400":{"description":"Invalid ISO date, reversed range, offset, or status."},
+          "403":{"description":"Foreign origin or non-loopback client."}
+        }
+      },
+      "post": {
+        "parameters":[{"name":"X-Brain-Request","in":"header","required":true,"schema":{"type":"string","enum":["local"]}}],
+        "requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"id":{"type":"string","description":"When supplied, update this task; otherwise create."},"title":{"type":"string","minLength":1,"maxLength":1000},"details":{"type":"string","maxLength":16000},"date":{"type":"string","format":"date","description":"Creation work date; defaults to today."},"day":{"type":"string","format":"date","description":"Work date when updating."},"status":{"type":"string","enum":["done","in_progress","todo"]}}}}}},
+        "responses":{"200":{"description":"Persisted task; same-day titles are deduplicated on create."},"400":{"description":"Invalid task fields."},"403":{"description":"Local controls required."}}
+      }
+    }
+  }
+}

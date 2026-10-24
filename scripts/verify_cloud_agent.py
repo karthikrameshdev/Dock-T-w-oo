@@ -31,7 +31,8 @@ with tempfile.TemporaryDirectory(prefix='brain-agent-fixture-') as folder:
         assert all(call['input_tokens'] is not None and call['output_tokens'] is not None for call in ledger['calls'])
         assert 'rejected' in agent.run('invalid-arguments')
         assert 'Implemented cloud agent' in agent.run('record-work')
-        assert 'Implemented cloud agent' in agent.run('recall-work')
+        recall=agent.run('recall-work')
+        assert 'Implemented cloud agent' in recall and recall.tasks_query=={'date':'2026-01-05'}
         results.append({'protocol':protocol,'folder_summary':'passed','invalid_tool_recovery':'passed','dated_tasks':'passed'})
     profiles.save_profile({'provider':'custom','base_url':'https://fixture.example/v1','model':'fixture-model','protocol':'openai','api_key':'fixture-key'})
     from dock_twoo.brain import computer_actions

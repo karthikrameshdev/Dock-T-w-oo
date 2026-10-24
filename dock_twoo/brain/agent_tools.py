@@ -38,7 +38,7 @@ TOOLS=[
  tool('character_action','Play a local character gesture or move to a corner using walk, run, jump, fly or roll.',{'action':{'type':'string','enum':sorted(ACTIONS)+['follow_cursor','stop_follow_cursor']},'destination':{'type':'string','enum':['top_left','top_right','bottom_left','bottom_right','center']}},['action']),
  tool('read_aloud','Immediately start local continuous reading of selected text, the active window, or supplied text.',{'source':{'type':'string','enum':['selected','window','text']},'text':S},['source']),
  tool('add_task','Record a work item in the persistent Tasks app. Repeated identical items on the same day are deduplicated.',{'title':S,'details':S,'date':S,'status':{'type':'string','enum':['todo','in_progress','done']}},['title']),
- tool('list_tasks','Query the work log by ISO date or date range. Use current local date for today/yesterday and include the year for specific dates.',{'date':S,'start':S,'end':S,'query':S,'offset':I}),
+ tool('list_tasks','Query the work log by ISO date or date range; the final answer is also displayed in Tasks. Use current local date for today/yesterday and include the year for specific dates. Paginate before claiming a complete summary.',{'date':S,'start':S,'end':S,'query':S,'offset':I,'status':{'type':'string','enum':['todo','in_progress','done']}}),
  tool('update_task','Change a recorded task by its returned id.',{'id':S,'title':S,'details':S,'status':S,'day':S},['id']),
  tool('add_note','Create a note in the existing Notes application.',{'title':S,'body':S},['title','body']),
  tool('list_notes','Read existing Notes, optionally filtering by text.',{'query':S}),

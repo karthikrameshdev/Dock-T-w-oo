@@ -31,21 +31,39 @@ class TaskStore:
             ident=uuid.uuid4().hex
             db.execute('INSERT INTO tasks VALUES(?,?,?,?,?,?,?)',(ident,date,title,details,status,now,now))
             return dict(db.execute('SELECT * FROM tasks WHERE id=?',(ident,)).fetchone())
-    def list(self,date=None,start=None,end=None,query='',offset=0):
+    def list(self,date=None,start=None,end=None,query='',offset=0,status=None):
         clauses=[];params=[]
+        if start and end and day(start)>day(end):raise ValueError('The From date must be on or before the To date.')
+        if status not in (None,'','todo','in_progress','done'):raise ValueError('Choose a valid task status.')
         for key,value,op in [('day',date,'='),('day',start,'>='),('day',end,'<=')]:
             if value:clauses.append(f'{key}{op}?');params.append(day(value))
-        if query:clauses.append('(title LIKE ? OR details LIKE ?)');params.extend(['%'+query+'%']*2)
+        if status:clauses.append('status=?');params.append(status)
+        if query:
+            query=str(query).replace('\\','\\\\').replace('%','\\%').replace('_','\\_')
+            clauses.append("(title LIKE ? ESCAPE '\\' OR details LIKE ? ESCAPE '\\')");params.extend(['%'+query+'%']*2)
         where=' WHERE '+' AND '.join(clauses) if clauses else ''
+        offset=max(0,int(offset))
         with self._connect() as db:
-            rows=db.execute('SELECT * FROM tasks'+where+' ORDER BY day DESC,created LIMIT 101 OFFSET ?',params+[max(0,int(offset))]).fetchall()
-            return {'tasks':[dict(row) for row in rows[:100]],'next_offset':int(offset)+100 if len(rows)>100 else None}
+            counts={key:0 for key in ('todo','in_progress','done')}
+            for row in db.execute('SELECT status,count(*) count FROM tasks'+where+' GROUP BY status',params):counts[row['status']]=row['count']
+            rows=db.execute('SELECT * FROM tasks'+where+' ORDER BY day DESC,created,id LIMIT 101 OFFSET ?',params+[offset]).fetchall()
+            return {'tasks':[dict(row) for row in rows[:100]],'next_offset':offset+100 if len(rows)>100 else None,
+                    'total':sum(counts.values()),'counts':counts}
+    def get(self,id):
+        with self._connect() as db:
+            row=db.execute('SELECT * FROM tasks WHERE id=?',(id,)).fetchone()
+            if row is None:raise ValueError('The task was not found.')
+            return dict(row)
     def update(self,id,**changes):
         allowed={key:value for key,value in changes.items() if key in ('title','details','status','day')}
         if not allowed:raise ValueError('No task changes were supplied.')
         if 'day' in allowed:allowed['day']=day(allowed['day'])
         if allowed.get('status','todo') not in ('todo','in_progress','done'):raise ValueError('Invalid task status.')
         if 'title' in allowed and not str(allowed['title']).strip():raise ValueError('Task title cannot be empty.')
+        if 'title' in allowed:
+            allowed['title']=str(allowed['title']).strip()
+            if len(allowed['title'])>1000:raise ValueError('Use at most 1,000 characters for a task title.')
+        if 'details' in allowed and len(allowed['details'])>16000:raise ValueError('Use at most 16,000 characters for task details.')
         allowed['updated']=datetime.now().astimezone().isoformat()
         with self._connect() as db:
             cursor=db.execute('UPDATE tasks SET '+','.join(key+'=?' for key in allowed)+' WHERE id=?',list(allowed.values())+[id])

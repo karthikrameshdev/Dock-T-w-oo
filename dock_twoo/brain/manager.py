@@ -33,6 +33,7 @@ class BrainManager(QObject):
     reply_received = Signal(str)
     app_open_requested = Signal(str)
     app_data_changed = Signal(str)
+    tasks_view_requested = Signal(object)
     visibility_changed = Signal(bool)
 
     # Thread-safe dispatch signals for mascot updates from worker threads
@@ -489,6 +490,8 @@ class BrainManager(QObject):
                     return
                 self.conversation_history.append({"role": "assistant", "content": reply})
                 self._publish_response(reply)
+                if getattr(reply,'tasks_query',None) is not None:
+                    self.tasks_view_requested.emit({'filters':reply.tasks_query,'summary':str(reply)})
                 self.animation_director.respond(reply)
                 if getattr(reply,"reading_started",False):
                     return

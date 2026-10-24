@@ -65,7 +65,7 @@ window.BrainUsage = (() => {
     }
     period.addEventListener('change',()=>{from.disabled=to.disabled=period.value!=='custom';if(period.value!=='custom')refresh();});
     filters.addEventListener('submit',event=>{event.preventDefault();refresh();});from.disabled=to.disabled=true;
-    refresh();const timer=setInterval(()=>{if(!document.hidden && root.offsetParent!==null)refresh();},5000);
+    window.ConsoleControls?.enhance(root);refresh();const timer=setInterval(()=>{if(!document.hidden && root.offsetParent!==null)refresh();},5000);
     return {refresh,dispose:()=>clearInterval(timer)};
   }
   return {mount};

@@ -208,6 +208,7 @@ class DockWindow(QWidget):
         self.attached_window.window_closed.connect(self._on_attached_closed)
         self.brain_manager = get_brain_manager()
         self.brain_manager.app_open_requested.connect(self._open_voice_app)
+        self.brain_manager.tasks_view_requested.connect(self._show_task_summary)
         self.brain_manager.app_data_changed.connect(lambda ident: self.attached_window._apps[ident]._load_notes() if ident=='notes' and ident in self.attached_window._apps and self.attached_window._apps[ident].stack.currentIndex()==0 else None)
         self.awake_timer=QTimer(self)
         self.awake_timer.setInterval(1000)
@@ -385,6 +386,12 @@ class DockWindow(QWidget):
             btn.right_clicked.connect(self._handle_icon_right_click)
             self._icon_buttons[item.id] = btn
             self.bottom_layout.addWidget(btn)
+
+    def _show_task_summary(self, payload) -> None:
+        widget=self.attached_window._apps.get('tasks')
+        if widget:
+            widget.show_query(payload.get('filters',{}),summary_text=payload.get('summary',''))
+            self._open_voice_app('tasks')
 
     def _open_voice_app(self, app_id: str) -> None:
         """An agent's open request is idempotent, unlike a dock click toggle."""

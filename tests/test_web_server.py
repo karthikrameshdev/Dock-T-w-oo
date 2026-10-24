@@ -299,3 +299,22 @@ def test_activity_and_usage_endpoints_are_local_and_share_the_ledger(test_server
             if path=='/api/activity':assert data['runs'][0]['cloud_calls']==1
             elif path=='/api/usage':assert data['summary']['total_tokens']==14
             else:assert data['run']['request']=='An isolated test request' and len(data['events'])==2
+
+
+def test_tasks_api_search_status_ranges_and_full_counts(test_server):
+    from urllib.parse import urlencode
+    from dock_twoo.tasks import TaskStore
+    _,port,mgr=test_server
+    store=TaskStore(mgr.config.get_storage_path()/'tasks')
+    store.add('Release review',details='Audio validation',date='2026-01-05',status='done')
+    store.add('Pending review',details='Audio research',date='2026-01-06',status='todo')
+    store.add('Older review',details='Audio validation',date='2025-12-31')
+    query=urlencode({'start':'2026-01-01','end':'2026-01-31','query':'Audio','status':'done'})
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/api/tasks?'+query,timeout=3) as response:
+        data=json.load(response)
+    assert data['total']==1 and data['tasks'][0]['title']=='Release review'
+    assert data['counts']=={'done':1,'todo':0,'in_progress':0}
+    for query in ('start=2026-02-01&end=2026-01-01','status=invalid','offset=bad'):
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(f'http://127.0.0.1:{port}/api/tasks?'+query,timeout=3)
+        assert error.value.code==400

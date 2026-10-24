@@ -46,3 +46,14 @@ and preserves monthly aggregates after seven-day trace expiry.
 `brain-activity.openapi.json` specifies the local trace and usage endpoints.
 All require the local request header; foreign origins are rejected. No live
 configured-provider credits are used by these tests.
+
+
+The Tasks query contract is `contracts/brain-tasks.openapi.json`: inclusive date
+ranges, literal title/detail search, status, pagination and whole-result counts.
+`tests/test_tasks_window.py` covers native today/history/search, editing, local
+summary pagination and final voice-summary display. `tests/test_web_server.py`
+exercises these combined filters through the real local HTTP server. Provider
+simulation verification also checks that task queries survive to the final reply.
+`python scripts/verify_tasks_window.py` renders disposable preview data without
+opening a microphone or submitting a cloud request; the dashboard verifier checks
+shared dropdown coverage and all four filter control heights.

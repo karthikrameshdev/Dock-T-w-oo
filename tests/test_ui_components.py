@@ -382,13 +382,15 @@ def test_tasks_drawer_uses_the_persistent_voice_work_log(tmp_path,qtbot):
     from dock_twoo.tasks import TaskStore
     cfg=DockConfig(storage_path=str(tmp_path))
     widget=TasksAppWidget(cfg);qtbot.addWidget(widget);widget.show()
-    widget.date.setDate(QDate(2026,1,5));widget.entry.setText('Reviewed voice agent');widget.add()
+    widget.show_query({'date':'2026-01-05'});widget.new_task()
+    widget.entry.setText('Reviewed voice agent');widget.save_task()
     assert widget.list.count()==1
-    item=widget.list.item(0);widget.toggle(item)
+    widget.open_item(widget.list.item(0))
+    widget.editor_status.setCurrentIndex(widget.editor_status.findData('todo'));widget.save_task()
     assert TaskStore(tmp_path/'tasks').list(date='2026-01-05')['tasks'][0]['status']=='todo'
     TaskStore(tmp_path/'tasks').add('Recorded through voice',date='2026-01-05')
     widget.refresh();assert widget.list.count()==2
-    widget.date.setDate(QDate(2026,1,6));assert widget.list.count()==0
+    widget.show_query({'date':'2026-01-06'});assert widget.list.count()==0
     widget.close()
 
 

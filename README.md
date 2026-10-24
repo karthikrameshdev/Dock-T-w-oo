@@ -200,7 +200,7 @@ and Apple Vision OCR; only resulting text reaches the cloud model. Audio, image
 bytes and video are never sent to the provider. Requested document contents are
 sent as text to the configured provider for summarization.
 
-**Tasks** is a persistent work log grouped by date. Say “Today I worked on the
+**Tasks** is a persistent work log grouped by date. The drawer opens on today, with title/detail search, status filters, yesterday, the last seven days, month selection, a specific day, custom ranges and all dates. Click any entry to view or edit its full details. Summary shows all matching work (up to 1,000 entries, with an explicit limit notice); a voice task summary opens the same filtered drawer and displays Brain’s answer. Say “Today I worked on the
 release notes” or “What did I work on January fifth?” The cloud agent records and
 retrieves dated entries, then summarizes them through local speech. Identical
 entries on the same day are deduplicated. Notes use the existing Notes drawer.

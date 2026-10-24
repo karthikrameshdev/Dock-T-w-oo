@@ -117,7 +117,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     from urllib.parse import parse_qs,urlsplit
                     from dock_twoo.tasks import TaskStore
                     query=parse_qs(urlsplit(self.path).query)
-                    self._json(200,TaskStore(self.config_manager.config.get_storage_path()/'tasks').list(date=query.get('date',[None])[0]))
+                    filters={key:query[key][0] for key in ('date','start','end','query','status','offset') if key in query}
+                    self._json(200,TaskStore(self.config_manager.config.get_storage_path()/'tasks').list(**filters))
                 else:
                     from dock_twoo.keep_awake import get_keep_awake
                     self._json(200,get_keep_awake().status())

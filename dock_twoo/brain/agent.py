@@ -122,7 +122,9 @@ class BrainAgent:
         self._update(state='thinking',run_id=run_id,step=0,tool='',error='',events=[],
                      cloud_calls=0,stalled_turns=0,tokens_reported=0,message='Planning the request.')
         reading=False;repeat={};stalled=0;guard_tokens=0;reported=0;last_error=''
+        task_query=None
         def finish(reply,state='complete',reason=''):
+            if state=='complete' and task_query is not None:reply.tasks_query=task_query
             self.tracker.finish(run_id,state,reply,reason)
             self._update(state=state,tool='',error=reason,message=reason or 'Response ready.')
             return reply
@@ -194,6 +196,7 @@ class BrainAgent:
                                 self._update(state='acting',tool=name,message=name.replace('_',' ').capitalize())
                                 self.tracker.event(run_id,'tool_request',{'name':name,'arguments':args},step)
                                 output=self.tools.execute(name,args,token)
+                                if name=='list_tasks':task_query={key:value for key,value in args.items() if key!='offset'}
                                 progress=guard.changed(name,args,output) or progress
                                 reading=reading or name=='read_aloud'
                                 result={'ok':True,'result':output}

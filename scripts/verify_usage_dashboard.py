@@ -38,11 +38,12 @@ def sample():
   pending=False
   try:value=json.loads(value) if isinstance(value,str) and value else value
   except ValueError:pass
-  if value and value.get('cards')==6 and value.get('charts')==4 and not value.get('loading'):
+  if value and value.get('cards')==6 and value.get('charts')==4 and not value.get('loading') and value.get('controls')==1:
+   assert all(abs(height-42)<1 for height in value['control_heights']),value
    widget.grab().save('/tmp/brain-usage-native.png');result.update(value);app.quit()
   elif time.monotonic()-started>20:
    widget.grab().save('/tmp/brain-usage-native-failure.png');result.update({'error':'Dashboard did not finish loading','state':value,'url':widget.view.url().toString()});app.quit()
- widget.view.page().runJavaScript("JSON.stringify({cards:document.querySelectorAll('.usage-kpi').length,charts:document.querySelectorAll('svg').length,loading:(document.body?.innerText||'').includes('Loading cloud usage'),text:(document.body?.innerText||'').slice(0,600)})",state)
+ widget.view.page().runJavaScript("JSON.stringify({controls:document.querySelectorAll('.custom-dropdown-trigger').length,control_heights:[...document.querySelectorAll('.custom-dropdown-trigger,.usage-field>input,.usage-filters>button')].map(el=>el.getBoundingClientRect().height),cards:document.querySelectorAll('.usage-kpi').length,charts:document.querySelectorAll('svg').length,loading:(document.body?.innerText||'').includes('Loading cloud usage'),text:(document.body?.innerText||'').slice(0,600)})",state)
 timer=QTimer();timer.timeout.connect(sample);timer.start(350)
 app.exec();print(result,flush=True)
 widget.close();server.stop();folder.cleanup()

@@ -99,3 +99,21 @@ foreground process through the GUI dispatcher, excludes Brain's own embedded
 browser before any accessibility query, and applies a per-application messaging
 timeout. This keeps console polling and worker-driven desktop observation from
 entering WebEngine on an unrelated thread.
+
+
+The Tasks drawer places controls and results inside the base content container,
+so the former empty expanding panel above the list is gone. Today is the default;
+search and status filtering combine with yesterday, seven days, month, exact date,
+custom ranges and all dates. The store supplies whole-result counts independently
+of the 100-row page size. Clicking an item opens its full editable record. Local
+summaries read all matching pages up to 1,000 entries and disclose truncation.
+A successful agent list_tasks query accompanies its final reply; delivery opens
+Tasks with that query and the cloud answer. This happens only after the agent
+finishes, so the drawer cannot steal focus during desktop automation.
+
+ConsoleControls owns every single-select control, including asynchronously
+inserted animation options and the shared Dashboard. Searchable option lists are
+portaled outside cards to avoid clipping, support keyboard selection/Escape,
+and mirror the underlying select's value, labels and disabled state. Form fields
+and dropdown triggers use the same 42-pixel height; the top settings search is
+46 pixels tall. The native web Dashboard loads this same component and styles.
