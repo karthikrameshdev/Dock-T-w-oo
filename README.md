@@ -180,11 +180,11 @@ python -m pip install -e '.[voice]'
 ```
 
 These models use more disk space and download after the command model. While Qwen
-is unavailable, a greeting uses platform speech immediately. Model downloads never
+is unavailable, replies use platform speech. Model downloads never
 run inside the microphone or speech playback path. Audio is processed locally;
 voice enrollment stores only a WavLM speaker vector. Set your first name in Brain
-settings and select **Enroll my voice** to personalize your greeting. Unenrolled
-or uncertain speakers receive “Hey Buddy”.
+settings and select **Enroll my voice** for speaker personalization. Wake names
+activate listening silently so Brain does not interrupt an inline command.
 
 On macOS, verify the cached models with generated speech, reduced volume, continuous
 noise, inline commands, and negative phrases without opening a microphone stream:
@@ -197,7 +197,7 @@ The check uses installed Samantha and Daniel voices and writes a JSON report to
 `/tmp/dock-twoo-voice-check.json`. It requires the checkpoints to be cached and does
 not download or retain microphone recordings.
 
-Check the complete Mini Agent animation sequence without opening a microphone or
+Check the legacy artwork fallback animation sequence without opening a microphone or
 moving application windows:
 
 ```bash
@@ -207,6 +207,40 @@ moving application windows:
 This renders turns, walking in both directions, inspection, climbing, and the
 return to idle. It writes a contact sheet and transition report under `/tmp`,
 plus an MP4 preview when `ffmpeg` is installed.
+
+## Blender character and document reading
+
+The editable rig lives in [`character/MiniAssistant.blend`](character/MiniAssistant.blend).
+Brain uses its exported GLB through a transparent local Qt/WebGL renderer. The same
+opaque meshes, white eyes, pupils, smile, gloves and boots appear at every angle.
+See [`character/README.md`](character/README.md) for rebuilding and animation validation.
+The interactive preview is at `/brain3d/index.html` on the local console server.
+
+Say **“Brain, go to top left”** in one statement. Capture waits for 1.5 seconds of
+trailing silence and keeps recording if speech resumes while transcription runs.
+Long statements are transcribed in overlapping windows. Captures over two minutes
+are rejected after speech stops rather than executing an incomplete command.
+Unrecognized speech receives a repeat/rephrase request.
+
+**Read Desktop** and **Read Active Window** both read the remembered frontmost
+external app from its first line. On macOS, Brain uses Accessibility text with a
+window-only OCR fallback, reads each line in order, and pulls upward while scrolling
+to the next page. The underline follows speech playback. Switching to another app,
+window or document stops reading. The window is never moved or resized. Use
+**Stop Reading** to cancel. Accessibility and Screen Recording permissions may be
+needed depending on the target app; errors explain what is unavailable. Apps that
+do not expose text or scrollable content cannot be guaranteed to read completely.
+
+The local reader controls send `POST /api/brain/action` with an action of
+`read_desktop`, `read_window`, or `stop_reading` and `X-Brain-Reader: local`.
+The endpoint rejects foreign browser origins and reports when the desktop manager
+is unavailable.
+
+```bash
+# Requires the local console server; microphone stays closed.
+.venv/bin/python scripts/verify_brain_3d.py
+.venv/bin/python scripts/verify_desktop_reader.py
+```
 
 ## 📄 License
 

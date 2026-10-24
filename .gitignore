@@ -231,3 +231,7 @@ __marimo__/
 # Native helper binaries
 dock_twoo/vault/touch_id_auth
 
+
+# Blender recovery files are retained locally
+character/*.blend[0-9]*
+character/*.pre-codex.blend

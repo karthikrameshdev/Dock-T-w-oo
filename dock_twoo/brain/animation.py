@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import math
 
 ACTIONS = {
+    "read": ("Read document", 3.0),
+    "pull_scroll": ("Pull document upward", .85),
     "camera": ("Take a photo", 1.4),
     "search": ("Look for an app", 1.2),
     "climb": ("Climb", 1.4),
@@ -114,6 +116,14 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
     fade = min(1.0, p * 8.0, (1.0 - p) * 8.0)
     arc = math.sin(math.pi * p)
     cycle = math.sin(seconds * math.tau * 2.2) * fade
+
+    if action == "read":
+        return Pose(head=2 * math.sin(seconds * 1.1) * fade, right_arm=-12 * fade)
+    if action == "pull_scroll":
+        grab = math.sin(math.pi * p)
+        return Pose(left_arm=55 * grab, right_arm=-85 * grab,
+                    bob=-5 * grab, head=-3 * grab, left_leg=-4 * grab,
+                    right_leg=4 * grab)
 
     if action == "dance":
         return Pose(

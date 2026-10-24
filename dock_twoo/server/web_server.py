@@ -353,7 +353,14 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
                 action = body.get("action")
+                if action in ("read_desktop", "read_window", "stop_reading"):
+                    port = self.server.server_address[1]
+                    origin = self.headers.get("Origin")
+                    if self.headers.get("X-Brain-Reader") != "local" or (origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")):
+                        raise RuntimeError("Start reading from the local Brain controls.")
                 from dock_twoo.brain.manager import BrainManager
+                if BrainManager._instance is None and action in ("read_desktop", "read_window", "stop_reading"):
+                    raise RuntimeError("Brain is not running. Start the desktop application first.")
                 if BrainManager._instance is not None:
                     bm = BrainManager._instance
                     if action == "summon":
@@ -362,6 +369,10 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                         bm.hide_mini_agent()
                     elif action == "talk":
                         bm.start_talking()
+                    elif action in ("read_desktop", "read_window"):
+                        bm.start_reading("desktop" if action == "read_desktop" else "window")
+                    elif action == "stop_reading":
+                        bm.stop_reading()
                     elif action in ("move", "corner"):
                         corner_name = body.get("name") or body.get("corner", "top_left")
                         bm.companion.travel_to_corner(corner_name)

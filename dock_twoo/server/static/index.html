@@ -847,6 +847,16 @@
           <!-- Tab 4: Native Actions & Memory Vault -->
           <div class="brain-tab-panel" id="brain-tab-actions">
             <div class="settings-card">
+              <h3 class="card-subheading">Read Desktop &amp; Active Window</h3>
+              <p class="field-desc">Reads the frontmost document from its first line, then scrolls smoothly through the remaining text. Reading stops if you switch apps or windows.</p>
+              <div class="form-row">
+                <button type="button" class="btn btn-secondary" data-reader="read_desktop">Read Desktop</button>
+                <button type="button" class="btn btn-secondary" data-reader="read_window">Read Active Window</button>
+                <button type="button" class="btn btn-secondary" data-reader="stop_reading">Stop Reading</button>
+              </div>
+              <p class="field-desc" id="brainReadingStatus" role="status">Choose a document, then use these controls or Brain’s menu.</p>
+            </div>
+            <div class="settings-card">
               <h3 class="card-subheading">Native Computer Automation & Inspection</h3>
               <p class="field-desc">Voice control capabilities for desktop applications, live memory querying, and research</p>
 

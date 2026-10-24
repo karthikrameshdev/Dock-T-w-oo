@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from dock_twoo.brain.rendering import alpha_field, opaque_morph
 from dock_twoo.brain.animation import ACTIONS, PLAYLIST, Pose, gait_at, two_bone_joint, pose_at, travel_point
 
 if TYPE_CHECKING:
@@ -141,6 +142,44 @@ def pin_native(widget):
             pass
 
 
+class ReadingGuide(QWidget):
+    """Click-through underline synchronized to the currently spoken text."""
+
+    def __init__(self, parent):
+        super().__init__(parent, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
+                         Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.progress = 0.0
+
+    def show_line(self, bounds):
+        self.setGeometry(bounds.adjusted(-3, -1, 3, 4))
+        self.progress = 0.0
+        self.show()
+        pin_native(self)
+        if platform.system() == 'Darwin' and QApplication.platformName() != 'offscreen':
+            window, message = mac_window(self)
+            if window and message:
+                message(None, window, 'setIgnoresMouseEvents:', (ctypes.c_bool, True))
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+        painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor(113, 239, 219, 22))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(self.rect(), 4, 4)
+        x, y = 3 + (self.width() - 6) * self.progress, self.height() - 3
+        painter.setPen(QPen(QColor('#7bf1df'), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.drawLine(QPointF(3, y), QPointF(x, y))
+        painter.setBrush(QColor('#ecfffa'))
+        painter.drawEllipse(QPointF(x, y), 2.5, 2.5)
+
+
 class Companion(QWidget):
     """The desktop robotic mini agent companion.
     
@@ -221,13 +260,15 @@ class Companion(QWidget):
         self.art_origin = QPoint(48, 32)
         # Tight container window size without bottom toolbar
         self.resize(264, 268)
+        self.reading_guide = ReadingGuide(self)
+        self._reading_bounds = None
 
         # Every pose uses the same head artwork and live face.
         ratio = self.devicePixelRatioF()
         self.art_front = self._load_scaled_pixmap(get_robot_image_path(), ratio)
         self.art = self.art_front
-        self.art_turn = self._load_scaled_pixmap(get_robot_turn_path(), ratio)
-        self.art_side = self._load_scaled_pixmap(get_robot_side_path(), ratio)
+        self.art_turn = self._white_profile_lights(self._load_scaled_pixmap(get_robot_turn_path(), ratio), "turn")
+        self.art_side = self._white_profile_lights(self._load_scaled_pixmap(get_robot_side_path(), ratio), "side")
 
         # Slice articulated parts
         self.parts = self._build_body_parts()
@@ -262,6 +303,11 @@ class Companion(QWidget):
         if self.follow_cursor_enabled:
             self.follow_timer.start()
 
+        self.model_view = None
+        if QApplication.platformName() != "offscreen":
+            from dock_twoo.brain.model_view import CharacterView
+            self.model_view = CharacterView(self)
+
         # Restore saved desktop placement
         self._restore_placement()
 
@@ -277,6 +323,7 @@ class Companion(QWidget):
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
         self.follow_timer.stop()
+        self.reading_guide.hide()
         if self.active_prop:
             self.active_prop.dismiss()
             self.active_prop = None
@@ -340,6 +387,32 @@ class Companion(QWidget):
         scaled = QPixmap.fromImage(solid)
         scaled.setDevicePixelRatio(ratio)
         return scaled
+
+    def _white_profile_lights(self, artwork: QPixmap, view: str) -> QPixmap:
+        """Recolor only the original visor's cyan emission; preserve its design."""
+        import numpy as np
+        image = artwork.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+        pixels = np.frombuffer(image.bits(), np.uint8).reshape(image.height(), image.bytesPerLine())[:, :image.width() * 4].reshape(image.height(), image.width(), 4)
+        ratio = artwork.devicePixelRatioF()
+        regions = ((83, 64, 92, 76), (104, 64, 110, 76), (93, 74, 102, 81)) if view == "turn" else ((102, 65, 109, 77),)
+        for left, top, right, bottom in regions:
+            region = pixels[round(top * ratio):round(bottom * ratio), round(left * ratio):round(right * ratio)]
+            blue, green, red = (region[:, :, channel].astype(int) for channel in (0, 1, 2))
+            light = (green - red > 28) & (blue - red > 28)
+            brightness = np.maximum.reduce([blue, green, red]).astype(np.uint8)
+            for channel in (0, 1, 2):
+                region[:, :, channel][light] = brightness[light]
+        result = QPixmap.fromImage(image)
+        result.setDevicePixelRatio(ratio)
+        if view == "turn":
+            dots = QPainter(result)
+            dots.setRenderHint(QPainter.RenderHint.Antialiasing)
+            dots.setPen(Qt.PenStyle.NoPen)
+            dots.setBrush(QColor('#172033'))
+            dots.drawEllipse(QPointF(87, 70.5), .95, 1.4)
+            dots.drawEllipse(QPointF(106.8, 70.5), .65, 1.2)
+            dots.end()
+        return result
 
     def _build_body_parts(self) -> Dict[str, QPainterPath]:
         def polygon(points):
@@ -507,6 +580,12 @@ class Companion(QWidget):
             return
         if action not in ACTIONS:
             return
+        front_gestures = {'wave', 'wink', 'nod', 'point', 'fold_arms', 'camera', 'search', 'stretch', 'dance', 'celebrate'}
+        if action in front_gestures and not keep_orientation and self.turn_progress > .01:
+            self.stop_motion(clear_sequence=not sequence)
+            self.on_turn_finished = lambda: self.play_action(action, destination, duration, sequence=sequence)
+            self.motion_timer.start()
+            return
         previous_turn_target = self.turn_target
         self.stop_motion(clear_sequence=not sequence)
 
@@ -531,6 +610,8 @@ class Companion(QWidget):
             self.turn_target = 1.0
         elif action in ("climb", "climb_dock"):
             self.turn_target = 0.6
+        elif action == "read":
+            self.turn_target = .5
         else:
             self.turn_target = 0.0
 
@@ -1209,6 +1290,24 @@ class Companion(QWidget):
         self.put_away_prop()
         self.turn_to_user()
 
+    def read_line(self, bounds, text):
+        self._reading_bounds = bounds
+        self.reading_guide.show_line(bounds)
+        self.gaze = bounds.center()
+        self.play_action('read', duration=max(1.0, min(90, len(text.split()) / 2.5)))
+
+    def reading_progress(self, fraction):
+        if self._reading_bounds is None:
+            return
+        self.reading_guide.progress = min(1.0, max(0.0, fraction))
+        self.reading_guide.update()
+
+    def end_reading(self):
+        self._reading_bounds = None
+        self.reading_guide.hide()
+        self.stop_motion()
+        self.set_activity('idle')
+
     def _idle_gesture(self) -> None:
         if (
             self.reduced_motion
@@ -1226,6 +1325,9 @@ class Companion(QWidget):
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        if self.model_view is not None and self.model_view.ready:
+            painter.end()
+            return
         painter.translate(self.art_origin)
         self._paint_robot(painter)
         painter.end()
@@ -1355,83 +1457,81 @@ class Companion(QWidget):
         self._paint_yawed_robot(painter, .5 if is_three_quarters else 1.0)
 
     def _paint_motion_head(self, painter: QPainter, yaw: float) -> None:
-        """One continuous helmet, one antenna, and one live face at every yaw."""
-        angle = yaw * math.pi / 3
-        projection = math.cos(angle)
-        front_width = 98 * projection
-        depth = 50 * math.sin(angle)
-        left = self.art_width / 2 - (front_width + depth) / 2
-        front_left = left + depth
-        ratio = self.art_side.devicePixelRatioF()
-
-        # Far earpiece recedes behind the helmet as the near side becomes visible.
-        painter.save()
-        painter.setOpacity(painter.opacity() * (1 - .9 * yaw))
-        far = QRectF(front_left + front_width - 1, 54, 13 * projection, 36)
-        front_ratio = self.art_front.devicePixelRatioF()
-        painter.drawPixmap(far, self.art_front, QRectF(134 * front_ratio, 54 * front_ratio, 14 * front_ratio, 36 * front_ratio))
-        painter.restore()
-
-        shell = QPainterPath()
-        shell.addRoundedRect(QRectF(left, 35, front_width + depth, 71), 23, 23)
-        material = QRadialGradient(QPointF(left + (front_width + depth) * .3, 48), front_width + depth)
-        material.setColorAt(0, QColor('#b7f5e7'))
-        material.setColorAt(.6, QColor('#8bd4c8'))
-        material.setColorAt(1, QColor('#619f9d'))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(material)
-        painter.drawPath(shell)
-        painter.save()
-        painter.setClipPath(shell, Qt.ClipOperation.IntersectClip)
-        if depth > 0:
-            # Sample the glossy side material, but remove its baked earpiece.
-            # The earpiece is drawn separately so it never becomes a thin stripe.
-            wall = QPainterPath()
-            wall.addRect(QRectF(left, 35, depth, 71))
-            baked_ear = QPainterPath()
-            baked_ear.addEllipse(QRectF(left + 14 / 61 * depth, 51, 41 / 61 * depth, 42))
+        """Restore the original artwork and proportions; blend isolated heads only."""
+        if yaw in (0, .5, 1):
+            artwork = (self.art_front, self.art_turn, self.art_side)[round(yaw * 2)]
             painter.save()
-            painter.setClipPath(wall.subtracted(baked_ear), Qt.ClipOperation.IntersectClip)
-            painter.drawPixmap(QRectF(left, 35, depth, 71), self.art_side,
-                               QRectF(40 * ratio, 35 * ratio, 61 * ratio, 72 * ratio))
+            painter.setClipRect(QRectF(0, 35, self.art_width, 71), Qt.ClipOperation.IntersectClip)
+            offset = (self.art_width - artwork.width() / artwork.devicePixelRatioF()) / 2
+            painter.drawPixmap(QPointF(offset, 0), artwork)
+            if yaw == 0:
+                painter.scale(self.art_width, self.art_height)
+                self._paint_face(painter)
             painter.restore()
+            self._paint_antenna(painter)
+            return
+        import numpy as np
+        views = ((self.art_front, (0, 22, 44, 68, 84, 100, 125, 148, 168), True),
+                 (self.art_turn, (0, 43, 80, 96, 105, 115, 122, 125, 168), False),
+                 (self.art_side, (0, 49, 111, 113, 115, 117, 119, 120, 168), False))
+        vertical = ((0, 35, 51.5, 58.5, 68.9, 79.3, 86, 106, 108),
+                    (0, 35, 59, 66, 70.5, 75, 77.3, 106, 108),
+                    (0, 35, 59, 67, 70.8, 74.5, 81, 106, 108))
+        index = 0 if yaw <= .5 else 1
+        blend = min(1.0, max(0.0, yaw * 2 - index))
+        ratio = self.art_front.devicePixelRatioF()
+        width, height = round(self.art_width * ratio), round(108 * ratio)
+        destination = np.array(views[index][1]) * (1 - blend) + np.array(views[index + 1][1]) * blend
+        columns = (np.arange(width) + .5) / ratio
+        rows = (np.arange(height) + .5) / ratio
+        destination_y = np.array(vertical[index]) * (1 - blend) + np.array(vertical[index + 1]) * blend
+        composed = np.zeros((height, width, 4), dtype=np.float32)
+        contour = np.zeros((height, width), dtype=np.float32)
+        if not hasattr(self, '_head_contours'):
+            self._head_contours = {}
+        for view_index, weight in ((index, 1 - blend), (index + 1, blend)):
+            artwork, landmarks, front = views[view_index]
+            if weight <= 0:
+                continue
+            source = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+            source.setDevicePixelRatio(ratio)
+            source.fill(Qt.GlobalColor.transparent)
+            surface = QPainter(source)
+            surface.setRenderHint(QPainter.RenderHint.Antialiasing)
+            surface.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            surface.setClipRect(QRectF(0, 35, self.art_width, 71))
+            offset = (self.art_width - artwork.width() / artwork.devicePixelRatioF()) / 2
+            surface.drawPixmap(QPointF(offset, 0), artwork)
+            if front:
+                surface.scale(self.art_width, self.art_height)
+                self._paint_face(surface)
+            surface.end()
+            # Align the visor/eyes before mixing textures. This is a continuous
+            # turn between the original views, rather than overlapping faces.
+            x = np.clip(np.interp(columns, destination, landmarks) * ratio - .5, 0, width - 1)
+            lo = x.astype(int)
+            hi = np.minimum(lo + 1, width - 1)
+            fraction = (x - lo)[None, :, None]
+            pixels = np.frombuffer(source.constBits(), np.uint8).reshape(height, width, 4)
+            horizontal = pixels[:, lo] * (1 - fraction) + pixels[:, hi] * fraction
+            if view_index not in self._head_contours:
+                self._head_contours[view_index] = alpha_field(pixels[:, :, 3])
+            field = self._head_contours[view_index]
+            horizontal_field = field[:, lo] * (1 - fraction[:, :, 0]) + field[:, hi] * fraction[:, :, 0]
+            y = np.clip(np.interp(rows, destination_y, vertical[view_index]) * ratio - .5, 0, height - 1)
+            top = y.astype(int)
+            bottom = np.minimum(top + 1, height - 1)
+            amount = (y - top)[:, None, None]
+            composed += weight * (horizontal[top] * (1 - amount) + horizontal[bottom] * amount)
+            contour += weight * (horizontal_field[top] * (1 - amount[:, :, 0]) + horizontal_field[bottom] * amount[:, :, 0])
+        result = opaque_morph(composed, contour)
+        frame = QImage(result.data, width, height, width * 4, QImage.Format.Format_ARGB32_Premultiplied)
+        frame.setDevicePixelRatio(ratio)
+        painter.drawImage(QPointF(0, 0), frame)
+        self._paint_antenna(painter)
 
-        painter.save()
-        painter.translate(front_left, 0)
-        painter.scale(projection, 1)
-        painter.translate(-36, 0)
-        painter.setClipRect(QRectF(36, 35, 98, 71), Qt.ClipOperation.IntersectClip)
-        painter.drawPixmap(0, 0, self.art_front)
-        painter.scale(self.art_width, self.art_height)
-        if self.activity == "thinking":
-            painter.setPen(Qt.PenStyle.NoPen)
-            for idx in range(3):
-                dot = QColor('#bcadff')
-                dot.setAlphaF(.4 + .6 * (.5 + .5 * math.sin(self.phase * math.tau / 24 - idx)))
-                painter.setBrush(dot)
-                painter.drawEllipse(QRectF(.46 + idx * .03, .215, .015, .011))
-        self._paint_face(painter)
-        painter.restore()
-        painter.restore()
-
-        # Treat the earpiece as a cylinder: its original frontal rim narrows
-        # while its glossy circular side turns into view. No ghosted textures.
-        rim_width = 13 * projection
-        face_width = 32 * math.sin(angle)
-        center = left - 4.5 * projection + depth * .5
-        rim = QRectF(center - rim_width / 2 + face_width / 2, 54, rim_width, 36)
-        painter.drawPixmap(rim, self.art_front,
-                           QRectF(24 * front_ratio, 54 * front_ratio, 13 * front_ratio, 36 * front_ratio))
-        if face_width > 0:
-            ear = QRectF(center - face_width / 2 - rim_width * .12, 54, face_width, 36)
-            ear_mask = QPainterPath()
-            ear_mask.addEllipse(ear)
-            painter.save()
-            painter.setClipPath(ear_mask, Qt.ClipOperation.IntersectClip)
-            painter.drawPixmap(ear, self.art_side, QRectF(56 * ratio, 53 * ratio, 38 * ratio, 39 * ratio))
-            painter.restore()
-
-        # Antenna artwork is isolated from every helmet/body texture crop.
+    def _paint_antenna(self, painter):
+        # A single antenna stays out of every blend and cannot be duplicated.
         painter.save()
         painter.setClipRect(QRectF(0, 0, self.art_width, 35), Qt.ClipOperation.IntersectClip)
         painter.drawPixmap(0, 0, self.art_front)
@@ -1442,7 +1542,7 @@ class Companion(QWidget):
         painter.restore()
 
     def _paint_yawed_robot(self, painter: QPainter, yaw: float) -> None:
-        locomotion = self.action in ('walk', 'walk_window', 'chase_ball', 'climb', 'climb_dock')
+        locomotion = self.action in ('walk', 'walk_window', 'chase_ball', 'climb', 'climb_dock', 'pull_scroll')
         painter.save()
         painter.translate(self.art_width / 2, self.art_height / 2)
         painter.rotate(self.pose.tilt)
@@ -1461,12 +1561,7 @@ class Companion(QWidget):
             bob = -2 * abs(math.sin(self.gait_distance / stride * math.tau)) * self.gait_blend
             lean = (5 if stride == 44 else 2) * self.gait_blend
         else:
-            painter.save()
-            painter.translate(self.art_width / 2, 0)
-            painter.scale(.55 + .45 * math.cos(yaw * math.pi / 2), 1)
-            painter.translate(-self.art_width / 2, 0)
-            self._paint_front_body(painter)
-            painter.restore()
+            self._paint_turning_body(painter, yaw)
             bob, lean = 0, 0
         painter.restore()
         self._paint_pose_effects(painter, foreground=True)
@@ -1480,11 +1575,57 @@ class Companion(QWidget):
         painter.restore()
         painter.restore()
 
+    def _paint_turning_body(self, painter, yaw):
+        """Morph the original 3D body outlines without translucent duplicates."""
+        if yaw == 0:
+            self._paint_front_body(painter)
+            return
+        if yaw in (.5, 1):
+            artwork = self.art_turn if yaw == .5 else self.art_side
+            offset = (self.art_width - artwork.width() / artwork.devicePixelRatioF()) / 2
+            painter.save()
+            painter.setClipRect(QRectF(0, 107, self.art_width, self.art_height - 107), Qt.ClipOperation.IntersectClip)
+            painter.drawPixmap(QPointF(offset, 0), artwork)
+            painter.restore()
+            return
+        import numpy as np
+        index = 0 if yaw <= .5 else 1
+        blend = min(1.0, max(0.0, yaw * 2 - index))
+        ratio = self.art_front.devicePixelRatioF()
+        width, height = round(self.art_width * ratio), round(self.art_height * ratio)
+        composed = np.zeros((height, width, 4), dtype=np.float32)
+        contour = np.zeros((height, width), dtype=np.float32)
+        for view, weight in ((index, 1 - blend), (index + 1, blend)):
+            if weight <= 0:
+                continue
+            body = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+            body.setDevicePixelRatio(ratio)
+            body.fill(Qt.GlobalColor.transparent)
+            surface = QPainter(body)
+            surface.setRenderHint(QPainter.RenderHint.Antialiasing)
+            surface.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            if view == 0:
+                self._paint_front_body(surface)
+            else:
+                surface.setClipRect(QRectF(0, 107, self.art_width, self.art_height - 107))
+                artwork = self.art_turn if view == 1 else self.art_side
+                offset = (self.art_width - artwork.width() / artwork.devicePixelRatioF()) / 2
+                surface.drawPixmap(QPointF(offset, 0), artwork)
+            surface.end()
+            pixels = np.frombuffer(body.constBits(), np.uint8).reshape(height, width, 4)
+            composed += weight * pixels
+            contour += weight * alpha_field(pixels[:, :, 3])
+        result = opaque_morph(composed, contour)
+        image = QImage(result.data, width, height, width * 4, QImage.Format.Format_ARGB32_Premultiplied)
+        image.setDevicePixelRatio(ratio)
+        painter.drawImage(QPointF(0, 0), image)
+
     def _paint_locomotion(self, painter: QPainter) -> None:
         """Jointed body with planted feet, knee lift, and opposing arm swings."""
         climbing = self.action in ("climb", "climb_dock")
+        pulling = self.action == 'pull_scroll'
         stride = 44.0 if climbing else 68.0
-        steps = gait_at(self.gait_distance, stride, 8.0 if climbing else 12.0)
+        steps = gait_at(0 if pulling else self.gait_distance, stride, 8.0 if climbing else 12.0)
         blend = self.gait_blend
         bob = -2.0 * abs(math.sin(self.gait_distance / stride * math.tau)) * blend
         lean = (5.0 if climbing else 2.0) * blend
@@ -1514,50 +1655,43 @@ class Companion(QWidget):
                 painter.setBrush(joint_shade)
                 painter.drawEllipse(QPointF(*joint), width * 0.46, width * 0.46)
 
-        def boot(ankle, pitch):
+        def boot(ankle, pitch, index):
             painter.save()
             painter.translate(QPointF(*ankle))
             painter.rotate(pitch)
-            gradient = QLinearGradient(-9, -12, 19, 13)
-            gradient.setColorAt(0, QColor("#fff9e8"))
-            gradient.setColorAt(1, QColor("#c4bdba"))
-            shoe = QPainterPath(QPointF(-10, 10))
-            shoe.cubicTo(-12, -10, -2, -16, 9, -9)
-            shoe.cubicTo(20, -8, 26, 1, 25, 10)
-            shoe.closeSubpath()
-            painter.setPen(QPen(QColor("#9b91ad"), 1))
-            painter.setBrush(gradient)
-            painter.drawPath(shoe)
-            painter.setBrush(QColor("#ad9bce"))
-            painter.drawRoundedRect(QRectF(-12, 9, 39, 5), 2.5, 2.5)
-            painter.setBrush(QColor("#60e7d9"))
-            painter.drawEllipse(QPointF(0, -3), 3.5, 4.5)
+            ratio = self.art_front.devicePixelRatioF()
+            source = QRectF((49 if index == 0 else 86) * ratio, 169 * ratio, 35 * ratio, 25 * ratio)
+            painter.drawPixmap(QRectF(-10, -12, 34, 25), self.art_front, source)
             painter.restore()
 
         def arm(index, far):
             step = steps[1 - index] if climbing else steps[index]
             shoulder = (center + (-1 if far else 1) * (3 + 26 * projection), shoulder_y)
-            if climbing:
+            if pulling:
+                angle = abs(self.pose.left_arm if far else self.pose.right_arm)
+                wrist = (shoulder[0] + 8, shoulder_y + 10 - angle * .6)
+                limb(shoulder, wrist, 24, 24, 9, -1)
+            elif climbing:
                 wrist = (shoulder[0] + 17 + step.lift * 0.3 * blend,
                          shoulder_y - 24 - step.x * blend)
                 limb(shoulder, wrist, 24, 24, 9, -1)
             else:
                 wrist = (shoulder[0] + (-7 if far else 7) * projection - step.x * .65 * blend, shoulder_y + 31)
                 limb(shoulder, wrist, 20, 20, 9, -1)
-            painter.setPen(QPen(QColor("#968ca9"), 1))
-            painter.setBrush(QColor("#f1eadb"))
-            painter.drawEllipse(QRectF(wrist[0] - 7, wrist[1] - 1, 14, 16))
-            painter.setBrush(QColor("#b9a8d9"))
-            painter.drawEllipse(QRectF(wrist[0] - 4, wrist[1] + 7, 10, 9))
+            ratio = self.art_front.devicePixelRatioF()
+            source = QRectF((23 if far else 117) * ratio, 132 * ratio, 28 * ratio, 25 * ratio)
+            painter.drawPixmap(QRectF(wrist[0] - 10, wrist[1] - 3, 24, 23), self.art_front, source)
 
         def leg(index, far):
             step = steps[index]
             hip = (center + (-1 if far else 1) * (3 + 11 * projection), hip_y)
             ankle = (center + (-14 if far else 14) * projection + step.x * blend, 182 - step.lift * blend)
+            if pulling:
+                ankle = (center + (-12 if far else 12), 182)
             if climbing:
                 ankle = (center + 13 + step.lift * 0.4 * blend, 179 - step.x * blend)
             limb(hip, ankle, 25, 25, 10, 1)
-            boot(ankle, -65 if climbing else step.pitch * blend)
+            boot(ankle, -65 if climbing else step.pitch * blend, index)
 
         painter.save()
         leg(0, True)
@@ -1603,35 +1737,8 @@ class Companion(QWidget):
     def _paint_pose_effects(self, painter: QPainter, *, foreground: bool) -> None:
         painter.save()
         painter.scale(self.art_width, self.art_height)
-        # Laser scanning fan beam (for inspect_window / scan_screen / sensor_scan)
-        if not foreground and self.pose.scan_beam > 0.05:
-            alpha = int(140 * self.pose.scan_beam)
-            beam_grad = QRadialGradient(QPointF(0.5, 0.22), 0.7)
-            beam_grad.setColorAt(0, QColor(34, 211, 238, alpha))
-            beam_grad.setColorAt(0.6, QColor(59, 130, 246, int(alpha * 0.4)))
-            beam_grad.setColorAt(1, QColor(99, 102, 241, 0))
-            beam_path = QPainterPath()
-            beam_path.moveTo(0.46, 0.22)
-            beam_path.lineTo(0.54, 0.22)
-            beam_path.lineTo(0.88, 0.88)
-            beam_path.lineTo(0.12, 0.88)
-            beam_path.closeSubpath()
-            painter.setPen(QPen(QColor(34, 211, 238, int(alpha * 0.8)), 0.003))
-            painter.setBrush(beam_grad)
-            painter.drawPath(beam_path)
-
-        # Carried text snippet sparkles (for replace_text action)
-        if foreground and self.pose.text_sparkle > 0.05:
-            sp_alpha = int(220 * self.pose.text_sparkle)
-            text_rect = QRectF(0.32, 0.62, 0.36, 0.12)
-            painter.setPen(QPen(QColor(56, 189, 248, sp_alpha), 0.004))
-            painter.setBrush(QColor(15, 23, 42, int(sp_alpha * 0.85)))
-            painter.drawRoundedRect(text_rect, 0.02, 0.02)
-            painter.setPen(QPen(QColor(147, 197, 253, sp_alpha), 0.004))
-            painter.drawLine(QPointF(0.36, 0.66), QPointF(0.64, 0.66))
-            painter.setPen(QPen(QColor(52, 211, 153, sp_alpha), 0.004))
-            painter.drawLine(QPointF(0.36, 0.70), QPointF(0.58, 0.70))
-
+        # The previous dark scan fan / carried panel looked like a bag and
+        # obscured the body. Scanning now uses head/antenna motion alone.
         painter.restore()
 
     def _paint_face(self, painter: QPainter, visible_eyes=(0, 1)) -> None:

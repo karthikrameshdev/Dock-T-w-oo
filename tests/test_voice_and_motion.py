@@ -53,9 +53,15 @@ def test_streaming_keyword_bypasses_the_voice_gate():
     listener._vad = SimpleNamespace(is_speech=lambda _pcm, _rate: False)
     listener._transcribe_pcm = lambda _pcm: 'Brain.'
     woken = []
+    started = []
     listener.wake_detected.connect(lambda: woken.append(True))
+    listener.wake_started.connect(lambda: started.append(True))
     for _ in range(5):
         listener._handle_pcm_frame(b'\x64\x00' * 1600)
+    assert started == [True]
+    assert woken == []
+    for _ in range(15):
+        listener._handle_pcm_frame(bytes(3200))
     deadline = time.monotonic() + 1
     while not woken and time.monotonic() < deadline:
         app.processEvents()
@@ -175,41 +181,24 @@ def test_turn_blend_preserves_opacity_on_overlapping_body_pixels(companion):
     assert (masks[2][90:120, 120:145] == masks[0][90:120, 120:145]).all()
 
 
-@pytest.mark.parametrize('action', ['walk', 'climb', 'climb_dock', 'walk_window', 'chase_ball'])
-@pytest.mark.parametrize('facing', [-1, 1])
-def test_motion_turns_head_with_the_same_live_face(companion, action, facing, monkeypatch):
-    from dock_twoo.brain.animation import Pose
-    from PySide6.QtGui import QPainter
-    companion.pose = Pose(wink=.3)
-    companion.gait_blend = 0
-    companion._render_facing = facing
-    original = companion._paint_face
-    faces, scales = [], []
-
-    def capture(painter, visible_eyes=(0, 1)):
-        assert visible_eyes == (0, 1)
-        canonical = QImage(168, 202, QImage.Format.Format_ARGB32)
-        canonical.fill(0)
-        target = QPainter(canonical)
-        target.scale(168, 202)
-        original(target, visible_eyes)
-        target.end()
-        faces.append(canonical)
-        scales.append(painter.transform().m11())
-        original(painter, visible_eyes)
-
-    monkeypatch.setattr(companion, '_paint_face', capture)
-    image = QImage(companion.size(), QImage.Format.Format_ARGB32)
-    companion.render(image)
-    companion.action = action
-    for turn in (0, .25, .5, .75, 1):
-        companion.turn_progress = turn
-        image.fill(0)
-        companion.render(image)
-        assert faces[-1] == faces[0]
-    # The face keeps its design, but its projection actually rotates with the head.
-    assert abs(scales[-1]) == pytest.approx(abs(scales[0]) * .5)
-    assert scales[-1] * facing > 0
+@pytest.mark.parametrize('view', ['turn', 'side'])
+def test_original_profile_art_changes_only_the_facial_lights(companion, view):
+    import numpy as np
+    from dock_twoo.brain.mascot import get_robot_turn_path, get_robot_side_path
+    path = get_robot_turn_path() if view == 'turn' else get_robot_side_path()
+    actual = getattr(companion, f'art_{view}').toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    ratio = getattr(companion, f'art_{view}').devicePixelRatioF()
+    original = companion._load_scaled_pixmap(path, ratio).toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    first = np.frombuffer(original.constBits(), np.uint8).reshape(original.height(), original.width(), 4)
+    second = np.frombuffer(actual.constBits(), np.uint8).reshape(actual.height(), actual.width(), 4)
+    allowed = np.zeros(first.shape[:2], dtype=bool)
+    regions = ((83, 64, 92, 76), (104, 64, 110, 76), (93, 74, 102, 81)) if view == 'turn' else ((102, 65, 109, 77),)
+    for left, top, right, bottom in regions:
+        allowed[round(top * ratio):round(bottom * ratio), round(left * ratio):round(right * ratio)] = True
+    opaque = (first[:, :, 3] == 255) & ~allowed
+    assert np.array_equal(first[opaque], second[opaque])
+    white = (second[:, :, 0] == second[:, :, 1]) & (second[:, :, 1] == second[:, :, 2]) & (second[:, :, 0] > 160)
+    assert np.count_nonzero(white & allowed) > 20
 
 
 def test_body_parts_respect_a_parent_clip(companion):
@@ -248,7 +237,7 @@ def test_head_has_no_front_profile_render_switch(companion):
     from PySide6.QtGui import QPainter
     frames = []
     for yaw in (0, .0001, .0009, .0011):
-        image = QImage(168, 112, QImage.Format.Format_ARGB32)
+        image = QImage(168, 112, QImage.Format.Format_ARGB32_Premultiplied)
         image.fill(0)
         painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -256,8 +245,8 @@ def test_head_has_no_front_profile_render_switch(companion):
         companion._paint_motion_head(painter, yaw)
         painter.end()
         frames.append(np.frombuffer(image.constBits(), np.uint8).astype(int).copy())
-    for frame in frames[1:]:
-        assert np.mean(np.abs(frame - frames[0])) < .2
+    for yaw, frame in zip((.0001, .0009, .0011), frames[1:]):
+        assert np.mean(np.abs(frame - frames[0])) < 250 * yaw + .03
 
 
 def test_turn_callback_runs_once_and_cancelled_turns_cannot_resume(companion, monkeypatch):

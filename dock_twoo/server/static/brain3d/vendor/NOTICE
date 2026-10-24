@@ -1,0 +1,3 @@
+Three.js 0.186.1 from the official npm package `three`.
+Included core WebGL modules and GLTFLoader, SkeletonUtils, BufferGeometryUtils,
+and RoomEnvironment addons. Upstream source with leading whitespace normalized; MIT license in LICENSE.

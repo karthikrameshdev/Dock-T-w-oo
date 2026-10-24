@@ -428,7 +428,7 @@ def test_ambient_wake_checks_continue_when_background_never_gets_silent():
         listener._handle_pcm_frame(b"\x64\x00" * 1600)
 
     assert len(checked) == 2
-    assert all(len(frames) >= 30 for frames in checked)
+    assert [len(frames) for frames in checked] == [20, 40]
 
 
 @pytest.mark.parametrize(
@@ -438,14 +438,15 @@ def test_ambient_wake_checks_continue_when_background_never_gets_silent():
         ("Hey Brain!", 1, []),
         ("Hello Brain.", 1, []),
         ("Hey Buddy!", 1, []),
-        ("Hi there, Assistant.", 1, []),
+        ("Hi there, Assistant.", 0, []),
         ("Brain, what time is it?", 0, ["what time is it"]),
         ("Hey Buddy, what time is it?", 0, ["what time is it"]),
         ("I saw rain earlier.", 0, []),
+        ("The human brain has many functions.", 0, []),
         ("Background speech. Hey Brain!", 1, []),
     ],
 )
-def test_wake_word_transcription_variants(transcript, expected_wakes, expected_commands):
+def test_wake_word_transcription_variants(transcript, expected_wakes, expected_commands, qtbot):
     """Natural greetings and approved aliases wake; mentions and commands route correctly."""
     from dock_twoo.brain.listener import AudioListener
 
@@ -459,6 +460,15 @@ def test_wake_word_transcription_variants(transcript, expected_wakes, expected_c
     listener.turn_completed.connect(commands.append)
 
     listener._check_wake_word([bytes(6400)])
+
+    # Backup ASR activates capture only. It must not greet or execute a partial
+    # four-second window before the user has completed their whole statement.
+    assert woken == [] and commands == []
+    listener._is_speech_frame = lambda *_args: False
+    for _ in range(16):
+        listener._handle_pcm_frame(bytes(3200))
+    if expected_wakes or expected_commands:
+        qtbot.waitUntil(lambda: bool(woken or commands), timeout=2000)
 
     assert len(woken) == expected_wakes
     assert commands == expected_commands

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import array
 from collections import deque
+from functools import wraps
 import io
 import json
 import math
@@ -15,6 +16,16 @@ import wave
 from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Signal
+
+from dock_twoo.brain.endpoint import TurnEndpoint
+
+
+def capture_locked(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._capture_lock:
+            return method(self, *args, **kwargs)
+    return wrapped
 
 
 def _patch_speech_recognition_flac() -> None:
@@ -69,6 +80,13 @@ def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, st
     configured = wake_word.lower().strip() or "brain"
     aliases = {"brain", "brian", "buddy", "bobby", "body", "grain", "green", "plane", "spring", configured, configured.split()[-1]}
     matches = list(re.finditer(r"[\w']+", text))
+    for index, word in enumerate(words):
+        if word in {"brain", "brian", "buddy", configured, configured.split()[-1]}:
+            command = text[matches[index].end():].strip(" \t,.:;!?…-–—")
+            remaining = re.findall(r"[\w']+", command.lower())
+            if remaining and all(part in aliases | {"hey", "hello", "hi"} for part in remaining):
+                command = ""
+            return True, command
     for index, word in enumerate(words[:3]):
         if word in aliases:
             command = text[matches[index].end():].strip(" \t,.:;!?…-–—")
@@ -76,10 +94,10 @@ def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, st
             if remaining and all(word in aliases | {"hey", "hello", "hi"} for word in remaining):
                 command = ""
             return True, command
+    if words and words[0] in {"what", "when", "where", "how", "can", "open", "show", "take", "walk", "dance", "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn", "give", "go", "do", "research", "please", "help"}:
+        return True, text.strip()
     if len(words) <= 3:
         return True, ""
-    if words[0] in {"what", "when", "where", "how", "can", "open", "show", "take", "walk", "dance", "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn", "give"}:
-        return True, text.strip()
     return False, ""
 
 
@@ -107,6 +125,7 @@ class AudioListener(QObject):
         model_dir=None,
     ):
         super().__init__(parent)
+        self._capture_lock = threading.RLock()
         self.wake_word = wake_word.lower().strip()
         self.is_running = False
         self.is_recording = False
@@ -146,9 +165,12 @@ class AudioListener(QObject):
         self._wake_preroll = deque(maxlen=20)
         self._backup_ring = deque(maxlen=40)
         self._backup_ticks = 0
-        self._keyword_frames: Optional[list[bytes]] = None
-        self._keyword_tail = 0
-        self._keyword_silence = 0
+        self._endpoint = TurnEndpoint()
+        self._wake_capture = False
+        self._capture_revision = 0
+        self._decode_token = None
+        self._capture_forced = False
+        self._audio_timeline = deque(maxlen=160)
         self._wake_armed = True
         self.wake_detection_enabled = True
         self._output_active = False
@@ -231,8 +253,15 @@ class AudioListener(QObject):
             self.worker_thread.join(timeout=1.0)
         self.cancel_recording()
 
+    @capture_locked
     def start_recording(self) -> None:
-        """Explicitly begin recording a user turn (push-to-talk or post-wake)."""
+        """Listen for a complete turn; silence timeout starts before speech only."""
+        self._capture_generation += 1
+        self._capture_revision = 0
+        self._decode_token = None
+        self._capture_forced = False
+        self._wake_capture = False
+        self._endpoint = TurnEndpoint()
         self.speech_frames = []
         self.silence_count = 0
         self.has_spoken = False
@@ -240,36 +269,86 @@ class AudioListener(QObject):
         self._wake_armed = False
         self.speech_started.emit()
 
-    def stop_recording(self) -> None:
-        """Explicitly end recording immediately and process speech buffer."""
-        if not self.is_recording:
-            return
-        self.is_recording = False
-        self.speech_ended.emit()
-        self.processing_started.emit()
-        frames = list(self.speech_frames)
-        self.speech_frames = []
-        if frames and self.has_spoken:
-            threading.Thread(target=self._process_utterance, args=(frames, self._capture_generation), daemon=True).start()
-        else:
-            self.turn_timed_out.emit()
+    @capture_locked
+    def _begin_wake_capture(self, frames: list[bytes]) -> None:
+        self.start_recording()
+        self.speech_frames = list(frames)
+        self._wake_capture = True
+        self.has_spoken = True
+        self._endpoint.speech = .2  # A verified name is already speech.
+        self.last_wake_decision = "capturing-wake-statement"
+        self.wake_started.emit()  # Visual acknowledgement only, never speech.
 
+    @capture_locked
+    def stop_recording(self) -> None:
+        """Finish explicitly on push-to-talk release; automatic capture uses VAD."""
+        if self.is_recording:
+            self._capture_forced = True
+            self._dispatch_capture()
+
+    def _dispatch_capture(self) -> None:
+        if self._decode_token is not None:
+            return
+        if self._endpoint.overlong or not self.has_spoken or self._endpoint.speech < .18:
+            if self._endpoint.overlong:
+                self.last_error = "The statement exceeded two minutes; no partial command was executed."
+                self.error_occurred.emit(self.last_error)
+            self.cancel_recording()
+            self.turn_timed_out.emit()
+            return
+        token = (self._capture_generation, self._capture_revision)
+        self._decode_token = token
+        target = self._complete_keyword_wake if self._wake_capture else self._process_utterance
+        threading.Thread(target=target, args=(list(self.speech_frames), *token), daemon=True).start()
+
+    @capture_locked
+    def _accept_capture(self, generation, revision) -> bool:
+        if generation is not None and generation != self._capture_generation:
+            return False
+        if revision is not None:
+            if self._decode_token != (generation, revision):
+                return False
+            self._decode_token = None
+            if revision != self._capture_revision:
+                self.last_wake_decision = "speech-resumed-before-reply"
+                return False
+            self.is_recording = False
+            self.speech_frames = []
+            self._wake_capture = False
+            self.speech_ended.emit()
+            self.processing_started.emit()
+        return True
+
+    @capture_locked
     def cancel_recording(self) -> None:
-        """Cancel a turn without transcribing stale audio after stop or session timeout."""
+        """Invalidate every pending capture/decode without processing partial speech."""
         self.is_recording = False
         self._capture_generation += 1
+        self._capture_revision = 0
+        self._decode_token = None
         self.speech_frames = []
         self.has_spoken = False
-        self._keyword_frames = None
+        self._wake_capture = False
 
+    @capture_locked
     def arm_wake(self) -> None:
         self.cancel_recording()
         self._wake_armed = self.wake_detection_enabled
         self._wake_preroll.clear()
         self._backup_ring.clear()
         self._backup_ticks = 0
+        self.ambient_speech_frames = []
+        self.ambient_silence_count = 0
+        self._audio_timeline.clear()
         self.wake_detector.reset()
 
+    @capture_locked
+    def suspend(self) -> None:
+        """Suspend capture during an explicit document-reading session."""
+        self.cancel_recording()
+        self._wake_armed = False
+
+    @capture_locked
     def set_output_active(self, active: bool) -> None:
         """Suppress playback echo so the assistant cannot wake itself with 'Hey Buddy'."""
         was_active = self._output_active
@@ -348,6 +427,7 @@ class AudioListener(QObject):
             self.stream = None
             self.is_running = False
 
+    @capture_locked
     def _handle_pcm_frame(self, pcm: bytes) -> None:
         """Analyze RMS energy for VAD and wake word monitoring."""
         samples = array.array("h")
@@ -383,96 +463,47 @@ class AudioListener(QObject):
         if is_speech:
             self.speech_frames_seen += 1
 
-        if not self.is_recording:
-            if not self.wake_detection_enabled:
+        self._audio_timeline.append((self.audio_frames_seen, pcm, is_speech))
+        if self.is_recording:
+            # Continue listening while a candidate transcript is being decoded.
+            # Speech resuming during ASR invalidates that candidate and extends it.
+            if is_speech and self._decode_token is not None and not self._capture_forced:
+                self._capture_revision += 1
+            if not self._capture_forced:
+                self._endpoint.feed(len(pcm) / 32000, is_speech)
+                self.has_spoken = self._endpoint.speech > 0
+                if not self._endpoint.overlong:
+                    self.speech_frames.append(pcm)
+            if self._endpoint.complete or self._endpoint.idle_expired:
+                self._dispatch_capture()
+            return
+        if not self.wake_detection_enabled or not self._wake_armed:
+            return
+        self._wake_preroll.append(pcm)
+        if self.wake_detector.ready:
+            self.last_wake_checks += 1
+            keyword = self.wake_detector.feed(pcm)
+            self.last_wake_decision = "waiting-for-keyword"
+            if keyword:
+                self.last_wake_matches += 1
+                self._begin_wake_capture(list(self._wake_preroll))
                 return
-            if self._keyword_frames is not None:
-                self._keyword_frames.append(pcm)
-                self._keyword_tail += 1
-                self._keyword_silence = 0 if is_speech else self._keyword_silence + 1
-                # Preserve a command spoken in the same breath after the keyword.
-                # A short pause completes a bare wake; a hard limit bounds noise.
-                if self._keyword_silence >= 4 or self._keyword_tail >= 40:
-                    frames, self._keyword_frames = self._keyword_frames, None
-                    threading.Thread(target=self._complete_keyword_wake, args=(frames, self._capture_generation), daemon=True).start()
-                return
-            if not self._wake_armed:
-                return
-            if self.wake_detector.ready:
-                self._wake_preroll.append(pcm)
-                self.last_wake_checks += 1
-                keyword = self.wake_detector.feed(pcm)
-                self.last_wake_decision = "waiting-for-keyword"
-                if keyword:
-                    self.last_wake_matches += 1
-                    self.last_wake_decision = "keyword-detected"
-                    self._wake_armed = False
-                    self._capture_generation += 1
-                    self._keyword_frames = list(self._wake_preroll)
-                    self._keyword_tail = self._keyword_silence = 0
-                    return
-                # Overlapping four-second dictation windows bypass the VAD too.
-                # This recovery path catches an accent/quiet call the KWS misses.
-                self._backup_ring.append(pcm)
-                self._backup_ticks += 1
-                if self._backup_ticks >= 20:
-                    self._backup_ticks = 0
-                    self._dispatch_wake_check(list(self._backup_ring))
-                return
-            if not self.models.recognizer.ready and self._sf_recognizer is None:
-                self.last_wake_decision = "wake-model-" + self.wake_detector.state
-                return
-            # Ambient tracking / Wake word detection
-            if not is_speech:
-                self.noise_floor = 0.97 * self.noise_floor + 0.03 * min(rms, 900.0)
-                self.last_wake_decision = "waiting-for-speech"
-                if self.ambient_speech_frames:
-                    # Keep a short trailing pad so ASR and enhancement see the end of
-                    # quiet consonants instead of a hard-truncated utterance.
-                    if self.ambient_silence_count < 3:
-                        self.ambient_speech_frames.append(pcm)
-                    self.ambient_silence_count += 1
-                    # 3 consecutive 100ms silence chunks = 0.3s pause after speech for snappy response
-                    if self.ambient_silence_count >= 3:
-                        frames = list(self.ambient_speech_frames)
-                        self.ambient_speech_frames = []
-                        self.ambient_silence_count = 0
-                        if len(frames) >= 2:
-                            self._dispatch_wake_check(frames)
-            else:
-                self.ambient_silence_count = 0
-                self.ambient_speech_frames.append(pcm)
-                # Do not wait forever for silence in a noisy room. Check overlapping
-                # 3-second windows; Whisper can decide whether a wake phrase is present.
-                if len(self.ambient_speech_frames) >= 30:
-                    frames = list(self.ambient_speech_frames)
-                    self.ambient_speech_frames = frames[-8:]
-                    self._dispatch_wake_check(frames)
-        else:
-            # Active turn recording
-            self.speech_frames.append(pcm)
-            if len(self.speech_frames) >= 200:
-                self.stop_recording()
-                return
-            if is_speech:
-                self.has_spoken = True
-                self.silence_count = 0
-            else:
-                if self.has_spoken:
-                    self.silence_count += 1
-                    # 5 consecutive 100ms silence chunks = 0.5s silence after speech -> turn complete!
-                    if self.silence_count >= 5:
-                        self.stop_recording()
-                elif len(self.speech_frames) > 70:
-                    # Recording started but user didn't speak within 7s -> timeout
-                    self.stop_recording()
+        elif not self.models.recognizer.ready and self._sf_recognizer is None:
+            self.last_wake_decision = "wake-model-" + self.wake_detector.state
+            return
+        # A partial ASR window may activate listening, but never execute a command.
+        self._backup_ring.append(pcm)
+        self._backup_ticks += 1
+        if self._backup_ticks >= 20:
+            self._backup_ticks = 0
+            self._dispatch_wake_check(list(self._backup_ring))
 
     def _dispatch_wake_check(self, frames: list[bytes]) -> None:
         if not frames:
             return
         self.ambient_segments_seen += 1
         self.last_wake_decision = "transcribing-ambient-audio"
-        threading.Thread(target=self._check_wake_word, args=(frames, self._capture_generation), daemon=True).start()
+        threading.Thread(target=self._check_wake_word, args=(frames, self._capture_generation, self.audio_frames_seen), daemon=True).start()
 
     def begin_voice_check(self, seconds: float = 30.0) -> None:
         """Expose a short, explicit local diagnostic; no microphone audio is saved."""
@@ -530,6 +561,12 @@ class AudioListener(QObject):
             "dropped_frames": self.dropped_frames,
             "wake_armed": self._wake_armed,
             "output_active": self._output_active,
+            "recording": self.is_recording,
+            "capture_kind": "wake statement" if self._wake_capture else "command",
+            "capture_seconds": round(self._endpoint.elapsed, 2),
+            "trailing_silence_seconds": round(self._endpoint.silence, 2),
+            "endpoint_silence_seconds": self._endpoint.silence_required,
+            "decoding": self._decode_token is not None,
             "backup_wake_checks": self.backup_wake_checks,
             "backup_wake_matches": self.backup_wake_matches,
             "voice_check": self.voice_check_status(),
@@ -551,7 +588,7 @@ class AudioListener(QObject):
                 pass
         return rms > threshold
 
-    def _complete_keyword_wake(self, frames: list[bytes], generation: Optional[int] = None) -> None:
+    def _complete_keyword_wake(self, frames: list[bytes], generation: Optional[int] = None, revision: Optional[int] = None) -> None:
         """Confirm a detected name and preserve any following command locally."""
         pcm = b"".join(frames)
         try:
@@ -561,7 +598,11 @@ class AudioListener(QObject):
             self.last_error = f"Wake confirmation failed: {exc}"
             self.error_occurred.emit(self.last_error)
             text = ""
-        if generation is not None and generation != self._capture_generation:
+        if not self._accept_capture(generation, revision):
+            return
+        if not text:
+            self.last_wake_decision = "wake-statement-not-understood"
+            self.turn_completed.emit("")
             return
         accepted, command = command_after_keyword(text, self.wake_word)
         if not accepted:
@@ -575,7 +616,6 @@ class AudioListener(QObject):
         )
         if generation is not None and generation != self._capture_generation:
             return
-        self.wake_started.emit()
         if command:
             self.last_wake_decision = "wake-command-detected"
             self.turn_completed.emit(command)
@@ -583,14 +623,14 @@ class AudioListener(QObject):
             self.last_wake_decision = "wake-detected"
             self.wake_detected.emit()
 
-    def _check_wake_word(self, frames: list[bytes], generation: Optional[int] = None) -> None:
+    def _check_wake_word(self, frames: list[bytes], generation: Optional[int] = None, frame_end: Optional[int] = None) -> None:
         """Transcribe ambient utterance to detect wake word ('Brain') or full command."""
         if not self._wake_check_lock.acquire(blocking=False):
             return
         self.last_wake_checks += 1
         self.backup_wake_checks += 1
         try:
-            self._check_wake_word_locked(frames, generation)
+            self._check_wake_word_locked(frames, generation, frame_end)
         except Exception as exc:
             self.last_wake_decision = f"wake-check-error: {type(exc).__name__}"
             self.last_error = f"Wake recognition failed: {exc}"
@@ -598,7 +638,7 @@ class AudioListener(QObject):
         finally:
             self._wake_check_lock.release()
 
-    def _check_wake_word_locked(self, frames: list[bytes], generation: Optional[int] = None) -> None:
+    def _check_wake_word_locked(self, frames: list[bytes], generation: Optional[int] = None, frame_end: Optional[int] = None) -> None:
         raw_pcm = b"".join(frames)
         if len(raw_pcm) < 16000 * 2 * 0.18:
             self.last_wake_decision = "segment-too-short"
@@ -616,13 +656,7 @@ class AudioListener(QObject):
             self.last_wake_decision = "no-transcript"
             return
 
-        wake_phrases = {
-            "brain",
-            "brian",
-            "buddy",
-            "assistant",
-            "robot",
-        }
+        wake_phrases = {"brain", "brian", "buddy"}
         configured_wake_word = self.wake_word.strip()
         if configured_wake_word:
             wake_phrases.add(configured_wake_word)
@@ -634,7 +668,7 @@ class AudioListener(QObject):
         )
         greeting_pattern = r"(?:hey|hello|hi|okay|ok|yo|a|eh)(?:\s+there)?[\s,.:;!?…\-–—]+"
         wake_prefix = re.compile(
-            rf"\b(?:{greeting_pattern})?(?:{phrase_pattern})\b",
+            rf"(?:^\s*|[.!?]\s+)(?:{greeting_pattern})?(?:{phrase_pattern})\b|\b{greeting_pattern}(?:{phrase_pattern})\b",
             re.IGNORECASE,
         )
         prefix_match = wake_prefix.search(text)
@@ -642,52 +676,35 @@ class AudioListener(QObject):
             self.last_wake_decision = "transcript-without-wake-prefix"
             return
 
-        self.ambient_speech_frames = []
-        self.ambient_silence_count = 0
-        # Strip punctuation so transcripts like "Brain." still count as a bare wake.
-        _, clean_cmd = command_after_keyword(text[prefix_match.start():], self.wake_word)
-        template = self._load_speaker_embedding(self.owner_embedding_path)
-        self.last_wake_owner_verified = self.models.verify_owner(clean_pcm, template) if template else False
-        if generation is not None and (generation != self._capture_generation or not self._wake_armed):
-            return
-        self._wake_armed = False
-        self._capture_generation += 1
-        self.backup_wake_matches += 1
-        self.wake_started.emit()
-        if not clean_cmd:
+        with self._capture_lock:
+            if generation is not None and (generation != self._capture_generation or not self._wake_armed):
+                return
+            # Preserve the audio that arrived while the backup ASR was decoding.
+            following = [pcm for seq, pcm, _voiced in self._audio_timeline
+                         if frame_end is not None and seq > frame_end]
+            self.backup_wake_matches += 1
             self.last_wake_matches += 1
-            self.last_wake_decision = "wake-detected"
-            self.wake_detected.emit()
-        else:
-            # A command addressed to the agent is passed through without losing its wording.
-            self.last_wake_matches += 1
-            self.last_wake_decision = "wake-command-detected"
-            self.turn_completed.emit(clean_cmd)
+            self._begin_wake_capture(list(frames) + following)
 
-    def _process_utterance(self, frames: list[bytes], generation: Optional[int] = None) -> None:
-        """Transcribe full user statement and emit turn_completed."""
+    def _process_utterance(self, frames: list[bytes], generation: Optional[int] = None, revision: Optional[int] = None) -> None:
+        """Decode the whole statement and reject stale results if speech resumed."""
         raw_pcm = b"".join(frames)
         if generation is not None and generation != self._capture_generation:
             return
-        # Skip trivial clicks/blips under 0.25s
-        if len(raw_pcm) < 16000 * 2 * 0.25:
-            self.turn_completed.emit("")
-            return
-
         try:
-            transcription = self._transcribe_pcm(raw_pcm)
-            # Preserve a usable original transcript. Enhancement can suppress weak
-            # consonants; use it as a recovery pass when raw recognition fails.
-            if not transcription:
+            transcription = self._transcribe_pcm(raw_pcm) if len(raw_pcm) >= 8000 else ""
+            if not transcription and len(raw_pcm) >= 8000:
                 enhanced = self.models.enhance_pcm(raw_pcm)
                 if enhanced != raw_pcm:
                     transcription = self._transcribe_pcm(enhanced)
-            if generation is None or generation == self._capture_generation:
+            if self._accept_capture(generation, revision):
+                self._record_voice_check(transcription, "complete statement")
                 self.turn_completed.emit(transcription.strip() if transcription else "")
         except Exception as exc:
-            self.last_error = f"Speech recognition failed: {exc}"
-            self.error_occurred.emit(self.last_error)
-            self.turn_completed.emit("")
+            if self._accept_capture(generation, revision):
+                self.last_error = f"Speech recognition failed: {exc}"
+                self.error_occurred.emit(self.last_error)
+                self.turn_completed.emit("")
 
     def _transcribe_pcm(self, pcm_data: bytes) -> str:
         """Transcribe 16-bit 16kHz PCM audio buffer using local on-device recognizer with fallback."""
@@ -703,6 +720,8 @@ class AudioListener(QObject):
 
         # The compact transformer runs locally on CPU across supported platforms.
         recognized = self.models.transcribe_pcm(pcm_data)
+        if recognized and re.fullmatch(r"\s*\[(?:inaudible|blank_audio|silence|music|noise)\]\s*", recognized, re.I):
+            return ""
         if recognized:
             return recognized
 
@@ -711,6 +730,11 @@ class AudioListener(QObject):
             recognized = self._transcribe_native_pcm(pcm_data)
             if recognized:
                 return recognized
+
+        # An empty result from the loaded recognizer is not permission to invent
+        # a different transcript through a less reliable fallback recognizer.
+        if self.models.recognizer.ready:
+            return ""
 
         # 2. Offline fallback: PocketSphinx if installed. Do not send microphone audio
         # to a hosted recognizer when the user selected the local Brain voice pipeline.

@@ -162,3 +162,35 @@ def test_external_websites_cannot_read_diagnostic_transcripts(test_server, monke
     request = urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/status', headers={'Origin': 'https://example.com'})
     with urllib.request.urlopen(request, timeout=3) as response:
         assert json.load(response)['voice_input']['wake_diagnostics']['voice_check']['heard'] == []
+
+
+def test_reader_actions_require_local_controls_and_dispatch_to_manager(test_server, monkeypatch):
+    from types import SimpleNamespace
+    from dock_twoo.brain.manager import BrainManager
+    calls = []
+    manager = SimpleNamespace(start_reading=lambda mode: calls.append(mode), stop_reading=lambda: calls.append('stop'))
+    monkeypatch.setattr(BrainManager, '_instance', manager)
+    _server, port, _mgr = test_server
+    def request(action, headers):
+        return urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/action',
+            data=json.dumps({'action': action}).encode(), headers={'Content-Type':'application/json', **headers})
+    for headers in ({}, {'X-Brain-Reader':'local', 'Origin':'https://example.com'}):
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request('read_desktop', headers), timeout=3)
+        assert error.value.code == 400
+    assert calls == []
+    for action in ('read_desktop', 'read_window', 'stop_reading'):
+        with urllib.request.urlopen(request(action, {'X-Brain-Reader':'local', 'Origin':f'http://127.0.0.1:{port}'}), timeout=3) as response:
+            assert json.loads(response.read())['success']
+    assert calls == ['desktop', 'window', 'stop']
+
+
+def test_reader_action_reports_missing_desktop_manager(test_server, monkeypatch):
+    from dock_twoo.brain.manager import BrainManager
+    monkeypatch.setattr(BrainManager, '_instance', None)
+    _server, port, _mgr = test_server
+    request = urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/action',
+        data=b'{"action":"read_desktop"}', headers={'X-Brain-Reader':'local'})
+    with pytest.raises(urllib.error.HTTPError) as error:
+        urllib.request.urlopen(request, timeout=3)
+    assert 'not running' in json.loads(error.value.read())['error']

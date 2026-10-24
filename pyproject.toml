@@ -45,3 +45,6 @@ include = ["dock_twoo*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.setuptools.package-data]
+dock_twoo = ["assets/**/*", "server/static/**/*"]

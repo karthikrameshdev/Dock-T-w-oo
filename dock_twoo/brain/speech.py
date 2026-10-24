@@ -22,6 +22,7 @@ class SpeechPlayback(QObject):
     mouth = Signal(float)       # 0.0 to 1.0 mouth aperture level
     failed = Signal(str)
     finished = Signal()
+    progress = Signal(float)
     _frame = Signal(int, float, float)  # token, level, deadline
     _done = Signal(int, str)            # token, error
 
@@ -66,6 +67,7 @@ class SpeechPlayback(QObject):
             self.cancel_event.set()
         self.playing = False
         self.mouth.emit(0.0)
+        self.progress.emit(0.0)
         self.activity.emit("idle")
 
     def _play_worker(self, token: int, text: Optional[str], cancel: threading.Event) -> None:
@@ -87,7 +89,10 @@ class SpeechPlayback(QObject):
         except Exception as exc:
             error = f"Speech output failed: {exc}"
         finally:
-            self._done.emit(token, error)
+            try:
+                self._done.emit(token, error)
+            except RuntimeError:
+                pass  # The owner was closed while its cancelled worker finished.
 
     def _play_clip(self, clip: SpeechClip, wav_path: Path, token: int, cancel: threading.Event) -> None:
         # Try sounddevice if installed
@@ -106,6 +111,7 @@ class SpeechPlayback(QObject):
                 buffer[:] = data + bytes(frames * frame_bytes - len(data))
                 delay = max(0.0, clock.outputBufferDacTime - clock.currentTime)
                 self._frame.emit(token, clip.level_at(cursor), time.monotonic() + delay)
+                self.progress.emit(cursor / max(1, clip.frames))
                 cursor = end
                 if cursor >= clip.frames:
                     raise sd.CallbackStop
@@ -141,6 +147,7 @@ class SpeechPlayback(QObject):
                 elapsed = time.monotonic() - start_t
                 curr_frame = int(elapsed * clip.rate)
                 self._frame.emit(token, clip.level_at(curr_frame), time.monotonic() + 0.02)
+                self.progress.emit(min(1, curr_frame / max(1, clip.frames)))
                 time.sleep(0.03)
             if proc.returncode != 0:
                 raise RuntimeError(f"afplay exited with status {proc.returncode}")

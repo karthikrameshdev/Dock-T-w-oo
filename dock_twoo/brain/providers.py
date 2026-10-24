@@ -190,7 +190,7 @@ def answer_locally(prompt: str) -> str:
         )
 
     # Greetings & banter
-    if any(k in p_lower for k in ("hello", "hey", "hi", "good morning", "good afternoon", "good evening", "howdy")):
+    if re.fullmatch(r"(?:hello|hey|hi|good morning|good afternoon|good evening|howdy)[\s!.?]*", p_lower):
         greetings = [
             "Hello! I am right here on your desktop, ready to help.",
             "Hey there! All systems are nominal and running smoothly.",
@@ -212,13 +212,8 @@ def answer_locally(prompt: str) -> str:
         if res and len(res) > 20:
             return res
 
-    # Default conversational response
-    fallbacks = [
-        "I heard you loud and clear. All desktop systems are running smoothly.",
-        "Understood. Standing by right here on your desktop screen.",
-        "I'm keeping watch over your active desktop. Everything is looking good.",
-    ]
-    return random.choice(fallbacks)
+    # Do not acknowledge an unhandled request as though it was completed.
+    return "Hey Buddy, I'm sorry, I couldn't understand that. Could you repeat or rephrase it?"
 
 
 def query_llm(

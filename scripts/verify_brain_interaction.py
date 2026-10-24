@@ -1,4 +1,4 @@
-"""Verify wake -> Mini Agent -> audible greeting -> spoken command -> audible reply.
+"""Verify a silent wake plus inline command, followed by a spoken follow-up.
 
 Uses cached models and generated PCM, a temporary Brain store, and real audio
 output. It never opens an input stream or changes the user's Brain settings.
@@ -7,6 +7,7 @@ output. It never opens an input stream or changes the user's Brain settings.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -14,6 +15,8 @@ import tempfile
 import wave
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
@@ -35,7 +38,7 @@ def main() -> int:
         assert manager.listener.models.recognizer.load(allow_download=False), manager.listener.models.recognizer.error
         manager.listener.arm_wake()
         clips = []
-        for index, text in enumerate(('Brain', 'What time is it?')):
+        for index, text in enumerate(('Brain [[slnc 800]] what time is it?', 'What time is it again?')):
             path = Path(folder) / f'{index}.wav'
             subprocess.run(['say', '-v', 'Samantha', '-o', str(path), '--file-format=WAVE',
                             '--data-format=LEI16@16000', '--', text], check=True, capture_output=True)
@@ -65,9 +68,9 @@ def main() -> int:
             else:
                 result.update(
                     success=(manager.companion.isVisible() and manager.listener.is_recording and not manager.speech.last_error
-                             and len(manager.conversation_history) == 2
+                             and len(manager.conversation_history) == 4
                              and 'time' in manager.conversation_history[0]['content'].lower()
-                             and manager.conversation_history[1]['role'] == 'assistant'),
+                             and manager.conversation_history[3]['role'] == 'assistant'),
                     companion_visible=manager.companion.isVisible(),
                     resumed_listening=manager.listener.is_recording,
                     microphone_opened=manager.listener.stream is not None,
@@ -89,6 +92,9 @@ def main() -> int:
         app.exec()
         timer.stop()
         manager.stop_talking()
+        manager.listener.stop()
+        with manager.listener._wake_check_lock:
+            pass
         manager.companion.close()
         report = Path('/tmp/dock-twoo-interaction-check.json')
         report.write_text(json.dumps(result, indent=2))

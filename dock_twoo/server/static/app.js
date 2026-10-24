@@ -1108,6 +1108,22 @@ async function initBrainConsole() {
   });
 
   // Robotic Animation Buttons
+  document.querySelectorAll('[data-reader]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      try {
+        const response = await fetch('/api/brain/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Brain-Reader': 'local' },
+          body: JSON.stringify({ action: button.dataset.reader }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || 'Reading control failed');
+        await refreshWakeDiagnostics();
+      } catch (error) {
+        showToast(error.message, true);
+      }
+    });
+  });
   document.querySelectorAll('.brain-anim-trigger').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const animName = btn.dataset.anim;
@@ -1615,6 +1631,11 @@ async function initBrainConsole() {
       const response = await fetch('/api/brain/status');
       const status = await response.json();
       renderBrainRuntime(status);
+      const reading = status.reading || {};
+      const label = document.getElementById('brainReadingStatus');
+      if (label) label.textContent = reading.error || (reading.active
+        ? `Reading ${reading.window || 'document'} · ${reading.lines_read || 0} lines · ${reading.pages_read || 0} pages`
+        : 'Ready to read the frontmost document.');
     } catch (_) {
       // The main status panel reports listener failures when it next refreshes.
     }
