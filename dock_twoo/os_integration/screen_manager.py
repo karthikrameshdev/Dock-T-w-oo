@@ -129,9 +129,11 @@ class ScreenManager:
         margin_y = 20
 
         is_horizontal = config.edge in ("top", "bottom")
+        glow_pad = 8 if config.glow_enabled else 2
+        thickness = config.dock_width + (glow_pad * 2)
 
         if is_horizontal:
-            height = config.dock_width
+            height = thickness
             if config.dock_height_mode == "fill":
                 width = avail.width() - (margin_x * 2)
                 x = avail.left() + margin_x
@@ -148,6 +150,7 @@ class ScreenManager:
                 y = avail.bottom() - height - margin_x
 
             x = max(avail.left() + 8, min(x, avail.right() - width - 8))
+            y = max(avail.top() + 8, min(y, avail.bottom() - height - 8))
             return QRect(x, y, width, height)
 
         # Vertical edges: "left" or "right"
@@ -161,13 +164,14 @@ class ScreenManager:
             height = min(content_height, avail.height() - 40)
             y = avail.top() + (avail.height() - height) // 2 + config.offset_y
 
-        width = config.dock_width
+        width = thickness
 
         if config.edge == "left":
             x = avail.left() + margin_x
         else:  # default "right"
             x = avail.right() - width - margin_x
 
+        x = max(avail.left() + 8, min(x, avail.right() - width - 8))
         y = max(avail.top() + 8, min(y, avail.bottom() - height - 8))
         return QRect(x, y, width, height)
 
@@ -195,7 +199,12 @@ class ScreenManager:
             anchor_x = target_center_y if target_center_y is not None else dock_geom.center().x()
             x = anchor_x - (width // 2)
             x = max(avail.left() + 8, min(x, avail.right() - width - 8))
-            y = max(avail.top() + 4, min(y, avail.bottom() - height - 4))
+            if config.edge == "top":
+                min_y = dock_geom.bottom() + gap
+                y = max(min_y, min(y, avail.bottom() - height - 4))
+            else:
+                max_y = dock_geom.top() - height - gap
+                y = min(max_y, max(avail.top() + 4, y))
             return QRect(x, y, width, height)
 
         # Vertical edges: "left" or "right"

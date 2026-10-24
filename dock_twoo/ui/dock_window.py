@@ -93,10 +93,7 @@ class DockLogoWidget(QWidget):
         self.update()
 
     def _update_geometry(self) -> None:
-        if self.config.edge in ("top", "bottom"):
-            dim = self.config.dock_width - (self.config.dock_padding_y * 2)
-        else:
-            dim = self.config.dock_width - (self.config.dock_padding_x * 2)
+        dim = self.config.dock_width - (self.config.dock_padding_x * 2)
         self.setFixedSize(dim, dim)
 
     def set_hover(self, hover: bool) -> None:
@@ -157,11 +154,10 @@ class ThreeDotsDivider(QWidget):
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _update_size(self) -> None:
+        dim = self.config.dock_width - (self.config.dock_padding_x * 2)
         if self.config.edge in ("top", "bottom"):
-            dim = self.config.dock_width - (self.config.dock_padding_y * 2)
             self.setFixedSize(14, dim)
         else:
-            dim = self.config.dock_width - (self.config.dock_padding_x * 2)
             self.setFixedSize(dim, 14)
 
     def update_config(self, config: DockConfig) -> None:
@@ -250,7 +246,20 @@ class DockWindow(QWidget):
             QWidget().setLayout(old_layout)
 
         glow_pad = 8 if self.config.glow_enabled else 2
+        thickness = self.config.dock_width + (glow_pad * 2)
         is_horizontal = self.config.edge in ("top", "bottom")
+
+        # Explicitly reset minimum/maximum size limits when reconstructing layout
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+        if is_horizontal:
+            self.setFixedHeight(thickness)
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(16777215)
+        else:
+            self.setFixedWidth(thickness)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
 
         if is_horizontal:
             self.main_layout = QHBoxLayout(self)
@@ -283,15 +292,14 @@ class DockWindow(QWidget):
 
         # 3. Scrollable app icons container (Notes is the first app icon)
         self.scroll_area = DockScrollArea(is_horizontal=is_horizontal, parent=self)
+        dim = self.config.dock_width - (self.config.dock_padding_x * 2)
         if is_horizontal:
-            dim = self.config.dock_width - (self.config.dock_padding_y * 2)
             self.scroll_area.setFixedHeight(dim)
             self.scroll_area.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Fixed,
             )
         else:
-            dim = self.config.dock_width - (self.config.dock_padding_x * 2)
             self.scroll_area.setFixedWidth(dim)
             self.scroll_area.setSizePolicy(
                 QSizePolicy.Policy.Fixed,
@@ -411,14 +419,32 @@ class DockWindow(QWidget):
 
     def reposition_dock(self) -> None:
         """Calculate screen edge position and update dock geometry."""
+        glow_pad = 8 if self.config.glow_enabled else 2
+        thickness = self.config.dock_width + (glow_pad * 2)
+        is_horizontal = self.config.edge in ("top", "bottom")
+
+        # Explicitly reset minimum/maximum size limits to avoid stale orientation constraints
+        self.setMinimumSize(0, 0)
+        self.setMaximumSize(16777215, 16777215)
+
+        if is_horizontal:
+            self.setFixedHeight(thickness)
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(16777215)
+        else:
+            self.setFixedWidth(thickness)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+
         geom = ScreenManager.calculate_dock_geometry(self.config)
         self.setGeometry(geom)
+        self.resize(geom.size())
 
         # Clamping guarantee: Ensure dock never extends beyond screen boundary on any edge
         avail = ScreenManager.get_available_geometry(self.config.screen_index)
         margin_x = self.config.edge_offset_x
-        eff_width = max(self.width(), self.minimumSizeHint().width())
-        eff_height = max(self.height(), self.minimumSizeHint().height())
+        eff_width = self.width()
+        eff_height = self.height()
 
         if self.config.edge == "right":
             max_right = avail.right() - margin_x

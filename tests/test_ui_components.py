@@ -328,6 +328,7 @@ def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
     # 1. Right edge: vertical layout
     assert dock.layout().__class__.__name__ == "QVBoxLayout"
     assert dock.scroll_area.is_horizontal is False
+    right_width = dock.width()
 
     dock_geom = dock.geometry()
     avail = ScreenManager.get_available_geometry(cfg_mgr.config.screen_index)
@@ -343,6 +344,8 @@ def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
     cfg_mgr.update({"edge": "top"})
     assert dock.layout().__class__.__name__ == "QHBoxLayout"
     assert dock.scroll_area.is_horizontal is True
+    # Strict cross-axis symmetry: horizontal dock height must match vertical dock width exactly
+    assert dock.height() == right_width
 
     dock_geom = dock.geometry()
     # Strict boundary guarantee: dock top edge within available screen geometry
@@ -352,6 +355,14 @@ def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
     att_geom = dock.attached_window.geometry()
     # Pinned below the dock with gap
     assert att_geom.top() - dock_geom.bottom() >= 12
+
+    # 3. Switch edge to 'bottom': horizontal layout & exact same height
+    cfg_mgr.update({"edge": "bottom"})
+    assert dock.height() == right_width
+
+    # 4. Switch edge to 'left': vertical layout & exact same width
+    cfg_mgr.update({"edge": "left"})
+    assert dock.width() == right_width
 
     dock.close()
 

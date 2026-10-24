@@ -21,11 +21,13 @@ def test_dock_geometry_calculation_right_edge(qapp):
     geom = ScreenManager.calculate_dock_geometry(cfg, content_height=600)
 
     avail = ScreenManager.get_available_geometry(0)
-    assert geom.width() == 60
+    glow_pad = 8 if cfg.glow_enabled else 2
+    thickness = 60 + (glow_pad * 2)
+    assert geom.width() == thickness
     assert geom.height() == 600
     # X should be close to right edge
     assert geom.right() <= avail.right()
-    assert geom.x() == avail.right() - 60 - 10
+    assert geom.x() == avail.right() - thickness - 10
 
 
 def test_dock_geometry_calculation_left_edge(qapp):
@@ -33,7 +35,9 @@ def test_dock_geometry_calculation_left_edge(qapp):
     geom = ScreenManager.calculate_dock_geometry(cfg, content_height=500)
 
     avail = ScreenManager.get_available_geometry(0)
-    assert geom.width() == 64
+    glow_pad = 8 if cfg.glow_enabled else 2
+    thickness = 64 + (glow_pad * 2)
+    assert geom.width() == thickness
     assert geom.x() == avail.left() + 12
 
 
@@ -72,7 +76,9 @@ def test_dock_geometry_calculation_top_edge(qapp):
     geom = ScreenManager.calculate_dock_geometry(cfg, content_height=700)
 
     avail = ScreenManager.get_available_geometry(0)
-    assert geom.height() == 60
+    glow_pad = 8 if cfg.glow_enabled else 2
+    thickness = 60 + (glow_pad * 2)
+    assert geom.height() == thickness
     assert geom.width() == 700
     assert geom.y() == avail.top() + 10
 
@@ -82,9 +88,35 @@ def test_dock_geometry_calculation_bottom_edge(qapp):
     geom = ScreenManager.calculate_dock_geometry(cfg, content_height=650)
 
     avail = ScreenManager.get_available_geometry(0)
-    assert geom.height() == 60
+    glow_pad = 8 if cfg.glow_enabled else 2
+    thickness = 60 + (glow_pad * 2)
+    assert geom.height() == thickness
     assert geom.width() == 650
     assert geom.bottom() <= avail.bottom()
+
+
+def test_dock_cross_axis_symmetry_across_orientations(qapp):
+    """Verify that vertical dock width strictly equals horizontal dock height."""
+    for width in (50, 60, 72):
+        for glow in (True, False):
+            glow_pad = 8 if glow else 2
+            expected_thickness = width + (glow_pad * 2)
+
+            cfg_right = DockConfig(edge="right", dock_width=width, glow_enabled=glow)
+            cfg_left = DockConfig(edge="left", dock_width=width, glow_enabled=glow)
+            cfg_top = DockConfig(edge="top", dock_width=width, glow_enabled=glow)
+            cfg_bottom = DockConfig(edge="bottom", dock_width=width, glow_enabled=glow)
+
+            g_right = ScreenManager.calculate_dock_geometry(cfg_right)
+            g_left = ScreenManager.calculate_dock_geometry(cfg_left)
+            g_top = ScreenManager.calculate_dock_geometry(cfg_top)
+            g_bottom = ScreenManager.calculate_dock_geometry(cfg_bottom)
+
+            assert g_right.width() == expected_thickness
+            assert g_left.width() == expected_thickness
+            assert g_top.height() == expected_thickness
+            assert g_bottom.height() == expected_thickness
+            assert g_right.width() == g_top.height()
 
 
 def test_attached_window_geometry_top_and_bottom(qapp):
