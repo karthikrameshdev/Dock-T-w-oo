@@ -212,6 +212,110 @@ def test_motion_turns_head_with_the_same_live_face(companion, action, facing, mo
     assert scales[-1] * facing > 0
 
 
+def test_body_parts_respect_a_parent_clip(companion):
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QPainter
+    image = QImage(168, 202, QImage.Format.Format_ARGB32)
+    image.fill(0)
+    painter = QPainter(image)
+    painter.setClipRect(QRectF(0, 115, 168, 87))
+    companion._draw_part(painter, 'head', 0, (.5, .5))
+    painter.end()
+    assert all(image.pixelColor(x, y).alpha() == 0 for y in range(115) for x in range(168))
+
+
+@pytest.mark.parametrize('yaw', [0, .0001, .1, .4, .8, 1])
+@pytest.mark.parametrize('head_angle', [-18, 18])
+def test_body_render_cannot_duplicate_the_head_or_antenna(companion, monkeypatch, yaw, head_angle):
+    from dock_twoo.brain.animation import Pose
+    companion.action = 'inspect_window'
+    companion.turn_progress = yaw
+    companion.pose = Pose(head=head_angle, tilt=3)
+
+    def render():
+        image = QImage(companion.size(), QImage.Format.Format_ARGB32)
+        image.fill(0)
+        companion.render(image)
+        return image.copy(0, 0, 264, 100)
+
+    full = render()
+    monkeypatch.setattr(companion, '_paint_front_body', lambda *_args: None)
+    assert render() == full
+
+
+def test_head_has_no_front_profile_render_switch(companion):
+    import numpy as np
+    from PySide6.QtGui import QPainter
+    frames = []
+    for yaw in (0, .0001, .0009, .0011):
+        image = QImage(168, 112, QImage.Format.Format_ARGB32)
+        image.fill(0)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        companion._paint_motion_head(painter, yaw)
+        painter.end()
+        frames.append(np.frombuffer(image.constBits(), np.uint8).astype(int).copy())
+    for frame in frames[1:]:
+        assert np.mean(np.abs(frame - frames[0])) < .2
+
+
+def test_turn_callback_runs_once_and_cancelled_turns_cannot_resume(companion, monkeypatch):
+    import dock_twoo.brain.mascot as module
+    clock = [100.0]
+    monkeypatch.setattr(module, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    companion.show()
+    calls = []
+    companion._yaw = companion.turn_progress = 1
+    companion.turn_to_user(on_turned=lambda: calls.append('finished'))
+    for _ in range(75):
+        clock[0] += 1 / 60
+        companion._advance_motion()
+    assert calls == ['finished']
+    assert companion._yaw == 0
+    assert companion.action is None
+    companion.turn_to_side(-1, on_turned=lambda: calls.append('cancelled'))
+    companion.play_action('wave')
+    for _ in range(120):
+        clock[0] += 1 / 60
+        companion._advance_motion()
+    assert calls == ['finished']
+
+
+def test_turn_walk_inspect_return_keeps_a_continuous_orientation(companion, monkeypatch):
+    import dock_twoo.brain.mascot as module
+    clock = [100.0]
+    monkeypatch.setattr(module, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    companion.show()
+    companion.move(100, 200)
+    started = []
+
+    def inspect():
+        started.append('inspect')
+        companion.play_action('inspect_window', duration=1.2, keep_orientation=True)
+        companion.arrival = companion.turn_to_user
+
+    def walk():
+        started.append('walk')
+        companion.play_action('walk_window', QPoint(180, 200), duration=1.2)
+        companion.arrival = lambda: companion.turn_to_side(-1, on_turned=inspect)
+
+    companion.turn_to_side(1, on_turned=walk)
+    previous = companion._yaw
+    for _ in range(420):
+        clock[0] += 1 / 60
+        companion._advance_motion()
+        assert abs(companion._yaw - previous) <= 2.8 / 60 + .011
+        previous = companion._yaw
+        if companion.action == 'walk_window':
+            assert companion._yaw == 1
+        elif companion.action == 'inspect_window':
+            assert companion._yaw == -1
+    assert started == ['walk', 'inspect']
+    assert companion.action is None
+    assert companion._yaw == 0
+
+
 def test_roaming_never_pushes_or_resizes_external_windows(companion, monkeypatch):
     import dock_twoo.brain.mascot as module
     companion.store.set_setting('roaming', True)

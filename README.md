@@ -197,6 +197,17 @@ The check uses installed Samantha and Daniel voices and writes a JSON report to
 `/tmp/dock-twoo-voice-check.json`. It requires the checkpoints to be cached and does
 not download or retain microphone recordings.
 
+Check the complete Mini Agent animation sequence without opening a microphone or
+moving application windows:
+
+```bash
+.venv/bin/python scripts/verify_brain_animation.py
+```
+
+This renders turns, walking in both directions, inspection, climbing, and the
+return to idle. It writes a contact sheet and transition report under `/tmp`,
+plus an MP4 preview when `ffmpeg` is installed.
+
 ## 📄 License
 
 Apache 2.0 License. See [LICENSE](LICENSE) for details.

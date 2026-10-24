@@ -62,7 +62,8 @@ def test_animation_poses_and_interpolation():
 
     pose_turn = pose_at("turn_around", 0.4)
     assert isinstance(pose_turn, Pose)
-    assert pose_turn.surprise > 0
+    assert pose_turn.surprise == 0
+    assert pose_turn.squash == 1
 
     pose_nod = pose_at("nod", 0.2)
     assert isinstance(pose_nod, Pose)

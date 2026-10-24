@@ -443,12 +443,15 @@ class Companion(QWidget):
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.turn_to_side(facing, on_turned))
             return
+        self.stop_motion()
         self.facing = facing
         self.turn_target = 1.0
         self.on_turn_finished = on_turned
-        if abs(self._yaw - facing) < 0.05:
+        self._last_turn_update = time.monotonic()
+        if abs(self._yaw - facing) < 0.01:
             self.turn_progress = 1.0
             self._yaw = facing
+            self._render_facing = 1.0 if facing >= 0 else -1.0
             if on_turned:
                 self.on_turn_finished = None
                 on_turned()
@@ -472,7 +475,6 @@ class Companion(QWidget):
         self.stop_motion()
         self.gaze = None  # Direct eye contact with user
         self.turn_target = 0.0
-        self.on_turn_finished = on_turned
         self.play_action("turn_around", duration=0.85)
         if on_turned:
             self.arrival = on_turned
@@ -483,27 +485,29 @@ class Companion(QWidget):
         elapsed = min(0.1, max(0.0, now - self._last_turn_update))
         self._last_turn_update = now
         signed_target = self.turn_target * (1 if self.facing >= 0 else -1)
-        if abs(self._yaw - signed_target) > 0.01:
-            self._yaw += (signed_target - self._yaw) * (1 - math.exp(-elapsed / 0.12))
-            self.turn_progress = abs(self._yaw)
+        delta = signed_target - self._yaw
+        step = delta * (1 - math.exp(-elapsed / .16))
+        self._yaw += max(-2.8 * elapsed, min(step, 2.8 * elapsed))
+        settled = abs(self._yaw - signed_target) <= .01
+        if settled:
+            self._yaw = signed_target
+        self.turn_progress = abs(self._yaw)
+        if self._yaw:
             self._render_facing = 1.0 if self._yaw >= 0 else -1.0
-            self.update()
-            if abs(self._yaw - signed_target) <= 0.01:
-                self._yaw = signed_target
-                self.turn_progress = self.turn_target
-                cb = self.on_turn_finished
-                self.on_turn_finished = None
-                if cb:
-                    cb()
+        self.update()
+        if settled and self.on_turn_finished:
+            cb, self.on_turn_finished = self.on_turn_finished, None
+            cb()
 
-    def play_action(self, action: str, destination: Optional[QPoint] = None, duration: Optional[float] = None, *, sequence: bool = False) -> None:
-        """Execute a procedural animation action."""
+    def play_action(self, action: str, destination: Optional[QPoint] = None, duration: Optional[float] = None, *, sequence: bool = False, keep_orientation: bool = False) -> None:
+        """Execute an action, optionally retaining yaw for a chained inspection."""
         if QThread.currentThread() != self.thread():
             if hasattr(self.manager, "run_on_main_thread"):
-                self.manager.run_on_main_thread(lambda: self.play_action(action, destination, duration, sequence=sequence))
+                self.manager.run_on_main_thread(lambda: self.play_action(action, destination, duration, sequence=sequence, keep_orientation=keep_orientation))
             return
         if action not in ACTIONS:
             return
+        previous_turn_target = self.turn_target
         self.stop_motion(clear_sequence=not sequence)
 
         if self.reduced_motion:
@@ -521,7 +525,9 @@ class Companion(QWidget):
             elif destination.x() < self.x() - 8:
                 self.facing = -1.0
 
-        if action in ("walk", "walk_window", "chase_ball"):
+        if keep_orientation:
+            self.turn_target = previous_turn_target
+        elif action in ("walk", "walk_window", "chase_ball"):
             self.turn_target = 1.0
         elif action in ("climb", "climb_dock"):
             self.turn_target = 0.6
@@ -530,6 +536,7 @@ class Companion(QWidget):
 
         self.motion_start = self.pos()
         self.motion_started = time.monotonic()
+        self._last_turn_update = self.motion_started
         self.motion_duration = duration or ACTIONS[action][1]
         if destination is not None and action in ("walk", "walk_window", "chase_ball"):
             distance = math.hypot(destination.x() - self.x(), destination.y() - self.y())
@@ -543,6 +550,7 @@ class Companion(QWidget):
         if clear_sequence:
             self.animation_loop = False
         self.arrival = None
+        self.on_turn_finished = None
         self.motion_generation += 1
         self.roam_action = False
         self.action = None
@@ -565,7 +573,12 @@ class Companion(QWidget):
         self.play_action(PLAYLIST[0], sequence=True)
 
     def _advance_motion(self) -> None:
+        generation = self.motion_generation
         self._step_turn_progress()
+        if generation != self.motion_generation:
+            # A completed turn handed control to the next action. Never finish
+            # or advance that new action using the previous timer invocation.
+            return
         if self.reduced_motion or not self.isVisible() or (self.animation_loop and self.activity != "idle"):
             self.stop_motion()
             return
@@ -595,13 +608,10 @@ class Companion(QWidget):
         if progress >= 1.0:
             arrived = self.arrival
             looping = self.animation_loop
-            was_turned = (self.turn_progress > 0.05 or self.turn_target != 0.0)
             self.stop_motion(clear_sequence=False)
             if arrived:
                 arrived()
-            elif was_turned:
-                self.turn_to_user()
-            if looping and self.animation_loop and self.activity == "idle":
+            elif looping and self.animation_loop and self.activity == "idle":
                 self.animation_index = (self.animation_index + 1) % len(PLAYLIST)
                 if self.animation_index == 0:
                     self.animation_cycles += 1
@@ -1021,7 +1031,7 @@ class Companion(QWidget):
 
             def on_reach_end():
                 def inspect_then_return():
-                    self.play_action("inspect_window", duration=2.2)
+                    self.play_action("inspect_window", duration=2.2, keep_orientation=True)
                     self.arrival = lambda: self.turn_to_user()
                 self.turn_to_side(facing=-1.0, on_turned=inspect_then_return)
 
@@ -1345,40 +1355,85 @@ class Companion(QWidget):
         self._paint_yawed_robot(painter, .5 if is_three_quarters else 1.0)
 
     def _paint_motion_head(self, painter: QPainter, yaw: float) -> None:
-        """Turn the helmet while projecting the same live eyes and mouth."""
+        """One continuous helmet, one antenna, and one live face at every yaw."""
         angle = yaw * math.pi / 3
-        front_width = 98 * math.cos(angle)
-        depth = 58 * math.sin(angle)
+        projection = math.cos(angle)
+        front_width = 98 * projection
+        depth = 50 * math.sin(angle)
         left = self.art_width / 2 - (front_width + depth) / 2
-        shell = QRectF(left, 35, front_width + depth, 71)
-        material = QRadialGradient(QPointF(left + shell.width() * .3, 49), shell.width())
+        front_left = left + depth
+        ratio = self.art_side.devicePixelRatioF()
+
+        # Far earpiece recedes behind the helmet as the near side becomes visible.
+        painter.save()
+        painter.setOpacity(painter.opacity() * (1 - .9 * yaw))
+        far = QRectF(front_left + front_width - 1, 54, 13 * projection, 36)
+        front_ratio = self.art_front.devicePixelRatioF()
+        painter.drawPixmap(far, self.art_front, QRectF(134 * front_ratio, 54 * front_ratio, 14 * front_ratio, 36 * front_ratio))
+        painter.restore()
+
+        shell = QPainterPath()
+        shell.addRoundedRect(QRectF(left, 35, front_width + depth, 71), 23, 23)
+        material = QRadialGradient(QPointF(left + (front_width + depth) * .3, 48), front_width + depth)
         material.setColorAt(0, QColor('#b7f5e7'))
         material.setColorAt(.6, QColor('#8bd4c8'))
         material.setColorAt(1, QColor('#619f9d'))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(material)
-        painter.drawRoundedRect(shell, 23, 23)
-        # Reuse the glossy helmet material, curvature and earpiece from the
-        # original profile artwork. Only the side shell is sampled: its baked
-        # face is outside this crop and the live canonical visor covers the join.
-        if depth > .05:
-            ratio = self.art_side.devicePixelRatioF()
-            source = QRectF(40 * ratio, 35 * ratio, 61 * ratio, 72 * ratio)
-            painter.drawPixmap(QRectF(left, 35, depth + 2, 71), self.art_side, source)
-        else:
-            self._draw_part(painter, "head", 0, (.5, .5))
+        painter.drawPath(shell)
         painter.save()
-        painter.translate(left + depth, 0)
-        painter.scale(front_width / 98, 1)
+        painter.setClipPath(shell, Qt.ClipOperation.IntersectClip)
+        if depth > 0:
+            # Sample the glossy side material, but remove its baked earpiece.
+            # The earpiece is drawn separately so it never becomes a thin stripe.
+            wall = QPainterPath()
+            wall.addRect(QRectF(left, 35, depth, 71))
+            baked_ear = QPainterPath()
+            baked_ear.addEllipse(QRectF(left + 14 / 61 * depth, 51, 41 / 61 * depth, 42))
+            painter.save()
+            painter.setClipPath(wall.subtracted(baked_ear), Qt.ClipOperation.IntersectClip)
+            painter.drawPixmap(QRectF(left, 35, depth, 71), self.art_side,
+                               QRectF(40 * ratio, 35 * ratio, 61 * ratio, 72 * ratio))
+            painter.restore()
+
+        painter.save()
+        painter.translate(front_left, 0)
+        painter.scale(projection, 1)
         painter.translate(-36, 0)
-        # Exclude baked earpieces: two different side views must never overlap.
-        painter.setClipRect(QRectF(36, 36, 98, 70))
+        painter.setClipRect(QRectF(36, 35, 98, 71), Qt.ClipOperation.IntersectClip)
         painter.drawPixmap(0, 0, self.art_front)
         painter.scale(self.art_width, self.art_height)
+        if self.activity == "thinking":
+            painter.setPen(Qt.PenStyle.NoPen)
+            for idx in range(3):
+                dot = QColor('#bcadff')
+                dot.setAlphaF(.4 + .6 * (.5 + .5 * math.sin(self.phase * math.tau / 24 - idx)))
+                painter.setBrush(dot)
+                painter.drawEllipse(QRectF(.46 + idx * .03, .215, .015, .011))
         self._paint_face(painter)
         painter.restore()
+        painter.restore()
+
+        # Treat the earpiece as a cylinder: its original frontal rim narrows
+        # while its glossy circular side turns into view. No ghosted textures.
+        rim_width = 13 * projection
+        face_width = 32 * math.sin(angle)
+        center = left - 4.5 * projection + depth * .5
+        rim = QRectF(center - rim_width / 2 + face_width / 2, 54, rim_width, 36)
+        painter.drawPixmap(rim, self.art_front,
+                           QRectF(24 * front_ratio, 54 * front_ratio, 13 * front_ratio, 36 * front_ratio))
+        if face_width > 0:
+            ear = QRectF(center - face_width / 2 - rim_width * .12, 54, face_width, 36)
+            ear_mask = QPainterPath()
+            ear_mask.addEllipse(ear)
+            painter.save()
+            painter.setClipPath(ear_mask, Qt.ClipOperation.IntersectClip)
+            painter.drawPixmap(ear, self.art_side, QRectF(56 * ratio, 53 * ratio, 38 * ratio, 39 * ratio))
+            painter.restore()
+
+        # Antenna artwork is isolated from every helmet/body texture crop.
         painter.save()
-        painter.setClipRect(QRectF(0, 0, self.art_width, 35))
+        painter.setClipRect(QRectF(0, 0, self.art_width, 35), Qt.ClipOperation.IntersectClip)
         painter.drawPixmap(0, 0, self.art_front)
         painter.restore()
         painter.save()
@@ -1387,13 +1442,21 @@ class Companion(QWidget):
         painter.restore()
 
     def _paint_yawed_robot(self, painter: QPainter, yaw: float) -> None:
+        locomotion = self.action in ('walk', 'walk_window', 'chase_ball', 'climb', 'climb_dock')
+        painter.save()
+        painter.translate(self.art_width / 2, self.art_height / 2)
+        painter.rotate(self.pose.tilt)
+        painter.scale(1, self.pose.squash)
+        painter.translate(-self.art_width / 2, -self.art_height / 2)
+        if not locomotion:
+            painter.translate(0, self.pose.bob)
+        self._paint_pose_effects(painter, foreground=False)
         painter.save()
         if self._render_facing < 0:
             painter.translate(self.art_width, 0)
             painter.scale(-1, 1)
-        locomotion = self.action in ('walk', 'walk_window', 'chase_ball', 'climb', 'climb_dock')
         if locomotion:
-            self._paint_locomotion(painter, yaw < .8)
+            self._paint_locomotion(painter)
             stride = 44 if self.action in ('climb', 'climb_dock') else 68
             bob = -2 * abs(math.sin(self.gait_distance / stride * math.tau)) * self.gait_blend
             lean = (5 if stride == 44 else 2) * self.gait_blend
@@ -1402,11 +1465,11 @@ class Companion(QWidget):
             painter.translate(self.art_width / 2, 0)
             painter.scale(.55 + .45 * math.cos(yaw * math.pi / 2), 1)
             painter.translate(-self.art_width / 2, 0)
-            painter.setClipRect(QRectF(-30, 108, self.art_width + 60, self.art_height))
-            self._paint_robot_front(painter)
+            self._paint_front_body(painter)
             painter.restore()
-            bob, lean = self.pose.bob, 0
+            bob, lean = 0, 0
         painter.restore()
+        self._paint_pose_effects(painter, foreground=True)
         painter.save()
         if self._render_facing < 0:
             painter.translate(self.art_width, 0)
@@ -1415,8 +1478,9 @@ class Companion(QWidget):
         self._rotate_about(painter, self.pose.head, (.5, .505))
         self._paint_motion_head(painter, yaw)
         painter.restore()
+        painter.restore()
 
-    def _paint_locomotion(self, painter: QPainter, three_quarters: bool) -> None:
+    def _paint_locomotion(self, painter: QPainter) -> None:
         """Jointed body with planted feet, knee lift, and opposing arm swings."""
         climbing = self.action in ("climb", "climb_dock")
         stride = 44.0 if climbing else 68.0
@@ -1500,21 +1564,14 @@ class Companion(QWidget):
         arm(0, True)
         painter.restore()
 
-        # The torso covers the far limb attachments; the near limbs overlap it.
-        gradient = QLinearGradient(center - 24, 110, center + 25, 160)
-        gradient.setColorAt(0, QColor("#fffae8"))
-        gradient.setColorAt(0.55, QColor("#e8e1d3"))
-        gradient.setColorAt(1, QColor("#bdb7b4"))
-        painter.setPen(QPen(QColor("#aaa4b1"), 1))
-        painter.setBrush(gradient)
-        painter.drawEllipse(QRectF(center - 24, 108 + bob, 49, 54))
-        painter.setBrush(QColor("#a6dcd1"))
-        painter.drawRoundedRect(QRectF(center - 20, 111 + bob, 34 if three_quarters else 21, 23), 7, 7)
-        if three_quarters:
-            painter.setBrush(QColor("#72f4df"))
-            painter.drawEllipse(QPointF(center - 8, 123 + bob), 4, 6)
-        painter.setBrush(QColor("#766f85"))
-        painter.drawRoundedRect(QRectF(center - 12, 104 + bob, 25, 8), 3, 3)
+        # Preserve the polished chest material instead of swapping to a flat oval
+        # while walking. Its projection changes continuously, without a yaw cutoff.
+        painter.save()
+        painter.translate(center, bob)
+        painter.scale(.72 + .28 * projection, 1)
+        painter.translate(-self.art_width / 2, 0)
+        self._draw_part(painter, "torso", 0, (.5, .6))
+        painter.restore()
 
         leg(1, False)
         arm(1, False)
@@ -1527,55 +1584,27 @@ class Companion(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         yaw = max(0.0, min(1.0, self.turn_progress)) if not self.reduced_motion else 0.0
-        locomotion = self.action in ('walk', 'walk_window', 'chase_ball', 'climb', 'climb_dock')
-        if yaw < .001 and not locomotion:
-            self._paint_robot_front(painter)
-        else:
-            self._paint_yawed_robot(painter, yaw)
+        self._paint_yawed_robot(painter, yaw)
 
     def _paint_robot_front(self, painter: QPainter) -> None:
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self._paint_yawed_robot(painter, 0)
 
-        painter.save()
-        painter.translate(self.art_width / 2, self.art_height / 2)
-        painter.rotate(self.pose.tilt)
-        painter.scale(1.0, self.pose.squash)
-        painter.translate(-self.art_width / 2, -self.art_height / 2 + self.pose.bob)
+    def _paint_front_body(self, painter: QPainter) -> None:
+        # No full-character bitmap in this pass: head and antenna have one owner.
+        for part, angle, pivot in (
+            ('left_leg', self.pose.left_leg, (.417, .77)),
+            ('right_leg', self.pose.right_leg, (.593, .77)),
+            ('torso', 0, (.5, .6)),
+            ('left_arm', self.pose.left_arm, (.345, .574)),
+            ('right_arm', self.pose.right_arm, (.655, .574)),
+        ):
+            self._draw_part(painter, part, angle, pivot)
 
-        if self.action or self.activity in ("thinking", "listening"):
-            for part, angle, pivot in [
-                ("left_leg", self.pose.left_leg, (0.417, 0.77)),
-                ("right_leg", self.pose.right_leg, (0.593, 0.77)),
-                ("torso", 0, (0.5, 0.6)),
-            ]:
-                self._draw_part(painter, part, angle, pivot)
-            self._rotate_about(painter, self.pose.head, (0.5, 0.505))
-            self._draw_part(painter, "head", 0, (0.5, 0.5))
-        else:
-            painter.drawPixmap(0, 0, self.art)
-
+    def _paint_pose_effects(self, painter: QPainter, *, foreground: bool) -> None:
         painter.save()
         painter.scale(self.art_width, self.art_height)
-
-        # Top Headlight & Antenna Status Light
-        center_pt = QPointF(0.500, 0.061)
-        self._paint_headlight(painter, center_pt)
-
-        # Visor thinking orbit dots
-        if self.activity == "thinking":
-            painter.setPen(Qt.PenStyle.NoPen)
-            for idx in range(3):
-                opacity = 0.4 + 0.6 * (0.5 + 0.5 * math.sin(self.phase * math.tau / 24.0 - idx))
-                dot = QColor("#bcadff")
-                dot.setAlphaF(opacity)
-                painter.setBrush(dot)
-                painter.drawEllipse(QRectF(0.46 + idx * 0.03, 0.215, 0.015, 0.011))
-
-        self._paint_face(painter)
-
         # Laser scanning fan beam (for inspect_window / scan_screen / sensor_scan)
-        if self.pose.scan_beam > 0.05:
+        if not foreground and self.pose.scan_beam > 0.05:
             alpha = int(140 * self.pose.scan_beam)
             beam_grad = QRadialGradient(QPointF(0.5, 0.22), 0.7)
             beam_grad.setColorAt(0, QColor(34, 211, 238, alpha))
@@ -1592,7 +1621,7 @@ class Companion(QWidget):
             painter.drawPath(beam_path)
 
         # Carried text snippet sparkles (for replace_text action)
-        if self.pose.text_sparkle > 0.05:
+        if foreground and self.pose.text_sparkle > 0.05:
             sp_alpha = int(220 * self.pose.text_sparkle)
             text_rect = QRectF(0.32, 0.62, 0.36, 0.12)
             painter.setPen(QPen(QColor(56, 189, 248, sp_alpha), 0.004))
@@ -1603,12 +1632,6 @@ class Companion(QWidget):
             painter.setPen(QPen(QColor(52, 211, 153, sp_alpha), 0.004))
             painter.drawLine(QPointF(0.36, 0.70), QPointF(0.58, 0.70))
 
-        painter.restore()
-
-        if self.action or self.activity in ("thinking", "listening"):
-            self._rotate_about(painter, -self.pose.head, (0.5, 0.505))
-            self._draw_part(painter, "left_arm", self.pose.left_arm, (0.345, 0.574))
-            self._draw_part(painter, "right_arm", self.pose.right_arm, (0.655, 0.574))
         painter.restore()
 
     def _paint_face(self, painter: QPainter, visible_eyes=(0, 1)) -> None:
@@ -1696,7 +1719,7 @@ class Companion(QWidget):
     def _draw_part(self, painter: QPainter, part: str, angle: float, pivot: Tuple[float, float]) -> None:
         painter.save()
         self._rotate_about(painter, angle, pivot)
-        painter.setClipPath(self.parts[part])
+        painter.setClipPath(self.parts[part], Qt.ClipOperation.IntersectClip)
         painter.drawPixmap(0, 0, self.art)
         painter.restore()
 

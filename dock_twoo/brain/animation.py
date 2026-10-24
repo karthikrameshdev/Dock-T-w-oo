@@ -227,13 +227,9 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
     if action == "turn_around":
         swivel = math.sin(p * math.pi)
         return Pose(
-            tilt=18 * math.sin(p * math.pi * 2) * (1.0 - p),
-            head=-10 * swivel,
-            bob=-3 * abs(math.sin(p * math.pi * 2)),
-            left_arm=25 * swivel,
-            right_arm=-35 * swivel,
-            surprise=0.35 * swivel,
-            squash=1.0 - 0.04 * math.sin(p * math.pi),
+            bob=-.6 * swivel,
+            left_arm=3 * swivel,
+            right_arm=-3 * swivel,
         )
     if action == "scan_screen":
         sweep = math.sin(seconds * math.tau * 1.5) * fade
