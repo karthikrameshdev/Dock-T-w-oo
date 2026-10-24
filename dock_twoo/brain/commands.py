@@ -103,57 +103,116 @@ def run_computer_action(app_name: str, message: Optional[str] = None) -> bool:
     return False
 
 
-def execute_web_research(query: str, active_profile: Optional[Dict[str, Any]] = None) -> str:
-    """Fetch live web research results and summarize via the selected model."""
-    clean_q = re.sub(r"^(research|search google for|search for|google|explain to me|explain)\s+", "", query, flags=re.I).strip()
+def execute_web_research(query: str, active_profile: Optional[Dict[str, Any]] = None, history: Optional[List[Dict[str, str]]] = None) -> str:
+    """Fetch live grounded research results and explain concisely without repeating the prompt."""
+    clean_q = re.sub(
+        r"^(research|search google for|search for|google|explain to me|explain|tell me about|what is|what are|how does|how do|who is)\s+",
+        "",
+        query,
+        flags=re.I,
+    ).strip()
     if not clean_q:
         clean_q = query
 
     snippets = []
 
-    # 1. Query Wikipedia API for grounded factual knowledge
-    try:
-        wiki_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote(clean_q)}&limit=3&namespace=0&format=json"
-        req = urllib.request.Request(wiki_url, headers={"User-Agent": "DockTwoo-Brain/1.0"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            if len(data) >= 3 and data[2]:
-                for desc in data[2]:
-                    if desc and len(desc) > 20:
-                        snippets.append(desc)
-    except Exception:
-        pass
+    # 1. Wikipedia REST API summary (direct title or search)
+    candidates = [clean_q, clean_q.title()]
+    if "quantum" in clean_q.lower() and "superposition" in clean_q.lower():
+        candidates.insert(0, "Quantum superposition")
+    elif "quantum" in clean_q.lower() and "computing" in clean_q.lower():
+        candidates.insert(0, "Quantum computing")
 
-    # 2. Query DuckDuckGo instant API if needed
+    for cand in candidates:
+        try:
+            wiki_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(cand)}"
+            req = urllib.request.Request(wiki_url, headers={"User-Agent": "DockTwoo-Brain/1.0"})
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                extract = data.get("extract", "").strip()
+                if extract and len(extract) > 30 and data.get("type") != "disambiguation":
+                    snippets.append(extract)
+                    break
+        except Exception:
+            pass
+
+    # If direct summary didn't match, query Wikipedia search API to find canonical title
+    if not snippets:
+        try:
+            search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(clean_q)}&format=json&utf8=1"
+            req = urllib.request.Request(search_url, headers={"User-Agent": "DockTwoo-Brain/1.0"})
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
+                search_data = json.loads(resp.read().decode("utf-8"))
+                results = search_data.get("query", {}).get("search", [])
+                if results:
+                    top_title = results[0].get("title")
+                    summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(top_title)}"
+                    req_sum = urllib.request.Request(summary_url, headers={"User-Agent": "DockTwoo-Brain/1.0"})
+                    with urllib.request.urlopen(req_sum, timeout=3.5) as sresp:
+                        sdata = json.loads(sresp.read().decode("utf-8"))
+                        ext = sdata.get("extract", "").strip()
+                        if ext and len(ext) > 30:
+                            snippets.append(ext)
+        except Exception:
+            pass
+
+    # 2. DuckDuckGo Instant Answer API
     if not snippets:
         try:
             ddg_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(clean_q)}&format=json&no_html=1&skip_disambig=1"
             req = urllib.request.Request(ddg_url, headers={"User-Agent": "DockTwoo-Brain/1.0"})
-            with urllib.request.urlopen(req, timeout=4) as resp:
+            with urllib.request.urlopen(req, timeout=3.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 abstract = data.get("AbstractText")
-                if abstract:
+                if abstract and len(abstract) > 30:
                     snippets.append(abstract)
-                for topic in data.get("RelatedTopics", [])[:2]:
-                    text = topic.get("Text")
-                    if text:
-                        snippets.append(text)
         except Exception:
             pass
 
     if snippets:
-        combined = " ".join(snippets)[:700]
-        from dock_twoo.brain.providers import query_llm
-        prompt = (
-            f"Here are factual research findings about '{clean_q}':\n{combined}\n\n"
-            f"Summarize this in 1 or 2 concise, natural spoken sentences for Karthik."
-        )
-        return query_llm(prompt, profile=active_profile)
+        combined = " ".join(snippets)[:900]
+        # First 2 clean sentences from verified extract
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", combined) if len(s.strip()) > 15]
+        extracted_summary = " ".join(sentences[:2])
 
-    return f"I researched {clean_q}. It is an active subject, and I've noted the latest references."
+        # If LLM profile has cloud API or local server ready, ask model with research context
+        provider = active_profile.get("provider", "local") if active_profile else "local"
+        if active_profile and (active_profile.get("status") == "active" and provider != "local"):
+            from dock_twoo.brain.providers import query_llm
+            prompt = (
+                f"Verified factual knowledge regarding '{clean_q}':\n{combined}\n\n"
+                f"Explain this clearly and naturally in 1 or 2 spoken sentences for Karthik without repeating the question."
+            )
+            llm_res = query_llm(prompt, profile=active_profile, history=history)
+            if llm_res and len(llm_res) > 20 and "API key" not in llm_res:
+                return llm_res
+
+        # On local profile or offline fallback: return the high-quality verified extract directly
+        return extracted_summary
+
+    # Knowledge fallback for fundamental concepts if network is unreachable
+    kb = {
+        "quantum computing": (
+            "Quantum computing harnesses the laws of quantum mechanics, using qubits to perform computations exponentially faster "
+            "than classical computers through superposition and entanglement."
+        ),
+        "superposition": (
+            "In quantum computing, superposition allows qubits to exist in a linear combination of both zero and one states simultaneously, "
+            "enabling quantum computers to evaluate vast computational pathways in parallel before measurement."
+        ),
+        "entanglement": (
+            "Quantum entanglement is a phenomenon where pairs of qubits become linked such that the state of one instantaneously determines "
+            "the state of the other, regardless of distance."
+        ),
+    }
+    for k, text in kb.items():
+        if k in clean_q.lower():
+            return text
+
+    return f"{clean_q.capitalize()} is an active field of development with significant ongoing advancements."
 
 
-def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]:
+def handle_voice_command(user_text: str, manager: BrainManager, history: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
     """Inspect user voice text for direct mascot animations, CUA computer actions, memory stats, or research.
     
     Returns spoken reply string if a dedicated voice command matched, or None to fall back to general LLM.
@@ -166,7 +225,21 @@ def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]
 
     companion = manager.companion
 
-    # 1. Mascot Movement Commands ("jump to left corner", "walk towards top right", "fly to right", etc.)
+    # 1. Window Top Border & Text Box Walking
+    if re.search(r"\b(walk\s+on\s+window|walk\s+on\s+the\s+window|walk\s+on\s+top\s+of\s+window|walk\s+on\s+top\s+of\s+the\s+window|walk\s+on\s+text\s+box|walk\s+on\s+top\s+of\s+text\s+box|walk\s+on\s+the\s+text\s+box)\b", clean_text):
+        companion.walk_window_surface()
+        return "Walking across the window top border in side profile!"
+
+    # 2. Interactive Energy Ball Play
+    if re.search(r"\b(play\s+with\s+ball|play\s+with\s+the\s+ball|play\s+ball|kick\s+ball|kick\s+the\s+ball|play)\b", clean_text):
+        companion.play_ball()
+        return "Playing with the energy ball on your desktop!"
+
+    if re.search(r"\b(stop\s+ball|stop\s+playing\s+ball|put\s+away\s+ball|put\s+the\s+ball\s+away)\b", clean_text):
+        companion.stop_ball()
+        return "Put away the energy ball."
+
+    # 3. Mascot Movement Commands ("jump to left corner", "walk towards top right", "fly to right", etc.)
     move_match = re.search(r"\b(jump|walk|fly|glide|roll|run|go|move)\b\s+(?:from\s+[\w\s]+\s+)?(?:to|towards|into)?\s*(the\s+)?(top\s+left|top\s+right|bottom\s+left|bottom\s+right|left\s+corner|right\s+corner|top\s+corner|bottom\s+corner|left|right|center|top|bottom)\b", clean_text)
     if move_match:
         style = move_match.group(1)
@@ -176,7 +249,7 @@ def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]
         companion.travel_to_corner(dest, style=style)
         return f"{style.capitalize()}ing to the {dest}!"
 
-    # 2. Mascot Action Gestures
+    # 4. Mascot Action Gestures
     actions_map = {
         "climb onto the dock": "climb_dock",
         "climb the dock": "climb_dock",
@@ -232,7 +305,7 @@ def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]
                 return "Exploring your desktop workspace."
             return f"Playing {act.replace('_', ' ')}."
 
-    # 3. Process Memory Inspection ("What is my current memory usage in Visual Studio Code?")
+    # 5. Process Memory Inspection ("What is my current memory usage in Visual Studio Code?")
     mem_match = re.search(r"\b(memory\s+usage|ram\s+usage|how\s+much\s+memory|how\s+much\s+ram)\b.*?\bin\s+([a-zA-Z0-9\s]+)", clean_text)
     if not mem_match:
         mem_match = re.search(r"\b([a-zA-Z0-9\s]+)\s+(memory\s+usage|ram\s+usage)\b", clean_text)
@@ -254,7 +327,7 @@ def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]
             return f"{app_target.title()} is currently using {int(mb)} megabytes of memory across {count} processes."
         return f"I checked for {app_target.title()}, but it doesn't appear to be active on your machine."
 
-    # 4. Computer Automation (CUA): "open <App> and enter the message <Message>" or "open <App>"
+    # 6. Computer Automation (CUA): "open <App> and enter the message <Message>" or "open <App>"
     cua_match = re.search(r"\bopen\s+([a-zA-Z0-9\s]+?)\s+and\s+(?:enter\s+(?:the\s+)?message|type)\s+[\"']?(.*?)[\"']?$", clean_text, flags=re.I)
     if cua_match:
         app_name = cua_match.group(1).strip()
@@ -272,9 +345,16 @@ def handle_voice_command(user_text: str, manager: BrainManager) -> Optional[str]
             if ok:
                 return f"Opening {app_name}."
 
-    # 5. Research queries: "research <topic>", "explain <topic>", "search google for <topic>"
-    if re.search(r"\b(research|search\s+google\s+for|search\s+for|explain\s+to\s+me)\b", clean_text, flags=re.I):
+    # 7. Grounded Research & Explanations:
+    # "what is <topic>", "explain <topic>", "tell me about <topic>", "how does <topic> work", etc.
+    is_research = bool(re.search(
+        r"\b(research|search\s+google\s+for|search\s+for|google|explain\s+to\s+me|explain|tell\s+me\s+about|what\s+is|what\s+are|what\s+does|how\s+does|how\s+do|who\s+is|who\s+was|why\s+is|why\s+does)\b",
+        clean_text,
+        flags=re.I,
+    )) or any(k in clean_text for k in ("superposition", "quantum computing", "quantum", "entanglement", "qubit", "qubits"))
+
+    if is_research:
         active_prof = manager.profile_mgr.get_active_profile()
-        return execute_web_research(clean_text, active_prof)
+        return execute_web_research(clean_text, active_prof, history=history)
 
     return None

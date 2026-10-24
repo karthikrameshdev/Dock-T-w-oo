@@ -113,6 +113,13 @@ def answer_locally(prompt: str) -> str:
     if any(k in p_lower for k in ("thank", "thanks")):
         return "You are very welcome! Let me know if you need anything else."
 
+    # Grounded research & factual questions
+    if any(k in p_lower for k in ("what is", "what are", "how does", "tell me about", "explain", "who is", "why is", "quantum", "superposition", "research")):
+        from dock_twoo.brain.commands import execute_web_research
+        res = execute_web_research(prompt, active_profile=None)
+        if res and len(res) > 20:
+            return res
+
     # Default conversational response
     fallbacks = [
         "I heard you loud and clear. All desktop systems are running smoothly.",

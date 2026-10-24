@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import random
+import re
 import threading
 import time
 import webbrowser
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import QMetaObject, QObject, QPoint, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QMetaObject, QObject, QPoint, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtWidgets import QMenu, QApplication
 
 from dock_twoo.brain.animation import ACTIONS
@@ -64,6 +65,14 @@ class BrainManager(QObject):
 
         self._active_query_thread: Optional[threading.Thread] = None
         self._is_listening: bool = False
+        self.in_conversation_session: bool = False
+        self.conversation_history: List[Dict[str, str]] = []
+
+        self.session_timer = QTimer(self)
+        self.session_timer.setSingleShot(True)
+        self.session_timer.timeout.connect(self._on_session_timeout)
+
+        self.speech.finished.connect(self._on_speech_finished)
 
         # Real-time microphone listening and wake word ('Brain') detection
         self.listener = AudioListener(
@@ -72,6 +81,10 @@ class BrainManager(QObject):
             on_turn_complete=self._on_turn_complete,
             parent=self,
         )
+        self.listener.speech_started.connect(self._on_speech_started)
+        self.listener.speech_ended.connect(self._on_speech_ended)
+        self.listener.processing_started.connect(self._on_processing_started)
+
         # Push-to-talk shortcut listener (default: right Command key)
         self.shortcut_listener = GlobalShortcutListener(
             shortcut_key=self.store.setting("push_to_talk_shortcut", "cmd_r"),
@@ -131,11 +144,48 @@ class BrainManager(QObject):
             self.show_mini_agent()
 
     @Slot()
+    def _on_speech_started(self) -> None:
+        self.session_timer.stop()
+        self.activity_requested.emit("listening")
+
+    @Slot()
+    def _on_speech_ended(self) -> None:
+        self.activity_requested.emit("processing")
+
+    @Slot()
+    def _on_processing_started(self) -> None:
+        self.activity_requested.emit("processing")
+
+    @Slot()
+    def _on_speech_finished(self) -> None:
+        """Invoked when text-to-speech audio playback completes."""
+        if self.in_conversation_session:
+            # Hands-free multi-turn continuation: immediately resume listening for follow-ups!
+            self.activity_requested.emit("listening")
+            self.listener.start_recording()
+            # 10s timeout if user doesn't ask another question
+            self.session_timer.start(10000)
+        else:
+            self.activity_requested.emit("idle")
+
+    @Slot()
+    def _on_session_timeout(self) -> None:
+        """End multi-turn conversational session after trailing inactivity."""
+        self.in_conversation_session = False
+        self.conversation_history.clear()
+        self.listener.stop_recording()
+        self.activity_requested.emit("idle")
+
+    @Slot()
     def _on_wake_detected(self) -> None:
         """Invoked when user says 'Brain' or 'Hey Brain'."""
         if QThread.currentThread() != self.thread():
             QMetaObject.invokeMethod(self, "_on_wake_detected", Qt.ConnectionType.QueuedConnection)
             return
+        self.in_conversation_session = True
+        self.conversation_history.clear()
+        self.session_timer.stop()
+
         if not self.companion.isVisible():
             self.show_mini_agent()
         self.companion.turn_to_user()
@@ -143,19 +193,14 @@ class BrainManager(QObject):
         # Greet user immediately and start listening for their statement!
         self.speech.start("Hey Karthik, I'm listening.")
 
-        def wait_and_record():
-            while self.speech.playing:
-                time.sleep(0.04)
-            self.listener.start_recording()
-
-        threading.Thread(target=wait_and_record, daemon=True).start()
-
     @Slot()
     def _on_shortcut_press(self) -> None:
         """Push-to-talk pressed: immediately begin recording."""
         if QThread.currentThread() != self.thread():
             QMetaObject.invokeMethod(self, "_on_shortcut_press", Qt.ConnectionType.QueuedConnection)
             return
+        self.in_conversation_session = True
+        self.session_timer.stop()
         if not self.companion.isVisible():
             self.show_mini_agent()
         self.speech.stop()
@@ -175,15 +220,31 @@ class BrainManager(QObject):
     def _on_turn_complete(self, user_text: str) -> None:
         """Invoked when user finishes statement (via VAD or explicit shortcut)."""
         if not user_text:
-            self.activity_requested.emit("idle")
+            if self.in_conversation_session:
+                self.session_timer.start(8000)
+            else:
+                self.activity_requested.emit("idle")
             return
 
-        # Top indicator rotates green with cycling hue while processing
+        self.session_timer.stop()
         self.activity_requested.emit("processing")
+        self.conversation_history.append({"role": "user", "content": user_text})
+
+        # Check for conversational session exit phrases ("bye", "goodbye", "that's all", "dismiss")
+        clean = user_text.strip().lower()
+        if re.search(r"^(bye|goodbye|that\'?s\s+all|dismiss|dismissed|see\s+you|thank\s+you\s+bye|thanks\s+bye|exit|stop\s+listening)\b", clean):
+            self.in_conversation_session = False
+            self.conversation_history.clear()
+            reply = "Goodbye Karthik! Standing by on your desktop whenever you need me."
+            if self.store.setting("voice_reply", True):
+                self.speech_start_requested.emit(reply)
+            else:
+                self.activity_requested.emit("idle")
+            return
 
         def run_turn():
-            # 1. Check for dedicated voice command (movement, action, memory, CUA, research)
-            cmd_reply = handle_voice_command(user_text, self)
+            # 1. Check for dedicated voice command (movement, window walk, ball play, action, memory, CUA, research)
+            cmd_reply = handle_voice_command(user_text, self, history=self.conversation_history)
             if cmd_reply:
                 reply = cmd_reply
             else:
@@ -191,12 +252,19 @@ class BrainManager(QObject):
                 active_profile = self.profile_mgr.get_active_profile()
                 provider = active_profile.get("provider", "local") if active_profile else "local"
                 api_key = self.profile_mgr.get_key(provider) if active_profile else ""
-                reply = query_llm(user_text, profile=active_profile, api_key=api_key)
+                reply = query_llm(user_text, profile=active_profile, api_key=api_key, history=self.conversation_history)
+
+            self.conversation_history.append({"role": "assistant", "content": reply})
 
             if self.store.setting("voice_reply", True):
                 self.speech_start_requested.emit(reply)
             else:
-                self.activity_requested.emit("idle")
+                if self.in_conversation_session:
+                    self.activity_requested.emit("listening")
+                    self.listener.start_recording()
+                    self.session_timer.start(10000)
+                else:
+                    self.activity_requested.emit("idle")
 
         threading.Thread(target=run_turn, daemon=True).start()
 
@@ -206,6 +274,9 @@ class BrainManager(QObject):
         if QThread.currentThread() != self.thread():
             QMetaObject.invokeMethod(self, "start_talking", Qt.ConnectionType.QueuedConnection)
             return
+        self.in_conversation_session = True
+        self.conversation_history.clear()
+        self.session_timer.stop()
         self.companion.show()
         self.companion.raise_()
         self.visibility_changed.emit(True)
@@ -220,6 +291,9 @@ class BrainManager(QObject):
             QMetaObject.invokeMethod(self, "stop_talking", Qt.ConnectionType.QueuedConnection)
             return
         self._is_listening = False
+        self.in_conversation_session = False
+        self.conversation_history.clear()
+        self.session_timer.stop()
         self.listener.stop_recording()
         self.speech.stop()
         self.companion.set_activity("idle")

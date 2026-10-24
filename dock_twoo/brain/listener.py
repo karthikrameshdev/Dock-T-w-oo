@@ -21,6 +21,8 @@ class AudioListener(QObject):
 
     wake_detected = Signal()
     speech_started = Signal()
+    speech_ended = Signal()
+    processing_started = Signal()
     turn_completed = Signal(str)  # Transcribed user text
     audio_level = Signal(float)
     error_occurred = Signal(str)
@@ -103,6 +105,8 @@ class AudioListener(QObject):
         if not self.is_recording:
             return
         self.is_recording = False
+        self.speech_ended.emit()
+        self.processing_started.emit()
         frames = list(self.speech_frames)
         self.speech_frames = []
         if frames:

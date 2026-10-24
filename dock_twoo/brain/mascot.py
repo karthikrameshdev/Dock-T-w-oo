@@ -176,6 +176,8 @@ class Companion(QWidget):
         self.motion_start: Optional[QPoint] = None
         self.motion_started: float = 0.0
         self.motion_duration: float = 1.0
+        self.facing: float = 1.0  # 1.0 = right, -1.0 = left
+        self.desktop_ball = None
 
         # Dimension specifications matching the original artwork scale
         self.art_width = 168
@@ -236,6 +238,11 @@ class Companion(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         pin_native(self)
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        if self.desktop_ball:
+            self.desktop_ball.dismiss()
 
     def _restore_placement(self) -> None:
         screen = QApplication.primaryScreen()
@@ -369,6 +376,11 @@ class Companion(QWidget):
 
         self.action = action
         self.destination = destination
+        if destination is not None:
+            if destination.x() > self.x() + 8:
+                self.facing = 1.0
+            elif destination.x() < self.x() - 8:
+                self.facing = -1.0
         self.motion_start = self.pos()
         self.motion_started = time.monotonic()
         self.motion_duration = duration or ACTIONS[action][1]
@@ -497,7 +509,15 @@ class Companion(QWidget):
         area = screen.availableGeometry()
 
         choice = random.random()
-        if choice < 0.25:
+        if choice < 0.16:
+            # Stroll along open application window / text box border
+            self.walk_window_surface()
+            return
+        elif choice < 0.28:
+            # Play with energy ball
+            self.play_ball()
+            return
+        elif choice < 0.46:
             # Go climb onto dock
             target = self._get_dock_target(area)
             action = "walk"
@@ -589,7 +609,102 @@ class Companion(QWidget):
         valid_style = style if style in ("jump", "fly", "walk", "roll", "glide") else "walk"
         duration = 1.3 if valid_style == "jump" else (1.6 if valid_style == "fly" else 2.2)
         self.play_action(valid_style, destination=target, duration=duration)
-        self.arrival = lambda: self.play_action("nod")
+    def walk_window_surface(self) -> None:
+        """Walk along the top edge border of an active application window or text box in side profile."""
+        if self.reduced_motion:
+            return
+        from dock_twoo.brain.vision import get_primary_surface
+        surface = get_primary_surface()
+
+        start_x = surface.left_x + 15
+        start_y = surface.surface_y - self.height() + 25
+
+        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+        start_x = max(int(area.left()) + 10, min(start_x, int(area.right()) - self.width() - 10))
+        start_y = max(int(area.top()) + 10, min(start_y, int(area.bottom()) - self.height() - 10))
+
+        end_x = max(start_x + 80, min(surface.right_x - self.width() - 15, int(area.right()) - self.width() - 10))
+        end_y = start_y
+
+        self.facing = 1.0
+
+        def start_side_walk():
+            self.facing = 1.0
+            walk_dist = abs(end_x - start_x)
+            duration = max(2.0, min(4.5, walk_dist / 140.0))
+            self.play_action("walk_window", destination=QPoint(end_x, end_y), duration=duration)
+
+            def on_reach_end():
+                self.facing = -1.0
+                self.play_action("inspect_window", duration=2.2)
+                self.arrival = lambda: self.turn_to_user()
+
+            self.arrival = on_reach_end
+
+        self.play_action("jump", destination=QPoint(start_x, start_y), duration=1.0)
+        self.arrival = start_side_walk
+
+    def play_ball(self) -> None:
+        """Spawn the interactive desktop energy ball and playfully chase/kick it across the screen."""
+        if self.reduced_motion:
+            return
+        from dock_twoo.brain.ball import DesktopBall
+        if self.desktop_ball is None:
+            self.desktop_ball = DesktopBall(self)
+
+        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+
+        spawn_dir = 1.0 if self.x() < area.center().x() else -1.0
+        bx = self.x() + (120 if spawn_dir > 0 else -60)
+        by = self.y() + 80
+        self.desktop_ball.spawn(bx, by, vx=spawn_dir * 180, vy=-220)
+        self.chase_and_kick_ball()
+
+    def chase_and_kick_ball(self) -> None:
+        if self.reduced_motion or not self.desktop_ball or not self.desktop_ball.active:
+            return
+
+        b_center = self.desktop_ball.center_point()
+        self.gaze = b_center
+
+        facing = 1.0 if b_center.x() >= self.geometry().center().x() else -1.0
+        self.facing = facing
+        target_x = b_center.x() - (75 if facing > 0 else 15)
+        target_y = b_center.y() - self.height() + 30
+
+        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
+        target_x = max(int(area.left()) + 10, min(target_x, int(area.right()) - self.width() - 10))
+        target_y = max(int(area.top()) + 10, min(target_y, int(area.bottom()) - self.height() - 10))
+
+        dist = math.hypot(target_x - self.x(), target_y - self.y())
+        dur = max(1.0, min(2.5, dist / 220.0))
+
+        def do_kick():
+            if not self.desktop_ball or not self.desktop_ball.active:
+                return
+            self.play_action("kick_ball", duration=1.0)
+            impulse_x = self.facing * random.uniform(320, 520)
+            impulse_y = -random.uniform(380, 560)
+            self.desktop_ball.kick(impulse_x, impulse_y)
+
+            def post_kick():
+                if self.desktop_ball and self.desktop_ball.active:
+                    QTimer.singleShot(1200, self.chase_and_kick_ball)
+                else:
+                    self.turn_to_user()
+            self.arrival = post_kick
+
+        self.play_action("chase_ball", destination=QPoint(target_x, target_y), duration=dur)
+        self.arrival = do_kick
+
+    def stop_ball(self) -> None:
+        """Dismiss the desktop energy ball."""
+        if self.desktop_ball:
+            self.desktop_ball.dismiss()
+        self.turn_to_user()
 
     def _idle_gesture(self) -> None:
         if (
@@ -612,44 +727,13 @@ class Companion(QWidget):
         self._paint_robot(painter)
         painter.end()
 
-    def _paint_robot(self, painter: QPainter) -> None:
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
-        painter.save()
-        painter.translate(self.art_width / 2, self.art_height / 2)
-        painter.rotate(self.pose.tilt)
-        painter.scale(1.0, self.pose.squash)
-        painter.translate(-self.art_width / 2, -self.art_height / 2 + self.pose.bob)
-
-        if self.action or self.activity in ("thinking", "listening"):
-            for part, angle, pivot in [
-                ("left_leg", self.pose.left_leg, (0.417, 0.77)),
-                ("right_leg", self.pose.right_leg, (0.593, 0.77)),
-                ("torso", 0, (0.5, 0.6)),
-            ]:
-                self._draw_part(painter, part, angle, pivot)
-            self._rotate_about(painter, self.pose.head, (0.5, 0.505))
-            self._draw_part(painter, "head", 0, (0.5, 0.5))
-        else:
-            painter.drawPixmap(0, 0, self.art)
-
-        painter.save()
-        painter.scale(self.art_width, self.art_height)
-
-        # Top Headlight & Antenna Status Light
-        # Processing: Green rotating sweep beam and cycling color
-        # Offline: Red blinking alert beacon
-        # Thinking: Purple/Indigo cyclotron beam with orbiting dot
-        # Listening: Cyan expanding radar ripple
-        # Speaking: Radiant teal pulse modulated with mouth level
-        # Idle: Soft calm emerald/mint breathing glow
-
-        center_pt = QPointF(0.500, 0.061)
+    def _paint_headlight(self, painter: QPainter, center_pt: QPointF) -> None:
+        """Render animated dynamic headlight with status indicator colors and radar/cyclotron effects."""
+        bulb_rect = QRectF(center_pt.x() - 0.039, center_pt.y() - 0.033, 0.078, 0.066)
 
         if self.activity == "processing":
-            # Rotate with slight color change to show loading
-            hue_t = (math.sin(self.phase * 0.2) + 1.0) / 2.0  # 0 to 1
+            # Rotate with cycling color to show active processing
+            hue_t = (math.sin(self.phase * 0.2) + 1.0) / 2.0
             r_c = int(16 + hue_t * (132 - 16))
             g_c = int(185 + hue_t * (204 - 185))
             b_c = int(129 + hue_t * (22 - 129))
@@ -658,7 +742,8 @@ class Companion(QWidget):
             # Rotating radar sweep arc around the headlight
             rot_angle = (self.phase * 22) % 360
             painter.setPen(QPen(active_color.lighter(140), 0.007, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            painter.drawArc(QRectF(0.445, 0.015, 0.11, 0.092), int(rot_angle * 16), int(120 * 16))
+            sweep_rect = QRectF(center_pt.x() - 0.055, center_pt.y() - 0.046, 0.11, 0.092)
+            painter.drawArc(sweep_rect, int(rot_angle * 16), int(120 * 16))
 
             light = QRadialGradient(center_pt, 0.055)
             light.setColorAt(0, active_color.lighter(170))
@@ -666,7 +751,7 @@ class Companion(QWidget):
             light.setColorAt(1, active_color.darker(140))
             painter.setPen(QPen(active_color.lighter(130), 0.004))
             painter.setBrush(light)
-            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            painter.drawEllipse(bulb_rect)
 
         elif self.activity in ("offline", "error"):
             # Red alert pulsing beacon
@@ -675,7 +760,7 @@ class Companion(QWidget):
             alert_color.setAlphaF(0.6 + 0.4 * pulse)
             painter.setPen(QPen(alert_color, 0.006))
             painter.setBrush(alert_color.lighter(130))
-            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            painter.drawEllipse(bulb_rect)
 
         elif self.activity == "thinking":
             # Cyclotron pulse and orbiting particle
@@ -686,7 +771,7 @@ class Companion(QWidget):
             light.setColorAt(1, think_color.darker(135))
             painter.setPen(QPen(QColor("#c084fc"), 0.004))
             painter.setBrush(light)
-            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            painter.drawEllipse(bulb_rect)
 
             # Orbiting electron
             orb_angle = self.phase * (math.tau / 12.0)
@@ -711,7 +796,7 @@ class Companion(QWidget):
             light.setColorAt(1, listen_color.darker(135))
             painter.setPen(QPen(QColor("#a5f3fc"), 0.004))
             painter.setBrush(light)
-            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            painter.drawEllipse(bulb_rect)
 
         elif self.activity == "speaking":
             speak_color = QColor("#2dd4bf")
@@ -722,14 +807,12 @@ class Companion(QWidget):
             light.setColorAt(1, speak_color.darker(135))
             painter.setPen(QPen(speak_color.lighter(130), 0.004 + 0.003 * boost))
             painter.setBrush(light)
-            painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+            painter.drawEllipse(bulb_rect)
 
         else:  # idle
-            # Headlight indicates operational status of active profile
             active_profile = self.manager.profile_mgr.get_active_profile()
             status = (active_profile.get("status") or "active").lower()
             if status == "not configured":
-                # Amber breathing warning glow
                 pulse = 0.5 + 0.5 * math.sin(self.phase * 0.25)
                 warn_color = QColor("#f59e0b")
                 light = QRadialGradient(center_pt, 0.055)
@@ -738,9 +821,8 @@ class Companion(QWidget):
                 light.setColorAt(1, warn_color.darker(140))
                 painter.setPen(QPen(QColor(245, 158, 11, int(150 + 105 * pulse)), 0.004))
                 painter.setBrush(light)
-                painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+                painter.drawEllipse(bulb_rect)
             elif status == "offline":
-                # Pulsing red alert beacon
                 pulse = 0.5 + 0.5 * math.sin(self.phase * 0.35)
                 alert_color = QColor("#ef4444")
                 light = QRadialGradient(center_pt, 0.055)
@@ -749,9 +831,8 @@ class Companion(QWidget):
                 light.setColorAt(1, alert_color.darker(140))
                 painter.setPen(QPen(QColor(239, 68, 68, int(180 + 75 * pulse)), 0.005))
                 painter.setBrush(light)
-                painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+                painter.drawEllipse(bulb_rect)
             else:
-                # Active: soft calm emerald/mint breathing glow
                 pulse = 0.75 + 0.25 * math.sin(self.phase * 0.2)
                 idle_color = QColor("#10b981")
                 light = QRadialGradient(center_pt, 0.055)
@@ -760,12 +841,233 @@ class Companion(QWidget):
                 light.setColorAt(1, idle_color.darker(135))
                 painter.setPen(QPen(QColor(16, 185, 129, int(160 + 95 * pulse)), 0.004))
                 painter.setBrush(light)
-                painter.drawEllipse(QRectF(0.461, 0.028, 0.078, 0.066))
+                painter.drawEllipse(bulb_rect)
 
         # Center highlight dot
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#ffffff"))
-        painter.drawEllipse(QRectF(0.476, 0.039, 0.014, 0.012))
+        painter.drawEllipse(QRectF(center_pt.x() - 0.024, center_pt.y() - 0.022, 0.014, 0.012))
+
+    def _paint_robot_side_profile(self, painter: QPainter) -> None:
+        """Render robot in side profile view when walking across windows or desktop."""
+        painter.save()
+        painter.translate(self.art_width / 2, self.art_height / 2)
+        if self.facing < 0:
+            painter.scale(-1.0, 1.0)
+        painter.rotate(self.pose.tilt)
+        painter.scale(1.0, self.pose.squash)
+        painter.translate(-self.art_width / 2, -self.art_height / 2 + self.pose.bob)
+
+        painter.scale(self.art_width, self.art_height)
+
+        body_white = QColor("#f1f5f9")
+        body_shade = QColor("#cbd5e1")
+        dark_chassis = QColor("#1e293b")
+        dark_joint = QColor("#0f172a")
+        visor_glow = QColor("#22d3ee")
+        accent_blue = QColor("#3b82f6")
+
+        # 1. Background limbs (far side)
+        painter.save()
+        painter.translate(0.50, 0.76)
+        painter.rotate(self.pose.left_leg)
+        painter.translate(-0.50, -0.76)
+        far_leg = QPainterPath()
+        far_leg.addRoundedRect(QRectF(0.46, 0.76, 0.08, 0.19), 0.04, 0.04)
+        painter.setPen(QPen(QColor(15, 23, 42, 180), 0.005))
+        painter.setBrush(body_shade.darker(130))
+        painter.drawPath(far_leg)
+        far_foot = QPainterPath()
+        far_foot.addRoundedRect(QRectF(0.44, 0.92, 0.12, 0.05), 0.02, 0.02)
+        painter.drawPath(far_foot)
+        painter.restore()
+
+        painter.save()
+        painter.translate(0.50, 0.58)
+        painter.rotate(self.pose.left_arm)
+        painter.translate(-0.50, -0.58)
+        far_arm = QPainterPath()
+        far_arm.addRoundedRect(QRectF(0.46, 0.58, 0.075, 0.18), 0.035, 0.035)
+        painter.setPen(QPen(QColor(15, 23, 42, 180), 0.005))
+        painter.setBrush(body_shade.darker(125))
+        painter.drawPath(far_arm)
+        painter.restore()
+
+        # 2. Profile Torso
+        torso_path = QPainterPath()
+        torso_path.moveTo(0.43, 0.53)
+        torso_path.lineTo(0.57, 0.53)
+        torso_path.lineTo(0.59, 0.68)
+        torso_path.lineTo(0.53, 0.77)
+        torso_path.lineTo(0.45, 0.77)
+        torso_path.lineTo(0.41, 0.64)
+        torso_path.closeSubpath()
+
+        torso_grad = QRadialGradient(QPointF(0.52, 0.60), 0.20)
+        torso_grad.setColorAt(0, body_white)
+        torso_grad.setColorAt(0.7, body_shade)
+        torso_grad.setColorAt(1.0, dark_chassis)
+
+        painter.setPen(QPen(QColor(30, 41, 59, 200), 0.005))
+        painter.setBrush(torso_grad)
+        painter.drawPath(torso_path)
+
+        painter.setPen(QPen(accent_blue, 0.004))
+        painter.drawLine(QPointF(0.47, 0.58), QPointF(0.54, 0.58))
+        painter.setPen(QPen(QColor("#94a3b8"), 0.003))
+        painter.drawLine(QPointF(0.46, 0.64), QPointF(0.55, 0.64))
+
+        # 3. Foreground Leg
+        painter.save()
+        painter.translate(0.50, 0.76)
+        painter.rotate(self.pose.right_leg)
+        painter.translate(-0.50, -0.76)
+
+        near_leg = QPainterPath()
+        near_leg.addRoundedRect(QRectF(0.46, 0.76, 0.085, 0.20), 0.04, 0.04)
+        leg_grad = QRadialGradient(QPointF(0.50, 0.82), 0.12)
+        leg_grad.setColorAt(0, body_white)
+        leg_grad.setColorAt(0.85, body_shade)
+        painter.setPen(QPen(QColor(15, 23, 42, 220), 0.005))
+        painter.setBrush(leg_grad)
+        painter.drawPath(near_leg)
+
+        painter.setPen(QPen(dark_joint, 0.003))
+        painter.setBrush(dark_chassis)
+        painter.drawEllipse(QRectF(0.475, 0.84, 0.05, 0.05))
+
+        near_foot = QPainterPath()
+        near_foot.addRoundedRect(QRectF(0.44, 0.93, 0.13, 0.052), 0.02, 0.02)
+        painter.setBrush(body_shade)
+        painter.drawPath(near_foot)
+        painter.restore()
+
+        # 4. Foreground Arm
+        painter.save()
+        painter.translate(0.50, 0.58)
+        painter.rotate(self.pose.right_arm)
+        painter.translate(-0.50, -0.58)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(dark_chassis)
+        painter.drawEllipse(QRectF(0.465, 0.55, 0.065, 0.065))
+
+        near_arm = QPainterPath()
+        near_arm.addRoundedRect(QRectF(0.465, 0.58, 0.08, 0.19), 0.04, 0.04)
+        arm_grad = QRadialGradient(QPointF(0.50, 0.65), 0.12)
+        arm_grad.setColorAt(0, body_white)
+        arm_grad.setColorAt(0.9, body_shade)
+        painter.setPen(QPen(QColor(15, 23, 42, 220), 0.005))
+        painter.setBrush(arm_grad)
+        painter.drawPath(near_arm)
+
+        painter.setPen(QPen(dark_joint, 0.004))
+        painter.setBrush(dark_chassis)
+        painter.drawEllipse(QRectF(0.48, 0.74, 0.05, 0.05))
+        painter.restore()
+
+        # 5. Profile Head
+        painter.save()
+        painter.translate(0.50, 0.50)
+        painter.rotate(self.pose.head)
+        painter.translate(-0.50, -0.50)
+
+        head_path = QPainterPath()
+        head_path.moveTo(0.42, 0.52)
+        head_path.lineTo(0.58, 0.52)
+        head_path.cubicTo(0.66, 0.49, 0.66, 0.26, 0.57, 0.22)
+        head_path.cubicTo(0.48, 0.20, 0.36, 0.26, 0.36, 0.40)
+        head_path.cubicTo(0.36, 0.48, 0.38, 0.52, 0.42, 0.52)
+        head_path.closeSubpath()
+
+        head_grad = QRadialGradient(QPointF(0.54, 0.32), 0.22)
+        head_grad.setColorAt(0, body_white)
+        head_grad.setColorAt(0.8, body_shade)
+        head_grad.setColorAt(1.0, dark_chassis)
+
+        painter.setPen(QPen(QColor(15, 23, 42, 220), 0.005))
+        painter.setBrush(head_grad)
+        painter.drawPath(head_path)
+
+        # Ear hub
+        painter.setPen(QPen(dark_joint, 0.004))
+        painter.setBrush(dark_chassis)
+        painter.drawEllipse(QRectF(0.43, 0.34, 0.09, 0.09))
+        painter.setPen(QPen(visor_glow, 0.003))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QRectF(0.45, 0.36, 0.05, 0.05))
+
+        # Visor forward strip
+        visor_path = QPainterPath()
+        visor_path.moveTo(0.50, 0.31)
+        visor_path.lineTo(0.64, 0.31)
+        visor_path.cubicTo(0.66, 0.35, 0.66, 0.39, 0.64, 0.42)
+        visor_path.lineTo(0.50, 0.42)
+        visor_path.cubicTo(0.48, 0.39, 0.48, 0.34, 0.50, 0.31)
+        visor_path.closeSubpath()
+
+        painter.setPen(QPen(QColor(15, 23, 42, 240), 0.004))
+        painter.setBrush(QColor("#0a1120"))
+        painter.drawPath(visor_path)
+
+        visor_inner = QPainterPath()
+        visor_inner.addRoundedRect(QRectF(0.52, 0.335, 0.12, 0.06), 0.02, 0.02)
+        v_grad = QRadialGradient(QPointF(0.62, 0.365), 0.08)
+        v_grad.setColorAt(0, QColor("#e0f2fe"))
+        v_grad.setColorAt(0.5, visor_glow)
+        v_grad.setColorAt(1, QColor("#0891b2"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(v_grad)
+        painter.drawPath(visor_inner)
+
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawEllipse(QRectF(0.60, 0.35, 0.022, 0.016))
+
+        # Antenna
+        ant_path = QPainterPath()
+        ant_path.moveTo(0.48, 0.22)
+        ant_path.lineTo(0.44, 0.09)
+        painter.setPen(QPen(QColor(15, 23, 42, 200), 0.005))
+        painter.drawPath(ant_path)
+
+        # Headlight
+        self._paint_headlight(painter, QPointF(0.44, 0.08))
+
+        painter.restore()
+        painter.restore()
+
+    def _paint_robot(self, painter: QPainter) -> None:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        if self.action in ("walk", "walk_window", "chase_ball") and not self.reduced_motion:
+            self._paint_robot_side_profile(painter)
+            return
+
+        painter.save()
+        painter.translate(self.art_width / 2, self.art_height / 2)
+        painter.rotate(self.pose.tilt)
+        painter.scale(1.0, self.pose.squash)
+        painter.translate(-self.art_width / 2, -self.art_height / 2 + self.pose.bob)
+
+        if self.action or self.activity in ("thinking", "listening"):
+            for part, angle, pivot in [
+                ("left_leg", self.pose.left_leg, (0.417, 0.77)),
+                ("right_leg", self.pose.right_leg, (0.593, 0.77)),
+                ("torso", 0, (0.5, 0.6)),
+            ]:
+                self._draw_part(painter, part, angle, pivot)
+            self._rotate_about(painter, self.pose.head, (0.5, 0.505))
+            self._draw_part(painter, "head", 0, (0.5, 0.5))
+        else:
+            painter.drawPixmap(0, 0, self.art)
+
+        painter.save()
+        painter.scale(self.art_width, self.art_height)
+
+        # Top Headlight & Antenna Status Light
+        center_pt = QPointF(0.500, 0.061)
+        self._paint_headlight(painter, center_pt)
 
         # Visor thinking orbit dots
         if self.activity == "thinking":

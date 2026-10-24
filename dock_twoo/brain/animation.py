@@ -32,6 +32,9 @@ ACTIONS = {
     "roll": ("Playful roll", 2.0),
     "peek": ("Peek", 1.3),
     "ponder": ("Think", 2.0),
+    "kick_ball": ("Kick energy ball", 1.1),
+    "walk_window": ("Walk on window", 2.4),
+    "chase_ball": ("Chase energy ball", 1.8),
 }
 
 PLAYLIST = (
@@ -237,6 +240,54 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
             tilt=2.5 * cycle,
             head=-3 * cycle,
         )
+    if action == "kick_ball":
+        if p < 0.38:
+            sub = p / 0.38
+            return Pose(
+                left_leg=16 * sub,
+                right_leg=-38 * sub,
+                left_arm=-30 * sub,
+                right_arm=40 * sub,
+                tilt=-6 * sub,
+                bob=-2 * sub,
+                surprise=0.2 * sub,
+            )
+        elif p < 0.68:
+            sub = (p - 0.38) / 0.30
+            return Pose(
+                left_leg=16 * (1.0 - sub),
+                right_leg=-38 + 80 * sub,
+                left_arm=35 * sub,
+                right_arm=-40 * sub,
+                tilt=8 * sub,
+                bob=-3 * sub,
+                surprise=0.35,
+            )
+        else:
+            sub = (p - 0.68) / 0.32
+            return Pose(
+                right_leg=42 * (1.0 - sub),
+                left_arm=35 * (1.0 - sub),
+                right_arm=-40 * (1.0 - sub),
+                tilt=8 * (1.0 - sub),
+                bob=-3 * (1.0 - sub),
+                head=5 * math.sin(sub * math.pi),
+            )
+    if action in ("walk_window", "chase_ball"):
+        stride_freq = 3.2 if action == "chase_ball" else 2.2
+        cycle_stride = math.sin(seconds * math.tau * stride_freq) * fade
+        arm_swing = 30 if action == "chase_ball" else 22
+        leg_stride = 26 if action == "chase_ball" else 18
+        return Pose(
+            left_leg=leg_stride * cycle_stride,
+            right_leg=-leg_stride * cycle_stride,
+            left_arm=-arm_swing * cycle_stride,
+            right_arm=arm_swing * cycle_stride,
+            bob=-4 * abs(cycle_stride),
+            tilt=3 * cycle_stride + (5.0 if action == "chase_ball" else 2.5),
+            head=-3 * cycle_stride,
+            surprise=0.2 * fade if action == "chase_ball" else 0.0,
+        )
     if action == "jump":
         return Pose(
             left_arm=30 * arc,
@@ -294,4 +345,6 @@ def travel_point(start: tuple[int, int], destination: tuple[int, int], progress:
         y -= math.sin(math.pi * p) * (62.0 if action == "jump" else 48.0)
     elif action == "climb_dock":
         y -= math.sin(math.pi * p) * 36.0
+    elif action == "kick_ball":
+        y -= math.sin(math.pi * p) * 12.0
     return round(x), round(y)

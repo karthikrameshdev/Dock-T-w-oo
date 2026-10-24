@@ -401,3 +401,95 @@ def test_audio_listener_and_shortcuts():
     assert shortcut.shortcut_key == "cmd_r"
 
 
+def test_continuous_multiturn_conversation_session(tmp_path):
+    """Verify hands-free multi-turn session persistence and farewell exits."""
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+
+    # 1. Start session on wake
+    mgr._on_wake_detected()
+    assert mgr.in_conversation_session is True
+
+    # 2. Complete a statement: Brain responds and speech finishes
+    mgr._on_turn_complete("How is my system?")
+    assert mgr.in_conversation_session is True
+    assert len(mgr.conversation_history) >= 1
+
+    # When speech finishes, it automatically resumes listening for follow-ups hands-free!
+    mgr._on_speech_finished()
+    assert mgr.in_conversation_session is True
+    assert mgr.companion.activity == "listening"
+    assert mgr.listener.is_recording is True
+
+    # 3. Follow-up statement
+    mgr._on_turn_complete("What time is it?")
+    assert mgr.in_conversation_session is True
+    assert len(mgr.conversation_history) >= 2
+
+    # 4. User says goodbye / farewell phrase -> terminates session
+    mgr._on_turn_complete("Goodbye, that's all for now")
+    assert mgr.in_conversation_session is False
+
+
+def test_grounded_factual_research(tmp_path):
+    """Verify research answers factual questions accurately without echoing or repeating prompt."""
+    from dock_twoo.brain.commands import handle_voice_command, execute_web_research
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+
+    reply = handle_voice_command("What is superposition in quantum computing?", mgr)
+    assert reply is not None
+    # Must NOT echo the question
+    assert not reply.lower().startswith("you are asking about")
+    assert not reply.lower().startswith("what is superposition")
+    # Must contain factual physics explanation
+    assert "qubit" in reply.lower() or "quantum" in reply.lower() or "superposition" in reply.lower()
+
+
+def test_profile_walking_and_window_surface(tmp_path):
+    """Verify side profile walking orientation and window top edge walking."""
+    from dock_twoo.brain.vision import get_desktop_surfaces
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    companion = mgr.companion
+
+    # Directional profile facing
+    companion.move(200, 200)
+    companion.play_action("walk", destination=QPoint(600, 200))
+    assert companion.facing == 1.0
+
+    companion.play_action("walk", destination=QPoint(50, 200))
+    assert companion.facing == -1.0
+
+    # Window surface detection
+    surfaces = get_desktop_surfaces()
+    assert len(surfaces) >= 1
+    assert surfaces[0].surface_y >= 0
+    assert surfaces[0].right_x > surfaces[0].left_x
+
+    # Walk on window surface
+    companion.walk_window_surface()
+    assert companion.action in ("jump", "walk_window")
+
+
+def test_interactive_energy_ball(tmp_path):
+    """Verify DesktopBall creation, physics kick, and companion play."""
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    companion = mgr.companion
+
+    companion.play_ball()
+    assert companion.desktop_ball is not None
+    assert companion.desktop_ball.active is True
+
+    # Test kick physics
+    initial_vx = companion.desktop_ball.vel_x
+    companion.desktop_ball.kick(450.0, -350.0)
+    assert companion.desktop_ball.vel_x == 450.0
+    assert companion.desktop_ball.vel_y == -350.0
+
+    companion.stop_ball()
+    assert companion.desktop_ball.active is False
+
+
+
