@@ -237,8 +237,14 @@ def test_brain_manager_lifecycle(qtbot, qapp, tmp_path):
     status = mgr.get_status()
     assert status["name"] == "Brain"
     assert status["is_mini_agent_visible"] is True
+    assert status["voice_input"]["enabled"] is True
+    assert status["voice_input"]["error"] == ""
     assert "active_profile" in status
     assert len(status["profiles"]) > 0
+
+    mgr._on_audio_listener_error("Microphone stream error: permission denied")
+    assert mgr.get_status()["voice_input"]["error"] == "Microphone stream error: permission denied"
+    mgr.audio_listener_error = ""
 
     # Hide mini agent
     mgr.hide_mini_agent()
@@ -401,6 +407,103 @@ def test_audio_listener_and_shortcuts():
     assert shortcut.shortcut_key == "cmd_r"
 
 
+def test_listener_vad_does_not_override_noise_rejection_with_energy():
+    from dock_twoo.brain.listener import AudioListener
+    listener = AudioListener()
+    listener._vad = type("NoiseVAD", (), {"is_speech": lambda self, _frame, _rate: False})()
+    assert listener._is_speech_frame(bytes(3200), rms=900, threshold=12.0) is False
+
+
+def test_ambient_wake_checks_continue_when_background_never_gets_silent():
+    from dock_twoo.brain.listener import AudioListener
+
+    listener = AudioListener()
+    listener.models.recognizer._recognizer = object()
+    listener._vad = type("SpeechVAD", (), {"is_speech": lambda self, _frame, _rate: True})()
+    checked = []
+    listener._dispatch_wake_check = lambda frames: checked.append(frames)
+
+    for _ in range(55):
+        listener._handle_pcm_frame(b"\x64\x00" * 1600)
+
+    assert len(checked) == 2
+    assert all(len(frames) >= 30 for frames in checked)
+
+
+@pytest.mark.parametrize(
+    ("transcript", "expected_wakes", "expected_commands"),
+    [
+        ("Brain.", 1, []),
+        ("Hey Brain!", 1, []),
+        ("Hello Brain.", 1, []),
+        ("Hey Buddy!", 1, []),
+        ("Hi there, Assistant.", 1, []),
+        ("Brain, what time is it?", 0, ["what time is it"]),
+        ("Hey Buddy, what time is it?", 0, ["what time is it"]),
+        ("I saw rain earlier.", 0, []),
+        ("Background speech. Hey Brain!", 1, []),
+    ],
+)
+def test_wake_word_transcription_variants(transcript, expected_wakes, expected_commands):
+    """Natural greetings and approved aliases wake; mentions and commands route correctly."""
+    from dock_twoo.brain.listener import AudioListener
+
+    listener = AudioListener(wake_word="Brain")
+    # Keep unit tests offline; model-specific denoising has separate adapter coverage.
+    listener.models.enhance_pcm = lambda audio, sample_rate=16000: audio
+    listener._transcribe_pcm = lambda _pcm: transcript
+    woken = []
+    commands = []
+    listener.wake_detected.connect(lambda: woken.append(True))
+    listener.turn_completed.connect(commands.append)
+
+    listener._check_wake_word([bytes(6400)])
+
+    assert len(woken) == expected_wakes
+    assert commands == expected_commands
+
+
+def test_missing_transformer_checkpoints_never_block_live_wake_audio(tmp_path, monkeypatch):
+    """A missing HF download must fall through instead of hanging the microphone thread."""
+    import platform
+    from dock_twoo.brain.voice_models import LocalVoiceModels
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("HUGGINGFACE_HUB_CACHE", str(tmp_path / "hub"))
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    models = LocalVoiceModels(tmp_path / "models")
+    pcm = bytes(16000)
+    models._get_enhancer = lambda: (_ for _ in ()).throw(AssertionError("must not download in live listener"))
+    models._get_asr = lambda: (_ for _ in ()).throw(AssertionError("must not download in live listener"))
+
+    assert models.enhance_pcm(pcm) == pcm
+    assert models.transcribe_pcm(pcm) == ""
+    assert models.errors["recognizer"] == "unavailable (speech checkpoint is not downloaded)"
+
+
+def test_missing_wake_models_download_in_background(tmp_path, monkeypatch):
+    """First-run weights download outside the microphone worker and are retryable."""
+    import platform
+    from dock_twoo.brain.voice_models import LocalVoiceModels
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    models = LocalVoiceModels(tmp_path / "models")
+    downloads = []
+    models.model_weights_cached = lambda _model_id: False
+    models._download_model = lambda component, model_id: downloads.append((component, model_id))
+
+    models.start_model_downloads()
+    for thread in models._download_threads.values():
+        thread.join(timeout=2)
+
+    assert set(downloads) == {
+        ("recognizer", models.ASR_MODEL),
+        ("denoiser", models.ENHANCER_MODEL),
+        ("tts", models.TTS_MODEL),
+    }
+
+
 def test_continuous_multiturn_conversation_session(tmp_path):
     """Verify hands-free multi-turn session persistence and farewell exits."""
     mgr = BrainManager.get_instance()
@@ -518,6 +621,29 @@ def test_dynamic_wake_greeting(tmp_path):
     third_reply = handle_voice_command("Brain", mgr)
     assert any(w in third_reply.lower() for w in ("here", "tell me", "listening", "mind", "what's up", "all ears", "go ahead"))
     assert third_reply != second_reply
+
+
+def test_wake_greeting_is_owner_aware(tmp_path, qapp):
+    mgr = BrainManager.get_instance()
+    mgr.store = BrainStore(data_dir=tmp_path)
+    mgr.store.set_setting("owner_first_name", "Karthik")
+    mgr.wake_count = 0
+    mgr.last_wake_time = 0.0
+
+    assert "Karthik" in mgr.get_wake_greeting(owner_verified=True)
+    assert mgr.get_wake_greeting(owner_verified=False) == "Hey Buddy, what can I do for you?"
+    assert mgr.get_wake_greeting(owner_verified=None) == "Hey Buddy, what can I do for you?"
+
+
+def test_speaker_match_is_fail_closed_and_uses_cosine_threshold(tmp_path, monkeypatch):
+    from dock_twoo.brain.voice_models import LocalVoiceModels
+
+    models = LocalVoiceModels(tmp_path / "models")
+    monkeypatch.setattr(models, "speaker_embedding", lambda _pcm, _rate: [1.0, 0.0])
+    assert models.verify_owner(b"sample", [1.0, 0.0]) is True
+    assert models.verify_owner(b"sample", [0.0, 1.0]) is False
+    monkeypatch.setattr(models, "speaker_embedding", lambda _pcm, _rate: None)
+    assert models.verify_owner(b"sample", [1.0, 0.0]) is None
 
 
 def test_props_voice_commands_lifecycle(tmp_path):

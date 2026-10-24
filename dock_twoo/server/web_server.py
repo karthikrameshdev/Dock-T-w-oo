@@ -150,7 +150,18 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     "wake_word_enabled": True,
                     "auto_listen": True,
                     "companion_visible": False,
+                    "voice_input": {
+                        "enabled": True,
+                        "listening": False,
+                        "error": "Brain voice listener has not initialized.",
+                    },
                 }
+            origin = self.headers.get("Origin")
+            port = self.server.server_address[1]
+            if origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
+                check = status_dict.get("voice_input", {}).get("wake_diagnostics", {}).get("voice_check")
+                if check:
+                    check["heard"] = []
             self._set_headers(HTTPStatus.OK, "application/json")
             self.wfile.write(json.dumps(status_dict).encode("utf-8"))
             return
@@ -235,6 +246,36 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
             return
 
+        if path == "/api/brain/voice-check":
+            try:
+                if self.headers.get("X-Brain-Voice-Check") != "local":
+                    raise RuntimeError("Start the microphone check from the local Brain console.")
+                from dock_twoo.brain.manager import BrainManager
+                bm = BrainManager._instance
+                if bm is None:
+                    raise RuntimeError("Brain has not initialized.")
+                bm.listener.begin_voice_check()
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({"success": True, "seconds": 30}).encode("utf-8"))
+            except Exception as exc:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(exc)}).encode("utf-8"))
+            return
+
+        if path == "/api/brain/enroll-owner":
+            try:
+                from dock_twoo.brain.manager import BrainManager
+                bm = BrainManager._instance
+                if bm is None:
+                    raise RuntimeError("Start the Brain voice listener before enrolling your voice.")
+                bm.enroll_owner_voice()
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({"success": True, "message": "Your voice is enrolled on this device."}).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
         if path == "/api/brain/activate-profile":
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
@@ -276,6 +317,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 from dock_twoo.brain.manager import BrainManager
                 if BrainManager._instance is not None:
                     bm = BrainManager._instance
+                    bm.run_on_main_thread(lambda changes=dict(body): bm.apply_voice_settings(changes))
                     if "mascot_corner" in body:
                         bm.companion.travel_to_corner(body["mascot_corner"])
                     if "companion_visible" in body:

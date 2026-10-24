@@ -44,7 +44,8 @@ class DockTrayIcon(QSystemTrayIcon):
         self.auto_hide_action.toggled.connect(self._toggle_auto_hide)
         self.menu.addAction(self.auto_hide_action)
 
-        self.reserve_action = QAction("Reserve Desktop Space", self)
+        self.reserve_action = QAction("Keep Windows Clear of Dock", self)
+        self.reserve_action.setToolTip("Keep application windows outside the dock. Desktop icons and screenshots always stay clear while the dock is visible.")
         self.reserve_action.setCheckable(True)
         self.reserve_action.setChecked(self.config_manager.config.reserve_screen_space)
         self.reserve_action.toggled.connect(self._toggle_reserve_space)

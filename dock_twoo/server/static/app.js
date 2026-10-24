@@ -1033,6 +1033,8 @@ async function initStorageConsole() {
 // Brain Voice Assistant Console Module with Dynamic Providers & Role Routing
 async function initBrainConsole() {
   const agentStatusBadge = document.getElementById('brainAgentStatusBadge');
+  const voiceInputStatus = document.getElementById('brainVoiceInputStatus');
+  const wakeDiagnosticsEl = document.getElementById('brainWakeDiagnostics');
   const summonBtn = document.getElementById('brainSummonBtn');
   const hideBtn = document.getElementById('brainHideBtn');
   const talkBtn = document.getElementById('brainTalkBtn');
@@ -1079,12 +1081,16 @@ async function initBrainConsole() {
   const voiceStyleInput = document.getElementById('brainVoiceStyle');
   const speakRepliesToggle = document.getElementById('brainSpeakRepliesToggle');
   const roamingToggle = document.getElementById('brainRoamingToggle');
+  const followCursorToggle = document.getElementById('brainFollowCursorToggle');
   const mascotPoseSel = document.getElementById('brainMascotPose');
   const mascotCornerSel = document.getElementById('brainMascotCorner');
   const reduceMotionToggle = document.getElementById('brainReduceMotionToggle');
   const wakeWordToggle = document.getElementById('brainWakeWordToggle');
   const wakeWordInput = document.getElementById('brainWakeWord');
   const pushToTalkSel = document.getElementById('brainPushToTalkKey');
+  const ownerNameInput = document.getElementById('brainOwnerName');
+  const enrollVoiceBtn = document.getElementById('brainEnrollVoiceBtn');
+  const enrollVoiceStatus = document.getElementById('brainEnrollVoiceStatus');
 
   let cachedProfiles = [];
   let cachedCatalog = {};
@@ -1416,9 +1422,11 @@ async function initBrainConsole() {
   [
     [speakRepliesToggle, 'voice_reply', (el) => el.checked],
     [roamingToggle, 'roaming', (el) => el.checked],
+    [followCursorToggle, 'follow_cursor', (el) => el.checked],
     [reduceMotionToggle, 'reduced_motion', (el) => el.checked],
     [wakeWordToggle, 'wake_word_enabled', (el) => el.checked],
     [wakeWordInput, 'wake_word', (el) => el.value],
+    [ownerNameInput, 'owner_first_name', (el) => el.value.trim()],
     [pushToTalkSel, 'push_to_talk_shortcut', (el) => el.value],
     [voiceNameSel, 'voice_name', (el) => el.value],
     [voiceStyleInput, 'voice_style', (el) => el.value],
@@ -1435,26 +1443,99 @@ async function initBrainConsole() {
     });
   });
 
+  if (enrollVoiceBtn) {
+    enrollVoiceBtn.addEventListener('click', async () => {
+      enrollVoiceBtn.disabled = true;
+      if (enrollVoiceStatus) enrollVoiceStatus.textContent = 'Recording now: say “My name is …” in your normal voice for five seconds.';
+      try {
+        const response = await fetch('/api/brain/enroll-owner', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Voice enrollment failed.');
+        if (enrollVoiceStatus) enrollVoiceStatus.textContent = 'Your voice is enrolled on this device. Only its speaker vector is stored.';
+        showToast('Voice enrolled locally');
+        await loadBrainStatus();
+      } catch (err) {
+        if (enrollVoiceStatus) enrollVoiceStatus.textContent = err.message;
+        showToast(err.message, true);
+      } finally {
+        enrollVoiceBtn.disabled = false;
+      }
+    });
+  }
+
+  const voiceCheckBtn = document.getElementById('brainVoiceCheckBtn');
+  const voiceCheckStatus = document.getElementById('brainVoiceCheckStatus');
+  if (voiceCheckBtn) voiceCheckBtn.addEventListener('click', async () => {
+    try {
+      const response = await fetch('/api/brain/voice-check', { method: 'POST', headers: { 'X-Brain-Voice-Check': 'local' } });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Microphone check could not start.');
+      if (voiceCheckStatus) voiceCheckStatus.textContent = 'Listening locally for 30 seconds. Say “Brain” or “Hey Brain” now.';
+    } catch (error) { showToast(error.message, true); }
+  });
+
+  function renderBrainRuntime(data) {
+    if (agentStatusBadge) {
+      agentStatusBadge.textContent = data.is_mini_agent_visible ? `Mini Agent Active (${data.activity})` : 'Mini Agent Docked';
+      agentStatusBadge.style.background = data.is_mini_agent_visible ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.08)';
+      agentStatusBadge.style.color = data.is_mini_agent_visible ? '#34d399' : '#94a3b8';
+    }
+    const input = data.voice_input || {};
+    const diagnostics = input.wake_diagnostics || {};
+    const wakeModel = diagnostics.wake_model || {};
+    if (voiceInputStatus) {
+      let text;
+      let color = '#34d399';
+      if (!input.enabled) {
+        text = 'Wake-word detection is disabled. Use Talk to Brain or the push-to-talk shortcut.';
+        color = '#94a3b8';
+      } else if (input.error) {
+        text = `Voice input needs attention: ${input.error}`;
+        color = '#f87171';
+      } else if (!input.listening) {
+        text = 'The microphone listener is starting.';
+        color = '#fbbf24';
+      } else if (!input.wake_ready) {
+        text = wakeModel.error ? `Wake detection needs attention: ${wakeModel.error}` : `Preparing local wake detection (${wakeModel.state || 'loading'})…`;
+        color = '#fbbf24';
+      } else {
+        const owner = input.owner_enrolled ? 'Owner voice enrolled.' : 'Enroll your voice below to hear your name in the greeting.';
+        text = `Ready for “Brain”, “Hey Brain”, “Hello Brain”, or “Hey Buddy”. ${owner}`;
+        if (!input.recognizer_ready) text += ' Command recognition is still preparing; the wake greeting is available.';
+        if (diagnostics.input_device) text += ` Microphone: ${diagnostics.input_device}.`;
+      }
+      if (data.voice_output && data.voice_output.error) {
+        text += ` Speech output needs attention: ${data.voice_output.error}`;
+        color = '#f87171';
+      }
+      voiceInputStatus.textContent = text;
+      voiceInputStatus.style.color = color;
+    }
+    const check = diagnostics.voice_check || {};
+    if (voiceCheckStatus && (check.active || (check.heard || []).length)) {
+      const heard = (check.heard || []).map(entry => entry.heard).join(' · ');
+      voiceCheckStatus.textContent = `${check.active ? `Listening (${check.seconds_remaining}s left)` : 'Check finished'} · microphone peak ${check.peak_rms || 0} · ${heard ? `Recognized: ${heard}` : 'No speech recognized yet.'}`;
+    }
+    renderWakeDiagnostics(diagnostics);
+  }
+
   async function loadBrainStatus() {
     try {
       const res = await fetch('/api/brain/status');
       const data = await res.json();
       if (!data) return;
 
-      if (agentStatusBadge) {
-        agentStatusBadge.textContent = data.is_mini_agent_visible
-          ? `Mini Agent Active (${data.activity})`
-          : 'Mini Agent Docked';
-        agentStatusBadge.style.background = data.is_mini_agent_visible ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.08)';
-        agentStatusBadge.style.color = data.is_mini_agent_visible ? '#34d399' : '#94a3b8';
-      }
+      renderBrainRuntime(data);
 
       const s = data.settings || {};
       if (speakRepliesToggle) speakRepliesToggle.checked = s.voice_reply !== false;
       if (roamingToggle) roamingToggle.checked = !!s.roaming;
+      if (followCursorToggle) followCursorToggle.checked = !!s.follow_cursor;
       if (reduceMotionToggle) reduceMotionToggle.checked = !!s.reduced_motion;
       if (wakeWordToggle) wakeWordToggle.checked = s.wake_word_enabled !== false;
       if (wakeWordInput && s.wake_word) wakeWordInput.value = s.wake_word;
+      if (ownerNameInput && s.owner_first_name) ownerNameInput.value = s.owner_first_name;
+      if (enrollVoiceStatus && s.voice_enrolled) enrollVoiceStatus.textContent = 'Your voice is enrolled on this device. Only its speaker vector is stored.';
       if (pushToTalkSel && s.push_to_talk_shortcut) pushToTalkSel.value = s.push_to_talk_shortcut;
       if (voiceNameSel && s.voice_name) voiceNameSel.value = s.voice_name;
       if (voiceStyleInput && s.voice_style) voiceStyleInput.value = s.voice_style;
@@ -1523,7 +1604,24 @@ async function initBrainConsole() {
     }
   }
 
+  function renderWakeDiagnostics(diagnostics) {
+    if (!wakeDiagnosticsEl || !diagnostics) return;
+    const wakeModel = diagnostics.wake_model || {};
+    wakeDiagnosticsEl.textContent = `Wake model ${wakeModel.state || 'loading'} · command model ${diagnostics.recognizer_ready ? 'ready' : 'loading'} · audio frames ${diagnostics.audio_frames} · keyword checks ${diagnostics.wake_checks} · matches ${diagnostics.wake_matches} · stage: ${diagnostics.last_decision} · RMS ${diagnostics.last_rms}`;
+  }
+
+  async function refreshWakeDiagnostics() {
+    try {
+      const response = await fetch('/api/brain/status');
+      const status = await response.json();
+      renderBrainRuntime(status);
+    } catch (_) {
+      // The main status panel reports listener failures when it next refreshes.
+    }
+  }
+
   await loadBrainStatus();
+  window.setInterval(refreshWakeDiagnostics, 2000);
   initSearchableDropdowns();
 }
 

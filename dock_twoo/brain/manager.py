@@ -55,9 +55,9 @@ class BrainManager(QObject):
             cls._instance = BrainManager()
         return cls._instance
 
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(self, parent: Optional[QObject] = None, *, store=None, start_services: bool = True, voice_model_dir=None):
         super().__init__(parent)
-        self.store = BrainStore()
+        self.store = store or BrainStore()
         self.profile_mgr = ProfileManager(self.store)
         self.speech = SpeechPlayback(self)
 
@@ -82,6 +82,7 @@ class BrainManager(QObject):
         self.wake_count: int = 0
         self.last_wake_time: float = 0.0
         self._last_wake_reply: str = ""
+        self._query_generation = 0
 
         self.session_timer = QTimer(self)
         self.session_timer.setSingleShot(True)
@@ -95,10 +96,19 @@ class BrainManager(QObject):
             on_wake=self._on_wake_detected,
             on_turn_complete=self._on_turn_complete,
             parent=self,
+            store=self.store,
+            model_dir=voice_model_dir,
         )
+        self.speech.voice_models = self.listener.models
+        self.audio_listener_error = ""
+        self.listener.error_occurred.connect(self._on_audio_listener_error)
         self.listener.speech_started.connect(self._on_speech_started)
         self.listener.speech_ended.connect(self._on_speech_ended)
         self.listener.processing_started.connect(self._on_processing_started)
+        self.listener.wake_started.connect(self._on_keyword_started)
+        self.listener.turn_timed_out.connect(self._on_session_timeout)
+        self.speech.activity.connect(self._on_speech_activity)
+        self.listener.wake_detection_enabled = bool(self.store.setting("wake_word_enabled", True))
 
         # Push-to-talk shortcut listener (default: right Command key)
         self.shortcut_listener = GlobalShortcutListener(
@@ -106,12 +116,19 @@ class BrainManager(QObject):
             on_press=self._on_shortcut_press,
             on_release=self._on_shortcut_release,
         )
-        if self.store.setting("wake_word_enabled", True):
+        if start_services and self.store.setting("wake_word_enabled", True):
             self.listener.start()
-        self.shortcut_listener.start()
+        if start_services:
+            self.shortcut_listener.start()
 
         if self.store.setting("companion_visible", True):
             self.show_mini_agent()
+
+    @Slot(str)
+    def _on_audio_listener_error(self, message: str) -> None:
+        """Keep microphone startup failures available to the settings console."""
+        self.audio_listener_error = message
+        self.status_changed.emit(message)
 
     @Slot(str)
     def _do_speech_start(self, reply: str) -> None:
@@ -193,18 +210,41 @@ class BrainManager(QObject):
             # 10s timeout if user doesn't ask another question
             self.session_timer.start(10000)
         else:
+            self.listener.arm_wake()
             self.activity_requested.emit("idle")
+
+    @Slot(str)
+    def _on_speech_activity(self, activity: str) -> None:
+        active = activity in ("thinking", "speaking")
+        if active:
+            self.listener.cancel_recording()
+        self.listener.set_output_active(active)
+
+    @Slot()
+    def _on_keyword_started(self) -> None:
+        self._query_generation += 1
+        self.in_conversation_session = True
+        self.conversation_history.clear()
+        self.session_timer.stop()
+        self._do_show_mini_agent()
+        self.companion.turn_to_user()
+        self.companion.set_activity("listening")
 
     @Slot()
     def _on_session_timeout(self) -> None:
         """End multi-turn conversational session after trailing inactivity."""
         self.in_conversation_session = False
+        self._query_generation += 1
         self.conversation_history.clear()
-        self.listener.stop_recording()
+        self.listener.arm_wake()
         self.activity_requested.emit("idle")
 
-    def get_wake_greeting(self) -> str:
+    def get_wake_greeting(self, owner_verified: Optional[bool] = True) -> str:
         """Generate a natural, realistic spoken response when activated by the wake word 'Brain'."""
+        owner_name = str(self.store.setting("owner_first_name", "Karthik")).strip() or "Karthik"
+        if owner_verified is not True:
+            return "Hey Buddy, what can I do for you?"
+
         now = time.monotonic()
         # Initial welcoming greeting if first call or after extended inactivity (> 25 minutes)
         is_first = (self.wake_count == 0) or (self.last_wake_time > 0 and (now - self.last_wake_time > 1500))
@@ -213,9 +253,9 @@ class BrainManager(QObject):
 
         if is_first:
             initial_options = [
-                "Hey Karthik, what would you like to do?",
-                "Hey Karthik! How can I help you today?",
-                "Hey Karthik, what are we working on today?",
+                f"Hey {owner_name}, what would you like to do?",
+                f"Hey {owner_name}! How can I help you today?",
+                f"Hey {owner_name}, what are we working on today?",
             ]
             reply = random.choice(initial_options)
             self._last_wake_reply = reply
@@ -224,14 +264,14 @@ class BrainManager(QObject):
         # Subsequent responses: realistic, active, conversational, and concise
         subsequent_options = [
             "Yeah, I'm here. Tell me.",
-            "I'm listening, Karthik.",
+            f"I'm listening, {owner_name}.",
             "Right here. What's on your mind?",
             "Yeah, what's up?",
             "All ears, tell me.",
-            "I'm here, Karthik. What do you need?",
+            f"I'm here, {owner_name}. What do you need?",
             "Yeah, go ahead.",
             "Right here with you. Tell me.",
-            "Listening, Karthik. Go ahead.",
+            f"Listening, {owner_name}. Go ahead.",
         ]
         # Avoid repeating the same greeting twice consecutively
         choices = [opt for opt in subsequent_options if opt != self._last_wake_reply]
@@ -241,6 +281,7 @@ class BrainManager(QObject):
 
     @Slot()
     def _do_wake_detected(self) -> None:
+        self._query_generation += 1
         self.in_conversation_session = True
         self.conversation_history.clear()
         self.session_timer.stop()
@@ -249,8 +290,13 @@ class BrainManager(QObject):
             self._do_show_mini_agent()
         self.companion.turn_to_user()
         # Greet user realistically and start listening for their statement!
-        greeting = self.get_wake_greeting()
-        self.speech.start(greeting)
+        if self.store.setting("voice_reply", True):
+            greeting = self.get_wake_greeting(self.listener.last_wake_owner_verified)
+            self.speech.start(greeting)
+        else:
+            self.listener.start_recording()
+            self.companion.set_activity("listening")
+            self.session_timer.start(10000)
 
     def _on_wake_detected(self) -> None:
         """Invoked when user says 'Brain' or 'Hey Brain'."""
@@ -267,6 +313,7 @@ class BrainManager(QObject):
             return
         self.in_conversation_session = True
         self.session_timer.stop()
+        self.listener.start()
         if not self.companion.isVisible():
             self.show_mini_agent()
         self.speech.stop()
@@ -298,8 +345,17 @@ class BrainManager(QObject):
 
     @Slot(str)
     def _do_turn_complete(self, user_text: str) -> None:
+        if user_text and not self.companion.isVisible():
+            # Ambient wake-prefixed commands arrive here without a separate wake event.
+            self._do_show_mini_agent()
+
         if not user_text:
             if self.in_conversation_session:
+                if self.store.setting("voice_reply", True):
+                    self.speech.start("I didn't catch that. Please try again.")
+                else:
+                    self.listener.start_recording()
+                    self.activity_requested.emit("listening")
                 self.session_timer.start(8000)
             else:
                 self.activity_requested.emit("idle")
@@ -307,43 +363,53 @@ class BrainManager(QObject):
 
         self.session_timer.stop()
         self.activity_requested.emit("processing")
+        self._query_generation += 1
+        generation = self._query_generation
         self.conversation_history.append({"role": "user", "content": user_text})
+        history = list(self.conversation_history)
 
         # Check for conversational session exit phrases ("bye", "goodbye", "that's all", "dismiss")
         clean = user_text.strip().lower()
         if re.search(r"^(bye|goodbye|that\'?s\s+all|dismiss|dismissed|see\s+you|thank\s+you\s+bye|thanks\s+bye|exit|stop\s+listening)\b", clean):
             self.in_conversation_session = False
             self.conversation_history.clear()
-            reply = "Goodbye Karthik! Standing by on your desktop whenever you need me."
+            reply = "Goodbye! Standing by on your desktop whenever you need me."
             if self.store.setting("voice_reply", True):
                 self.speech_start_requested.emit(reply)
             else:
+                self.listener.arm_wake()
                 self.activity_requested.emit("idle")
             return
 
         def run_turn():
             # 1. Check for dedicated voice command (movement, window walk, ball play, action, memory, CUA, research)
-            cmd_reply = handle_voice_command(user_text, self, history=self.conversation_history)
-            if cmd_reply:
-                reply = cmd_reply
-            else:
-                self.activity_requested.emit("thinking")
-                active_profile = self.profile_mgr.get_active_profile()
-                provider = active_profile.get("provider", "local") if active_profile else "local"
-                api_key = self.profile_mgr.get_key(provider) if active_profile else ""
-                reply = query_llm(user_text, profile=active_profile, api_key=api_key, history=self.conversation_history)
+            try:
+                cmd_reply = handle_voice_command(user_text, self, history=history)
+                if cmd_reply:
+                    reply = cmd_reply
+                else:
+                    self.activity_requested.emit("thinking")
+                    active_profile = self.profile_mgr.get_active_profile()
+                    provider = active_profile.get("provider", "local") if active_profile else "local"
+                    api_key = self.profile_mgr.get_key(provider) if active_profile else ""
+                    reply = query_llm(user_text, profile=active_profile, api_key=api_key, history=history)
+            except Exception as exc:
+                reply = f"I couldn't complete that request: {exc}"
 
-            self.conversation_history.append({"role": "assistant", "content": reply})
-
-            if self.store.setting("voice_reply", True):
-                self.speech_start_requested.emit(reply)
-            else:
-                if self.in_conversation_session:
+            def deliver_reply():
+                if generation != self._query_generation:
+                    return
+                self.conversation_history.append({"role": "assistant", "content": reply})
+                if self.store.setting("voice_reply", True):
+                    self.speech.start(reply)
+                elif self.in_conversation_session:
                     self.activity_requested.emit("listening")
                     self.listener.start_recording()
                     self.session_timer.start(10000)
                 else:
                     self.activity_requested.emit("idle")
+
+            self.run_on_main_thread(deliver_reply)
 
         threading.Thread(target=run_turn, daemon=True).start()
 
@@ -361,6 +427,7 @@ class BrainManager(QObject):
             QMetaObject.invokeMethod(self, "start_talking", Qt.ConnectionType.QueuedConnection)
             return
         self.in_conversation_session = True
+        self.listener.start()
         self.conversation_history.clear()
         self.session_timer.stop()
         self.companion.show()
@@ -377,10 +444,11 @@ class BrainManager(QObject):
             QMetaObject.invokeMethod(self, "stop_talking", Qt.ConnectionType.QueuedConnection)
             return
         self._is_listening = False
+        self._query_generation += 1
         self.in_conversation_session = False
         self.conversation_history.clear()
         self.session_timer.stop()
-        self.listener.stop_recording()
+        self.listener.arm_wake()
         self.speech.stop()
         self.companion.set_activity("idle")
 
@@ -457,6 +525,10 @@ class BrainManager(QObject):
         roam_act.setCheckable(True)
         roam_act.setChecked(bool(self.store.setting("roaming", True)))
         roam_act.toggled.connect(lambda v: self.store.set_setting("roaming", v))
+        follow_act = menu.addAction("Follow Cursor")
+        follow_act.setCheckable(True)
+        follow_act.setChecked(self.companion.follow_cursor_enabled)
+        follow_act.toggled.connect(self.companion.set_follow_cursor)
 
         # 5. Speak Replies Toggle
         voice_act = menu.addAction("🔊 Speak Replies")
@@ -503,7 +575,49 @@ class BrainManager(QObject):
             "name": "Brain",
             "is_mini_agent_visible": self.companion.isVisible(),
             "activity": self.companion.activity,
+            "voice_input": {
+                "enabled": bool(self.store.setting("wake_word_enabled", True)),
+                "listening": self.listener.is_running and self.listener.stream_active,
+                "error": self.audio_listener_error or self.listener.last_error,
+                "owner_enrolled": self.listener._load_speaker_embedding(self.listener.owner_embedding_path) is not None,
+                "models": self.listener.models.status(),
+                "wake_ready": self.listener.wake_detector.ready,
+                "recognizer_ready": self.listener.models.recognizer.ready,
+                "wake_diagnostics": self.listener.diagnostics(),
+            },
+            "voice_output": {"playing": self.speech.playing, "error": self.speech.last_error},
             "active_profile": self.profile_mgr.get_active_profile(),
             "profiles": self.profile_mgr.get_profiles(),
             "settings": self.store.get_all(),
         }
+
+    def apply_voice_settings(self, changes: Dict[str, Any]) -> None:
+        """Apply saved voice controls to the live listener on the GUI thread."""
+        if "follow_cursor" in changes:
+            self.companion.set_follow_cursor(bool(changes["follow_cursor"]))
+        if "wake_word" in changes:
+            self.listener.set_wake_word(str(changes["wake_word"]))
+        if "wake_word_enabled" in changes:
+            enabled = bool(changes["wake_word_enabled"])
+            self.listener.wake_detection_enabled = enabled
+            if enabled:
+                self.listener.arm_wake()
+                self.listener.start()
+            elif not self.listener.is_recording:
+                self.listener.stop()
+        if "push_to_talk_shortcut" in changes:
+            self.shortcut_listener.stop()
+            self.shortcut_listener.shortcut_key = str(changes["push_to_talk_shortcut"])
+            self.shortcut_listener.start()
+
+    def enroll_owner_voice(self) -> None:
+        """Capture an enrollment phrase and store only the local WavLM speaker vector."""
+        from dock_twoo.brain.voice_models import save_embedding
+        sample = self.listener.capture_owner_enrollment()
+        sample = self.listener.models.enhance_pcm(sample)
+        embedding = self.listener.models.speaker_embedding(sample)
+        if embedding is None:
+            detail = self.listener.models.status().get("speaker", "Speaker model unavailable")
+            raise RuntimeError(f"Could not enroll voice: {detail}. Install the voice-id extra and try again.")
+        save_embedding(self.listener.owner_embedding_path, embedding)
+        self.store.set_setting("voice_enrolled", True)

@@ -473,6 +473,10 @@
                 </div>
                 <span class="badge" id="brainAgentStatusBadge">Online · Ready</span>
               </div>
+              <p class="field-desc" id="brainVoiceInputStatus" role="status">Checking wake-word listener…</p>
+              <p class="field-desc" id="brainWakeDiagnostics" role="status">Audio diagnostics are starting…</p>
+              <button type="button" id="brainVoiceCheckBtn" class="btn btn-secondary">Test microphone</button>
+              <p class="field-desc" id="brainVoiceCheckStatus" role="status">Runs a 30-second local check and shows what was recognized. No audio file is saved.</p>
               <div class="action-btn-row">
                 <button type="button" id="brainSummonBtn" class="btn btn-primary">
                   <span>✨ Summon Mini Agent</span>
@@ -492,7 +496,7 @@
             <!-- Hands-Free Wake Word -->
             <div class="settings-card">
               <h3 class="card-subheading">Voice Wake Word Activation</h3>
-              <p class="field-desc">Hands-free voice detection for instant summoning on speaking "Brain" or "Hey Brain"</p>
+              <p class="field-desc">Hands-free detection accepts the wake name with natural greetings, such as "Brain", "Hey Brain", "Hello Brain", or "Hey Buddy".</p>
 
               <div class="toggle-card-item">
                 <div>
@@ -519,6 +523,18 @@
                   </select>
                 </div>
               </div>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainOwnerName">Your first name</label>
+                  <input type="text" id="brainOwnerName" class="text-input" value="Karthik" maxlength="40">
+                </div>
+                <div class="form-group flex-1">
+                  <label>Recognize your voice</label>
+                  <button type="button" id="brainEnrollVoiceBtn" class="btn btn-secondary">Enroll my voice</button>
+                  <p class="field-desc" id="brainEnrollVoiceStatus" role="status">Enrollment records five seconds locally; only a speaker vector is saved. Other or unverified speakers are greeted as “Buddy”.</p>
+                </div>
+              </div>
+              <p class="field-desc">Wake detection and speech recognition run locally. Optional voice models add noise cleanup and Qwen speech; the assistant can respond while those extras are unavailable.</p>
             </div>
 
             <!-- Voice Persona & Audio Settings -->
@@ -749,6 +765,16 @@
 
           <!-- Tab 3: Robot Companion & Motions -->
           <div class="brain-tab-panel" id="brain-tab-motions">
+            <div class="settings-card">
+              <h3 class="card-subheading">Follow Cursor</h3>
+              <div class="toggle-card-item">
+                <div>
+                  <label class="toggle-title" for="brainFollowCursorToggle">Follow Cursor</label>
+                  <p class="field-desc">Brain walks calmly toward the current cursor and redirects as it moves. Pauses while listening or speaking. Turn this off here or in Brain’s menu.</p>
+                </div>
+                <input type="checkbox" id="brainFollowCursorToggle" class="modern-toggle">
+              </div>
+            </div>
             <div class="settings-card">
               <h3 class="card-subheading">Mini Agent Desktop Behavior & Robotics</h3>
               <p class="field-desc">Autonomous desktop wandering, authentic robotic climbing, and window inspection</p>

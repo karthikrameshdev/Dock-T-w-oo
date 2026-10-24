@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import array
+from collections import deque
 import io
 import json
 import math
@@ -55,14 +56,43 @@ def _patch_speech_recognition_flac() -> None:
 _patch_speech_recognition_flac()
 
 
+def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, str]:
+    """Interpret dictation only after the dedicated keyword model has fired.
+
+    A tiny dictation model often spells a one-word 'Brain' as 'plane' or 'green'.
+    It must not veto the keyword model for those short calls. Longer transcripts
+    can reject a close negative ('bring me ...') and preserve an inline command.
+    """
+    words = re.findall(r"[\w']+", text.lower())
+    if words and words[0] == "bring" and len(words) > 1:
+        return False, ""
+    configured = wake_word.lower().strip() or "brain"
+    aliases = {"brain", "brian", "buddy", "bobby", "body", "grain", "green", "plane", "spring", configured, configured.split()[-1]}
+    matches = list(re.finditer(r"[\w']+", text))
+    for index, word in enumerate(words[:3]):
+        if word in aliases:
+            command = text[matches[index].end():].strip(" \t,.:;!?…-–—")
+            remaining = re.findall(r"[\w']+", command.lower())
+            if remaining and all(word in aliases | {"hey", "hello", "hi"} for word in remaining):
+                command = ""
+            return True, command
+    if len(words) <= 3:
+        return True, ""
+    if words[0] in {"what", "when", "where", "how", "can", "open", "show", "take", "walk", "dance", "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn", "give"}:
+        return True, text.strip()
+    return False, ""
+
+
 class AudioListener(QObject):
     """Monitors microphone stream for wake word ('Brain'), user speech, and fast VAD turn completion."""
 
     wake_detected = Signal()
+    wake_started = Signal()  # A verified keyword was heard; show the companion immediately.
     speech_started = Signal()
     speech_ended = Signal()
     processing_started = Signal()
     turn_completed = Signal(str)  # Transcribed user text
+    turn_timed_out = Signal()
     audio_level = Signal(float)
     error_occurred = Signal(str)
 
@@ -72,6 +102,9 @@ class AudioListener(QObject):
         on_wake: Optional[Callable[[], None]] = None,
         on_turn_complete: Optional[Callable[[str], None]] = None,
         parent: Optional[QObject] = None,
+        *,
+        store=None,
+        model_dir=None,
     ):
         super().__init__(parent)
         self.wake_word = wake_word.lower().strip()
@@ -84,10 +117,60 @@ class AudioListener(QObject):
         self.silence_count = 0
         self.has_spoken = False
         self.stream = None
+        self.stream_active = False
+        self.last_error = ""
+        self.audio_frames_seen = 0
+        self.speech_frames_seen = 0
+        self.ambient_segments_seen = 0
+        self.last_frame_rms = 0.0
+        self.last_wake_decision = "waiting-for-audio"
+        self.last_wake_checks = 0
+        self.last_wake_matches = 0
+        self.backup_wake_checks = 0
+        self.backup_wake_matches = 0
+        self._diagnostic_lock = threading.Lock()
+        self._diagnostic_started = self._diagnostic_until = 0.0
+        self._diagnostic_entries = deque(maxlen=20)
+        self._diagnostic_peak = 0.0
+        self._wake_check_lock = threading.Lock()
         self.worker_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
         self.audio_queue = queue.Queue(maxsize=40)
         self._sf_recognizer = None
+        from dock_twoo.brain.voice_models import LocalVoiceModels, load_embedding
+        from dock_twoo.brain.storage import BrainStore
+        self.store = store or BrainStore()
+        self.models = LocalVoiceModels(model_dir or self.store.data_dir / "models")
+        from dock_twoo.brain.wake import WakeDetector
+        self.wake_detector = WakeDetector(self.models.model_dir, self.wake_word)
+        self._wake_preroll = deque(maxlen=20)
+        self._backup_ring = deque(maxlen=40)
+        self._backup_ticks = 0
+        self._keyword_frames: Optional[list[bytes]] = None
+        self._keyword_tail = 0
+        self._keyword_silence = 0
+        self._wake_armed = True
+        self.wake_detection_enabled = True
+        self._output_active = False
+        self._ignore_audio_until = 0.0
+        self._capture_generation = 0
+        self.input_device = ""
+        self.input_overflows = 0
+        self.dropped_frames = 0
+        self._load_speaker_embedding = load_embedding
+        self.owner_embedding_path = self.store.data_dir / "owner_voice_embedding.json"
+        self.last_wake_owner_verified: Optional[bool] = None
+        self._enrollment_lock = threading.Lock()
+        self._enrollment_frames: Optional[list[bytes]] = None
+        self._enrollment_complete = threading.Event()
+        self._enrollment_result: Optional[bytes] = None
+        try:
+            import webrtcvad
+            # Wake spotting bypasses VAD entirely. Mode 2 bounds assistant turns in
+            # background noise instead of treating every energetic frame as speech.
+            self._vad = webrtcvad.Vad(2)
+        except ImportError:
+            self._vad = None
         self._init_native_speech()
 
         if on_wake:
@@ -120,6 +203,14 @@ class AudioListener(QObject):
             return
         if self.is_running:
             return
+        self.last_error = ""
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+            except queue.Empty:
+                break
+        self.wake_detector.start()
+        self.models.start_model_downloads()
         self.is_running = True
         self.stop_event.clear()
         self.worker_thread = threading.Thread(target=self._run_loop, daemon=True, name="brain-audio-listener")
@@ -136,6 +227,9 @@ class AudioListener(QObject):
             except Exception:
                 pass
             self.stream = None
+        if self.worker_thread and self.worker_thread is not threading.current_thread():
+            self.worker_thread.join(timeout=1.0)
+        self.cancel_recording()
 
     def start_recording(self) -> None:
         """Explicitly begin recording a user turn (push-to-talk or post-wake)."""
@@ -143,6 +237,7 @@ class AudioListener(QObject):
         self.silence_count = 0
         self.has_spoken = False
         self.is_recording = True
+        self._wake_armed = False
         self.speech_started.emit()
 
     def stop_recording(self) -> None:
@@ -154,33 +249,89 @@ class AudioListener(QObject):
         self.processing_started.emit()
         frames = list(self.speech_frames)
         self.speech_frames = []
-        if frames:
-            threading.Thread(target=self._process_utterance, args=(frames,), daemon=True).start()
+        if frames and self.has_spoken:
+            threading.Thread(target=self._process_utterance, args=(frames, self._capture_generation), daemon=True).start()
+        else:
+            self.turn_timed_out.emit()
+
+    def cancel_recording(self) -> None:
+        """Cancel a turn without transcribing stale audio after stop or session timeout."""
+        self.is_recording = False
+        self._capture_generation += 1
+        self.speech_frames = []
+        self.has_spoken = False
+        self._keyword_frames = None
+
+    def arm_wake(self) -> None:
+        self.cancel_recording()
+        self._wake_armed = self.wake_detection_enabled
+        self._wake_preroll.clear()
+        self._backup_ring.clear()
+        self._backup_ticks = 0
+        self.wake_detector.reset()
+
+    def set_output_active(self, active: bool) -> None:
+        """Suppress playback echo so the assistant cannot wake itself with 'Hey Buddy'."""
+        was_active = self._output_active
+        self._output_active = active
+        if active or was_active:
+            self._ignore_audio_until = time.monotonic() + 0.3
+            self._wake_preroll.clear()
+            self._backup_ring.clear()
+            self._backup_ticks = 0
+            self.wake_detector.reset()
+
+    def set_wake_word(self, value: str) -> None:
+        self.wake_word = value.lower().strip() or "brain"
+        self.wake_detector.configure(self.wake_word)
+
+    def capture_owner_enrollment(self, timeout: float = 10.0) -> bytes:
+        """Capture a short owner sample from the existing microphone stream."""
+        if not self.is_running or not self.stream_active:
+            raise RuntimeError("Start Brain's microphone listener before enrolling your voice.")
+        with self._enrollment_lock:
+            if self._enrollment_frames is not None:
+                raise RuntimeError("Voice enrollment is already in progress.")
+            self._enrollment_result = None
+            self._enrollment_complete.clear()
+            self._enrollment_frames = []
+        if not self._enrollment_complete.wait(timeout):
+            with self._enrollment_lock:
+                self._enrollment_frames = None
+            raise TimeoutError("Timed out waiting for the voice sample. Please try again.")
+        if self._enrollment_result is None:
+            raise RuntimeError("No voice sample was captured. Please try again.")
+        return self._enrollment_result
 
     def _run_loop(self) -> None:
         """Audio streaming capture loop via sounddevice."""
         try:
             import sounddevice as sd
         except ImportError:
-            self.error_occurred.emit("sounddevice package not available for microphone listening.")
+            self.last_error = "sounddevice package not available for microphone listening."
+            self.is_running = False
+            self.error_occurred.emit(self.last_error)
             return
 
         def audio_callback(indata, frames, time_info, status):
             if status and not self.stop_event.is_set():
-                pass
+                self.input_overflows += 1
             try:
                 self.audio_queue.put_nowait(bytes(indata))
             except queue.Full:
-                pass
+                self.dropped_frames += 1
 
         try:
+            self.input_device = str(sd.query_devices(kind="input").get("name", "Default input"))
             with sd.RawInputStream(
                 samplerate=16000,
                 channels=1,
                 dtype="int16",
                 blocksize=1600,  # 100ms chunks at 16kHz
                 callback=audio_callback,
-            ):
+            ) as stream:
+                self.stream = stream
+                self.stream_active = True
                 while not self.stop_event.is_set():
                     try:
                         pcm_chunk = self.audio_queue.get(timeout=0.2)
@@ -190,7 +341,12 @@ class AudioListener(QObject):
                     self._handle_pcm_frame(pcm_chunk)
         except Exception as exc:
             if not self.stop_event.is_set():
-                self.error_occurred.emit(f"Microphone stream error: {exc}")
+                self.last_error = f"Microphone stream error: {exc}"
+                self.error_occurred.emit(self.last_error)
+        finally:
+            self.stream_active = False
+            self.stream = None
+            self.is_running = False
 
     def _handle_pcm_frame(self, pcm: bytes) -> None:
         """Analyze RMS energy for VAD and wake word monitoring."""
@@ -198,20 +354,83 @@ class AudioListener(QObject):
         samples.frombytes(pcm)
         if not samples:
             return
+        self.audio_frames_seen += 1
+
+        if self._output_active or time.monotonic() < self._ignore_audio_until:
+            self.last_wake_decision = "suppressing-playback-echo"
+            return
+
+        with self._enrollment_lock:
+            if self._enrollment_frames is not None:
+                self._enrollment_frames.append(pcm)
+                # Five seconds gives WavLM several phonetic contexts for a stable template.
+                if len(self._enrollment_frames) >= 50:
+                    self._enrollment_result = b"".join(self._enrollment_frames)
+                    self._enrollment_frames = None
+                    self._enrollment_complete.set()
+                return
 
         rms = math.sqrt(sum(float(x) ** 2 for x in samples) / len(samples))
+        self.last_frame_rms = round(rms, 1)
+        if time.monotonic() < self._diagnostic_until:
+            self._diagnostic_peak = max(self._diagnostic_peak, rms)
         norm_level = min(1.0, max(0.0, (rms - self.noise_floor) / 1000.0))
         self.audio_level.emit(norm_level)
 
         # Dynamic sensitivity: adapt to ambient room noise floor
-        speech_threshold = max(35.0, self.noise_floor * 1.30)
-        is_speech = rms > speech_threshold
+        speech_threshold = max(12.0, self.noise_floor * 0.50)
+        is_speech = self._is_speech_frame(pcm, rms, speech_threshold)
+        if is_speech:
+            self.speech_frames_seen += 1
 
         if not self.is_recording:
+            if not self.wake_detection_enabled:
+                return
+            if self._keyword_frames is not None:
+                self._keyword_frames.append(pcm)
+                self._keyword_tail += 1
+                self._keyword_silence = 0 if is_speech else self._keyword_silence + 1
+                # Preserve a command spoken in the same breath after the keyword.
+                # A short pause completes a bare wake; a hard limit bounds noise.
+                if self._keyword_silence >= 4 or self._keyword_tail >= 40:
+                    frames, self._keyword_frames = self._keyword_frames, None
+                    threading.Thread(target=self._complete_keyword_wake, args=(frames, self._capture_generation), daemon=True).start()
+                return
+            if not self._wake_armed:
+                return
+            if self.wake_detector.ready:
+                self._wake_preroll.append(pcm)
+                self.last_wake_checks += 1
+                keyword = self.wake_detector.feed(pcm)
+                self.last_wake_decision = "waiting-for-keyword"
+                if keyword:
+                    self.last_wake_matches += 1
+                    self.last_wake_decision = "keyword-detected"
+                    self._wake_armed = False
+                    self._capture_generation += 1
+                    self._keyword_frames = list(self._wake_preroll)
+                    self._keyword_tail = self._keyword_silence = 0
+                    return
+                # Overlapping four-second dictation windows bypass the VAD too.
+                # This recovery path catches an accent/quiet call the KWS misses.
+                self._backup_ring.append(pcm)
+                self._backup_ticks += 1
+                if self._backup_ticks >= 20:
+                    self._backup_ticks = 0
+                    self._dispatch_wake_check(list(self._backup_ring))
+                return
+            if not self.models.recognizer.ready and self._sf_recognizer is None:
+                self.last_wake_decision = "wake-model-" + self.wake_detector.state
+                return
             # Ambient tracking / Wake word detection
             if not is_speech:
-                self.noise_floor = 0.97 * self.noise_floor + 0.03 * min(rms, 180.0)
+                self.noise_floor = 0.97 * self.noise_floor + 0.03 * min(rms, 900.0)
+                self.last_wake_decision = "waiting-for-speech"
                 if self.ambient_speech_frames:
+                    # Keep a short trailing pad so ASR and enhancement see the end of
+                    # quiet consonants instead of a hard-truncated utterance.
+                    if self.ambient_silence_count < 3:
+                        self.ambient_speech_frames.append(pcm)
                     self.ambient_silence_count += 1
                     # 3 consecutive 100ms silence chunks = 0.3s pause after speech for snappy response
                     if self.ambient_silence_count >= 3:
@@ -219,16 +438,22 @@ class AudioListener(QObject):
                         self.ambient_speech_frames = []
                         self.ambient_silence_count = 0
                         if len(frames) >= 2:
-                            threading.Thread(target=self._check_wake_word, args=(frames,), daemon=True).start()
+                            self._dispatch_wake_check(frames)
             else:
                 self.ambient_silence_count = 0
                 self.ambient_speech_frames.append(pcm)
-                # Keep up to 80 frames (~8 seconds) to capture complete spoken commands without truncation
-                if len(self.ambient_speech_frames) > 80:
-                    self.ambient_speech_frames.pop(0)
+                # Do not wait forever for silence in a noisy room. Check overlapping
+                # 3-second windows; Whisper can decide whether a wake phrase is present.
+                if len(self.ambient_speech_frames) >= 30:
+                    frames = list(self.ambient_speech_frames)
+                    self.ambient_speech_frames = frames[-8:]
+                    self._dispatch_wake_check(frames)
         else:
             # Active turn recording
             self.speech_frames.append(pcm)
+            if len(self.speech_frames) >= 200:
+                self.stop_recording()
+                return
             if is_speech:
                 self.has_spoken = True
                 self.silence_count = 0
@@ -242,87 +467,253 @@ class AudioListener(QObject):
                     # Recording started but user didn't speak within 7s -> timeout
                     self.stop_recording()
 
-    def _check_wake_word(self, frames: list[bytes]) -> None:
+    def _dispatch_wake_check(self, frames: list[bytes]) -> None:
+        if not frames:
+            return
+        self.ambient_segments_seen += 1
+        self.last_wake_decision = "transcribing-ambient-audio"
+        threading.Thread(target=self._check_wake_word, args=(frames, self._capture_generation), daemon=True).start()
+
+    def begin_voice_check(self, seconds: float = 30.0) -> None:
+        """Expose a short, explicit local diagnostic; no microphone audio is saved."""
+        if not self.is_running or not self.stream_active:
+            raise RuntimeError("The microphone listener is not running.")
+        with self._diagnostic_lock:
+            self._diagnostic_started = time.monotonic()
+            self._diagnostic_until = self._diagnostic_started + seconds
+            self._diagnostic_entries.clear()
+            self._diagnostic_peak = 0.0
+
+    def _record_voice_check(self, text: str, engine: str) -> None:
+        now = time.monotonic()
+        if now < self._diagnostic_until and text:
+            with self._diagnostic_lock:
+                self._diagnostic_entries.append({"seconds": round(now - self._diagnostic_started, 1),
+                                                 "engine": engine, "heard": text[:100]})
+
+    def voice_check_status(self) -> dict[str, object]:
+        now = time.monotonic()
+        with self._diagnostic_lock:
+            if now > self._diagnostic_until + 90:
+                self._diagnostic_entries.clear()
+            return {"active": now < self._diagnostic_until,
+                    "seconds_remaining": max(0, round(self._diagnostic_until - now)),
+                    "peak_rms": round(self._diagnostic_peak, 1), "heard": list(self._diagnostic_entries)}
+
+    def diagnostics(self) -> dict[str, object]:
+        """Expose counters and decision stage without retaining recognized user speech."""
+        speech_authorization = "unavailable"
+        if self._sf_recognizer is not None:
+            speech_authorization = "authorized"
+        else:
+            try:
+                import Speech
+                speech_authorization = str(Speech.SFSpeechRecognizer.authorizationStatus())
+            except Exception:
+                pass
+        return {
+            "audio_frames": self.audio_frames_seen,
+            "speech_frames": self.speech_frames_seen,
+            "ambient_segments": self.ambient_segments_seen,
+            "wake_checks": self.last_wake_checks,
+            "wake_matches": self.last_wake_matches,
+            "last_rms": self.last_frame_rms,
+            "last_decision": self.last_wake_decision,
+            "apple_speech_authorization": speech_authorization,
+            "speech_checkpoint_cached": self.models.model_weights_cached(self.models.ASR_MODEL),
+            "denoiser_checkpoint_cached": self.models.model_weights_cached(self.models.ENHANCER_MODEL),
+            "wake_model": self.wake_detector.status(),
+            "recognizer_engine": "Whisper tiny.en INT8",
+            "recognizer_ready": self.models.recognizer.ready,
+            "input_device": self.input_device,
+            "input_overflows": self.input_overflows,
+            "dropped_frames": self.dropped_frames,
+            "wake_armed": self._wake_armed,
+            "output_active": self._output_active,
+            "backup_wake_checks": self.backup_wake_checks,
+            "backup_wake_matches": self.backup_wake_matches,
+            "voice_check": self.voice_check_status(),
+        }
+
+    def _is_speech_frame(self, pcm: bytes, rms: float, threshold: float) -> bool:
+        """Use WebRTC's noise-robust VAD when installed, with a low-volume energy fallback."""
+        if self._vad is not None:
+            try:
+                if rms < 2.0:
+                    return False
+                if rms < 250:
+                    import numpy as np
+                    pcm = np.clip(np.frombuffer(pcm, dtype="<i2").astype(np.float32) * min(8.0, 250 / rms), -32768, 32767).astype("<i2").tobytes()
+                # RawInputStream blocks are 100ms. WebRTC VAD accepts 10/20/30ms frames.
+                frames = [pcm[offset:offset + 640] for offset in range(0, len(pcm) - 639, 640)]
+                return sum(self._vad.is_speech(frame, 16000) for frame in frames) >= max(1, len(frames) // 2 + 1)
+            except Exception:
+                pass
+        return rms > threshold
+
+    def _complete_keyword_wake(self, frames: list[bytes], generation: Optional[int] = None) -> None:
+        """Confirm a detected name and preserve any following command locally."""
+        pcm = b"".join(frames)
+        try:
+            text = self._transcribe_pcm(pcm).strip()
+            self._record_voice_check(text, "keyword confirmation")
+        except Exception as exc:
+            self.last_error = f"Wake confirmation failed: {exc}"
+            self.error_occurred.emit(self.last_error)
+            text = ""
+        if generation is not None and generation != self._capture_generation:
+            return
+        accepted, command = command_after_keyword(text, self.wake_word)
+        if not accepted:
+            self.last_wake_decision = "keyword-rejected-by-transcript"
+            self.arm_wake()
+            return
+        template = self._load_speaker_embedding(self.owner_embedding_path)
+        self.last_wake_owner_verified = (
+            self.models.verify_owner(pcm, template)
+            if template and self.models.model_weights_cached(self.models.SPEAKER_MODEL) else False
+        )
+        if generation is not None and generation != self._capture_generation:
+            return
+        self.wake_started.emit()
+        if command:
+            self.last_wake_decision = "wake-command-detected"
+            self.turn_completed.emit(command)
+        else:
+            self.last_wake_decision = "wake-detected"
+            self.wake_detected.emit()
+
+    def _check_wake_word(self, frames: list[bytes], generation: Optional[int] = None) -> None:
         """Transcribe ambient utterance to detect wake word ('Brain') or full command."""
+        if not self._wake_check_lock.acquire(blocking=False):
+            return
+        self.last_wake_checks += 1
+        self.backup_wake_checks += 1
+        try:
+            self._check_wake_word_locked(frames, generation)
+        except Exception as exc:
+            self.last_wake_decision = f"wake-check-error: {type(exc).__name__}"
+            self.last_error = f"Wake recognition failed: {exc}"
+            self.error_occurred.emit(self.last_error)
+        finally:
+            self._wake_check_lock.release()
+
+    def _check_wake_word_locked(self, frames: list[bytes], generation: Optional[int] = None) -> None:
         raw_pcm = b"".join(frames)
         if len(raw_pcm) < 16000 * 2 * 0.18:
+            self.last_wake_decision = "segment-too-short"
             return
+        clean_pcm = raw_pcm
         text = self._transcribe_pcm(raw_pcm).strip()
         if not text:
+            clean_pcm = self.models.enhance_pcm(raw_pcm)
+            if clean_pcm != raw_pcm:
+                text = self._transcribe_pcm(clean_pcm).strip()
+        self._record_voice_check(text, "utterance backup")
+        if generation is not None and (generation != self._capture_generation or not self._wake_armed):
+            return
+        if not text:
+            self.last_wake_decision = "no-transcript"
             return
 
-        wake_match = re.search(r"\b(brain|hey\s+brain|brian|brin|rain|bran|drain|ray|rayne)\b", text, re.IGNORECASE)
-        if wake_match:
-            self.ambient_speech_frames = []
-            self.ambient_silence_count = 0
-            # Check if user spoke a full command or just called the wake name
-            clean_cmd = re.sub(r"^(hey\s+brain|brain|brian|brin|rain|bran|drain|ray|rayne)[,\s]*", "", text, flags=re.IGNORECASE).strip()
-            if not clean_cmd:
-                # User said "Brain" and paused: wake up and greet!
-                self.wake_detected.emit()
-            else:
-                # User spoke a full statement (e.g. "Brain, do this"): process directly without interrupting!
-                self.turn_completed.emit(text)
+        wake_phrases = {
+            "brain",
+            "brian",
+            "buddy",
+            "assistant",
+            "robot",
+        }
+        configured_wake_word = self.wake_word.strip()
+        if configured_wake_word:
+            wake_phrases.add(configured_wake_word)
+            wake_phrases.add(configured_wake_word.split()[-1])
+        phrase_pattern = "|".join(
+            re.escape(phrase).replace(r"\ ", r"\s+")
+            for phrase in sorted(wake_phrases, key=len, reverse=True)
+            if phrase
+        )
+        greeting_pattern = r"(?:hey|hello|hi|okay|ok|yo|a|eh)(?:\s+there)?[\s,.:;!?…\-–—]+"
+        wake_prefix = re.compile(
+            rf"\b(?:{greeting_pattern})?(?:{phrase_pattern})\b",
+            re.IGNORECASE,
+        )
+        prefix_match = wake_prefix.search(text)
+        if not prefix_match:
+            self.last_wake_decision = "transcript-without-wake-prefix"
+            return
 
-    def _process_utterance(self, frames: list[bytes]) -> None:
+        self.ambient_speech_frames = []
+        self.ambient_silence_count = 0
+        # Strip punctuation so transcripts like "Brain." still count as a bare wake.
+        _, clean_cmd = command_after_keyword(text[prefix_match.start():], self.wake_word)
+        template = self._load_speaker_embedding(self.owner_embedding_path)
+        self.last_wake_owner_verified = self.models.verify_owner(clean_pcm, template) if template else False
+        if generation is not None and (generation != self._capture_generation or not self._wake_armed):
+            return
+        self._wake_armed = False
+        self._capture_generation += 1
+        self.backup_wake_matches += 1
+        self.wake_started.emit()
+        if not clean_cmd:
+            self.last_wake_matches += 1
+            self.last_wake_decision = "wake-detected"
+            self.wake_detected.emit()
+        else:
+            # A command addressed to the agent is passed through without losing its wording.
+            self.last_wake_matches += 1
+            self.last_wake_decision = "wake-command-detected"
+            self.turn_completed.emit(clean_cmd)
+
+    def _process_utterance(self, frames: list[bytes], generation: Optional[int] = None) -> None:
         """Transcribe full user statement and emit turn_completed."""
         raw_pcm = b"".join(frames)
+        if generation is not None and generation != self._capture_generation:
+            return
         # Skip trivial clicks/blips under 0.25s
         if len(raw_pcm) < 16000 * 2 * 0.25:
+            self.turn_completed.emit("")
             return
 
-        transcription = self._transcribe_pcm(raw_pcm)
-        if transcription and len(transcription.strip()) > 1:
-            self.turn_completed.emit(transcription.strip())
+        try:
+            transcription = self._transcribe_pcm(raw_pcm)
+            # Preserve a usable original transcript. Enhancement can suppress weak
+            # consonants; use it as a recovery pass when raw recognition fails.
+            if not transcription:
+                enhanced = self.models.enhance_pcm(raw_pcm)
+                if enhanced != raw_pcm:
+                    transcription = self._transcribe_pcm(enhanced)
+            if generation is None or generation == self._capture_generation:
+                self.turn_completed.emit(transcription.strip() if transcription else "")
+        except Exception as exc:
+            self.last_error = f"Speech recognition failed: {exc}"
+            self.error_occurred.emit(self.last_error)
+            self.turn_completed.emit("")
 
     def _transcribe_pcm(self, pcm_data: bytes) -> str:
         """Transcribe 16-bit 16kHz PCM audio buffer using local on-device recognizer with fallback."""
         if not pcm_data or len(pcm_data) < 1600:
             return ""
 
-        # 1. On macOS: Native On-Device Speech Recognition (instant, zero network latency)
+        # If Whisper's several-hundred-megabyte checkpoint is absent, use authorized
+        # macOS on-device recognition immediately instead of waiting on a network fetch.
+        if self._sf_recognizer and not self.models.model_weights_cached(self.models.ASR_MODEL):
+            recognized = self._transcribe_native_pcm(pcm_data)
+            if recognized:
+                return recognized
+
+        # The compact transformer runs locally on CPU across supported platforms.
+        recognized = self.models.transcribe_pcm(pcm_data)
+        if recognized:
+            return recognized
+
+        # Native on-device recognition is a fallback if local Whisper is installed.
         if self._sf_recognizer:
-            try:
-                import Speech
-                from Foundation import NSURL
-                import tempfile
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
-                    temp_wav = tf.name
-                with wave.open(temp_wav, "wb") as wf:
-                    wf.setnchannels(1)
-                    wf.setsampwidth(2)
-                    wf.setframerate(16000)
-                    wf.writeframes(pcm_data)
+            recognized = self._transcribe_native_pcm(pcm_data)
+            if recognized:
+                return recognized
 
-                ns_url = NSURL.fileURLWithPath_(temp_wav)
-                req = Speech.SFSpeechURLRecognitionRequest.alloc().initWithURL_(ns_url)
-                if hasattr(req, "setRequiresOnDeviceRecognition_"):
-                    req.setRequiresOnDeviceRecognition_(True)
-
-                results = []
-                done_ev = threading.Event()
-
-                def handler(result, error):
-                    if result:
-                        text = str(result.bestTranscription().formattedString())
-                        results.append(text)
-                        if result.isFinal():
-                            done_ev.set()
-                    if error:
-                        done_ev.set()
-
-                task = self._sf_recognizer.recognitionTaskWithRequest_resultHandler_(req, handler)
-                done_ev.wait(timeout=1.6)
-                try:
-                    os.unlink(temp_wav)
-                except Exception:
-                    pass
-                if results and results[-1].strip():
-                    return results[-1].strip()
-            except Exception:
-                pass
-
-        # 2. Fallback: speech_recognition (Google endpoint / Sphinx)
+        # 2. Offline fallback: PocketSphinx if installed. Do not send microphone audio
+        # to a hosted recognizer when the user selected the local Brain voice pipeline.
         try:
             import speech_recognition as sr
             recognizer = sr.Recognizer()
@@ -341,12 +732,62 @@ class AudioListener(QObject):
                 audio = recognizer.record(source)
 
             try:
-                return recognizer.recognize_google(audio)
+                return recognizer.recognize_sphinx(audio)
             except Exception:
                 pass
         except Exception:
             pass
 
+        return ""
+
+    def _transcribe_native_pcm(self, pcm_data: bytes) -> str:
+        """Run the authorized macOS recognizer on-device and clean up its temporary WAV."""
+        temp_wav = None
+        task = None
+        try:
+            import Speech
+            from Foundation import NSURL
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+                temp_wav = tf.name
+            with wave.open(temp_wav, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(16000)
+                wf.writeframes(pcm_data)
+
+            request = Speech.SFSpeechURLRecognitionRequest.alloc().initWithURL_(NSURL.fileURLWithPath_(temp_wav))
+            if hasattr(request, "setRequiresOnDeviceRecognition_"):
+                request.setRequiresOnDeviceRecognition_(True)
+            results: list[str] = []
+            done = threading.Event()
+
+            def handler(result, error):
+                if result:
+                    results.append(str(result.bestTranscription().formattedString()))
+                    if result.isFinal():
+                        done.set()
+                if error:
+                    done.set()
+
+            task = self._sf_recognizer.recognitionTaskWithRequest_resultHandler_(request, handler)
+            done.wait(timeout=3.5)
+            if results and results[-1].strip():
+                return results[-1].strip()
+        except Exception as exc:
+            self.last_wake_decision = f"native-speech-error: {type(exc).__name__}"
+        finally:
+            if task is not None:
+                try:
+                    task.cancel()
+                except Exception:
+                    pass
+            if temp_wav:
+                try:
+                    import os
+                    os.unlink(temp_wav)
+                except OSError:
+                    pass
         return ""
 
 

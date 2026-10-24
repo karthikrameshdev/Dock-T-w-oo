@@ -32,6 +32,7 @@ class SpeechPlayback(QObject):
         self.worker: Optional[threading.Thread] = None
         self.playing: bool = False
         self.last_error: str = ""
+        self.voice_models = None
 
         self._frame.connect(self._schedule_frame)
         self._done.connect(self._finish)
@@ -75,7 +76,7 @@ class SpeechPlayback(QObject):
                 if text is None:
                     clip = whistle_clip()
                 else:
-                    clip = synthesize(text, wav_path, cancel)
+                    clip = synthesize(text, wav_path, cancel, self.voice_models)
 
                 if cancel.is_set():
                     raise InterruptedError("Speech cancelled.")
@@ -124,8 +125,10 @@ class SpeechPlayback(QObject):
                     if time.monotonic() > deadline:
                         break
             return
-        except (ImportError, Exception):
-            pass
+        except InterruptedError:
+            raise
+        except Exception as exc:
+            playback_error = exc
 
         # Native macOS afplay fallback or subprocess fallback
         if platform.system().lower() == "darwin" and wav_path.exists():
@@ -139,17 +142,11 @@ class SpeechPlayback(QObject):
                 curr_frame = int(elapsed * clip.rate)
                 self._frame.emit(token, clip.level_at(curr_frame), time.monotonic() + 0.02)
                 time.sleep(0.03)
+            if proc.returncode != 0:
+                raise RuntimeError(f"afplay exited with status {proc.returncode}")
             return
 
-        # Timing simulation fallback if no audio device
-        start_t = time.monotonic()
-        while time.monotonic() - start_t < clip.duration:
-            if cancel.is_set():
-                raise InterruptedError("Speech cancelled.")
-            elapsed = time.monotonic() - start_t
-            curr_frame = int(elapsed * clip.rate)
-            self._frame.emit(token, clip.level_at(curr_frame), time.monotonic() + 0.02)
-            time.sleep(0.03)
+        raise RuntimeError(f"No working audio output device: {playback_error}")
 
     @Slot(int, float, float)
     def _schedule_frame(self, token: int, level: float, deadline: float) -> None:

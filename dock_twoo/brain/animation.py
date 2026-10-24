@@ -67,6 +67,46 @@ class Pose:
     text_sparkle: float = 0
 
 
+@dataclass(frozen=True)
+class FootStep:
+    x: float
+    lift: float
+    stance: bool
+    pitch: float
+
+
+def gait_at(distance: float, stride_length: float = 68.0, lift: float = 12.0) -> tuple[FootStep, FootStep]:
+    """A distance-driven gait: a support foot stays fixed in world space.
+
+    Each foot supports 60% of a stride, including a short double-support period.
+    The other 40% lifts the toe and swings forward to the next heel strike.
+    """
+    phase = distance / stride_length
+    span = stride_length * 0.6
+
+    def foot(offset: float) -> FootStep:
+        p = (phase + offset) % 1.0
+        if p < 0.6:
+            pitch = -6 * max(0.0, 1 - p / 0.1) + 9 * max(0.0, (p - 0.48) / 0.12)
+            return FootStep(span / 2 - p * stride_length, 0.0, True, pitch)
+        swing = (p - 0.6) / 0.4
+        eased = swing * swing * (3 - 2 * swing)
+        return FootStep(-span / 2 + span * eased, lift * math.sin(math.pi * swing), False, -10 * math.sin(math.pi * swing))
+
+    return foot(0.0), foot(0.5)
+
+
+def two_bone_joint(start: tuple[float, float], end: tuple[float, float], upper: float, lower: float, bend: float = 1.0) -> tuple[float, float]:
+    """Solve an elbow or knee with fixed bone lengths and a consistent bend direction."""
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    distance = max(1e-6, math.hypot(dx, dy))
+    reach = min(upper + lower - 1e-6, max(abs(upper - lower) + 1e-6, distance))
+    along = (upper * upper - lower * lower + reach * reach) / (2 * reach)
+    perpendicular = math.sqrt(max(0.0, upper * upper - along * along)) * bend
+    ux, uy = dx / distance, dy / distance
+    return start[0] + ux * along + uy * perpendicular, start[1] + uy * along - ux * perpendicular
+
+
 def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
     if action not in ACTIONS:
         raise ValueError(f"Unknown mascot animation: {action}")
@@ -104,8 +144,8 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
         return Pose(right_arm=-75 * arc, head=7 * cycle, search=arc)
     if action == "climb":
         return Pose(
-            left_arm=55 * cycle,
-            right_arm=-55 * cycle,
+            left_arm=(85 + 30 * cycle) * fade,
+            right_arm=(-85 + 30 * cycle) * fade,
             left_leg=-18 * cycle,
             right_leg=18 * cycle,
             tilt=4 * cycle,
@@ -113,8 +153,8 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
     if action == "climb_dock":
         climb_cycle = math.sin(seconds * math.tau * 2.2) * fade
         return Pose(
-            left_arm=72 + 25 * climb_cycle,
-            right_arm=-72 - 25 * climb_cycle,
+            left_arm=(72 + 25 * climb_cycle) * fade,
+            right_arm=(-72 + 25 * climb_cycle) * fade,
             left_leg=-24 * climb_cycle,
             right_leg=24 * climb_cycle,
             tilt=6 * climb_cycle,

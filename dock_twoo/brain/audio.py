@@ -96,7 +96,12 @@ def whistle_clip() -> SpeechClip:
     return SpeechClip.from_pcm(struct.pack("<" + "h" * len(values), *values), rate)
 
 
-def synthesize(message: str, path: Path | str, cancel: Optional[threading.Event] = None) -> SpeechClip:
+def synthesize(
+    message: str,
+    path: Path | str,
+    cancel: Optional[threading.Event] = None,
+    voice_models=None,
+) -> SpeechClip:
     """Synthesize text to speech into a WAV file using native platform capabilities."""
     if not isinstance(message, str) or not message.strip():
         raise ValueError("Speech message cannot be empty.")
@@ -108,6 +113,12 @@ def synthesize(message: str, path: Path | str, cancel: Optional[threading.Event]
     system = platform.system().lower()
     path_obj = Path(path).resolve()
     path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    if voice_models is not None and system_is_macos():
+        if voice_models.synthesize_wav(clean_msg, path_obj):
+            if cancel.is_set():
+                raise InterruptedError("Speech cancelled.")
+            return SpeechClip.read(path_obj)
 
     if system == "darwin":
         args = [
@@ -166,3 +177,7 @@ def synthesize(message: str, path: Path | str, cancel: Optional[threading.Event]
         raise RuntimeError("Failed to generate speech audio output.")
 
     return SpeechClip.read(path_obj)
+
+
+def system_is_macos() -> bool:
+    return platform.system().lower() == "darwin"

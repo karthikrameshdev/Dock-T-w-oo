@@ -88,13 +88,15 @@ def test_margin_manager_desktop_icon_clamping_and_collision_avoidance(qapp, monk
     mock_calls = []
 
     def mock_subprocess_run(cmd, capture_output=True, text=True, timeout=1.5):
+        import re
         script = cmd[2]
         mock_calls.append(script)
         class MockResult:
             returncode = 0
-            # First call is query: return 2 screenshots in the right dock zone
-            stdout = "Screenshot 1.png|1446|73\nScreenshot 2.png|1446|73\n"
+            stdout = "Screenshot 1.png|1446.0|73.0\nScreenshot 2.png|1446.0|73.0\n"
             stderr = ""
+        if 'set desktop position of item' in script:
+            MockResult.stdout = ''.join(f'{name}|{x}|{y}\n' for name, x, y in re.findall(r'set desktop position of item "([^"]+)" of desktop to \{(-?\d+), (-?\d+)\}', script))
         return MockResult()
 
     import subprocess

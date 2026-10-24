@@ -157,6 +157,46 @@ The test suite covers:
 
 ---
 
+## Local Brain voice
+
+Enable **Follow Cursor** in Brain settings → Motions or the Brain menu. Brain walks
+toward the latest pointer position at a calm pace and redirects immediately when
+you move it. Following pauses during voice interaction and explicit animations.
+Brain lets clicks pass through while following; use settings or the menu to stop.
+The head turns with the body while retaining the same live eyes and mouth.
+
+The base installation includes the local voice runtime. A small streaming
+Zipformer model listens for “Brain”, “Hey Brain”, “Hello Brain”, and “Hey Buddy”
+without waiting for dictation, silence detection, or a macOS Speech permission
+prompt. Whisper tiny.en INT8 transcribes commands locally on CPU. The wake assets
+are about 6 MB; command recognition adds about 105 MB. First launch downloads these
+in background workers and Brain settings reports when each stage is ready.
+
+On Apple Silicon, optional models add MossFormer2-SE noise enhancement, Qwen3-TTS
+0.6B CustomVoice (Ryan), and WavLM speaker verification:
+
+```bash
+python -m pip install -e '.[voice]'
+```
+
+These models use more disk space and download after the command model. While Qwen
+is unavailable, a greeting uses platform speech immediately. Model downloads never
+run inside the microphone or speech playback path. Audio is processed locally;
+voice enrollment stores only a WavLM speaker vector. Set your first name in Brain
+settings and select **Enroll my voice** to personalize your greeting. Unenrolled
+or uncertain speakers receive “Hey Buddy”.
+
+On macOS, verify the cached models with generated speech, reduced volume, continuous
+noise, inline commands, and negative phrases without opening a microphone stream:
+
+```bash
+.venv/bin/python scripts/verify_brain_voice.py
+```
+
+The check uses installed Samantha and Daniel voices and writes a JSON report to
+`/tmp/dock-twoo-voice-check.json`. It requires the checkpoints to be cached and does
+not download or retain microphone recordings.
+
 ## 📄 License
 
 Apache 2.0 License. See [LICENSE](LICENSE) for details.

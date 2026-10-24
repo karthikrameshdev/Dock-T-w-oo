@@ -276,7 +276,7 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
         return "Playing with the energy ball on your desktop!"
 
     # 2d. Naughty Window Push / Shrink
-    if re.search(r"\b(push\s+(?:the\s+)?window|shrink\s+(?:the\s+)?window|naughty|naughty\s+window)\b", clean_text):
+    if re.search(r"\b(push\s+(?:the\s+)?window|shrink\s+(?:the\s+)?window)\b", clean_text):
         companion.push_window()
         return "Sneaking up to give your window a playful push!"
 
