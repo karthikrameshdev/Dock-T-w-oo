@@ -1107,6 +1107,31 @@ async function initBrainConsole() {
     });
   });
 
+  const characterSelect = document.getElementById('brainCharacterAction');
+  const characterRelease = document.getElementById('brainCharacterRelease');
+  try {
+    const response = await fetch('/brain3d/character.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Character library is unavailable');
+    const release = await response.json();
+    if (characterRelease) characterRelease.textContent = `Brain ${release.version} · ${release.design} · ${Object.keys(release.actions).length} animations`;
+    if (characterSelect) for (const action of Object.keys(release.actions)) {
+      if (action !== 'idle') characterSelect.add(new Option(action.replaceAll('_', ' '), action));
+    }
+  } catch (error) {
+    if (characterRelease) characterRelease.textContent = error.message;
+  }
+  document.getElementById('brainCharacterPlay')?.addEventListener('click', async () => {
+    if (!characterSelect?.value) return;
+    try {
+      const response = await fetch('/api/brain/action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'animation', name: characterSelect.value }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || 'Animation could not start');
+    } catch (error) { showToast(error.message, true); }
+  });
+
   // Robotic Animation Buttons
   document.querySelectorAll('[data-reader]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -1492,7 +1517,8 @@ async function initBrainConsole() {
 
   function renderBrainRuntime(data) {
     if (agentStatusBadge) {
-      agentStatusBadge.textContent = data.is_mini_agent_visible ? `Mini Agent Active (${data.activity})` : 'Mini Agent Docked';
+      const characterLabel = data.character?.version ? `Brain ${data.character.version}` : 'Mini Agent';
+      agentStatusBadge.textContent = data.is_mini_agent_visible ? `${characterLabel} Active (${data.activity})` : `${characterLabel} Docked`;
       agentStatusBadge.style.background = data.is_mini_agent_visible ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.08)';
       agentStatusBadge.style.color = data.is_mini_agent_visible ? '#34d399' : '#94a3b8';
     }

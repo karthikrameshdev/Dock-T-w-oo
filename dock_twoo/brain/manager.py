@@ -631,6 +631,8 @@ class BrainManager(QObject):
             "voice_output": {"playing": self.speech.playing, "error": self.speech.last_error},
             "reading": self.reader.status(),
             "character": {
+                "version": self.companion.model_view.version if self.companion.model_view else "",
+                "asset_hash": self.companion.model_view.asset_hash if self.companion.model_view else "",
                 "renderer": "3d" if self.companion.model_view and self.companion.model_view.ready else "artwork",
                 "error": self.companion.model_view.error if self.companion.model_view else "",
             },

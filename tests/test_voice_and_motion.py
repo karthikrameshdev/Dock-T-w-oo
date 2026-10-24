@@ -409,3 +409,11 @@ def test_screenshot_protection_is_active_when_window_reservation_is_off(monkeypa
     manager._schedule_icon_scan()
     assert scanned.wait(1)
     manager._running = False
+
+
+def test_running_uses_the_run_clip_and_turns_toward_the_destination(companion):
+    companion.travel_to_corner('top_left', style='run')
+    assert companion.action == 'run'
+    assert companion.turn_target == 1.0
+    assert companion.destination is not None
+    companion.stop_motion()

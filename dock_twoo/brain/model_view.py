@@ -11,12 +11,12 @@ from PySide6.QtWebEngineCore import QWebEngineScript
 
 
 class ModelBridge(QObject):
-    loaded = Signal()
+    loaded = Signal(str, str)
     error = Signal(str)
 
-    @Slot()
-    def ready(self):
-        self.loaded.emit()
+    @Slot(str, str)
+    def ready(self, version, asset_hash):
+        self.loaded.emit(version, asset_hash)
 
     @Slot(str)
     def failed(self, message):
@@ -29,6 +29,8 @@ class CharacterView(QWebEngineView):
         self.companion = companion
         self.ready = False
         self.error = ''
+        self.version = ''
+        self.asset_hash = ''
         self.attempts = 0
         self.setGeometry(companion.rect())
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -72,7 +74,10 @@ class CharacterView(QWebEngineView):
         if not self.ready:
             self._error(self.error or "The 3D renderer did not become ready; using the artwork fallback.")
 
-    def _ready(self):
+    def _ready(self, version, asset_hash):
+        self.version = version
+        self.asset_hash = asset_hash
+        self.companion.setToolTip(f"Brain {version} · Glossy Blue")
         self.ready = True
         self.error = ''
         self.show()

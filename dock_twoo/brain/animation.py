@@ -4,6 +4,19 @@ from dataclasses import dataclass
 import math
 
 ACTIONS = {
+    "run": ("Run", 1.0),
+    "talk": ("Talk expressively", 2.8),
+    "listen": ("Listen attentively", 2.4),
+    "magnifier": ("Inspect with magnifier", 3.0),
+    "scan_code": ("Scan code", 2.5),
+    "drag": ("Drag an object", 2.4),
+    "push": ("Push an object", 2.0),
+    "hover": ("Hover with thrusters", 2.0),
+    "land": ("Land softly", 1.5),
+    "type": ("Read and tap tablet", 3.0),
+    "greet": ("Greet with a wave", 2.0),
+    "happy": ("Happy response", 2.0),
+    "sad": ("Sympathetic response", 2.0),
     "read": ("Read document", 3.0),
     "pull_scroll": ("Pull document upward", .85),
     "camera": ("Take a photo", 1.4),
@@ -40,11 +53,16 @@ ACTIONS = {
 }
 
 PLAYLIST = (
+    "magnifier", "scan_code", "drag", "hover", "run",
     "climb_dock", "inspect_window", "replace_text", "fold_arms", "sensor_scan",
     "wave", "turn_around", "walk", "scan_screen", "inspect_icon", "explore",
     "jump", "dance", "roll", "fly", "stretch", "peek", "nod", "point",
     "whistle", "camera", "search", "climb", "celebrate", "surprised", "ponder", "sleep",
 )
+
+
+# Keep the demo loop complete as the artist adds named actions.
+PLAYLIST += tuple(action for action in ACTIONS if action not in PLAYLIST)
 
 
 @dataclass(frozen=True)
@@ -116,6 +134,16 @@ def pose_at(action: str, progress: float, seconds: float = 0) -> Pose:
     fade = min(1.0, p * 8.0, (1.0 - p) * 8.0)
     arc = math.sin(math.pi * p)
     cycle = math.sin(seconds * math.tau * 2.2) * fade
+
+    # Keep the artwork fallback expressive if WebGL is unavailable.
+    aliases = {"run": "walk", "magnifier": "search", "scan_code": "sensor_scan", "drag": "pull_scroll",
+               "push": "pull_scroll", "hover": "fly", "land": "fly", "type": "read",
+               "greet": "wave", "happy": "celebrate"}
+    if action in aliases:
+        return pose_at(aliases[action], progress, seconds)
+    if action in ("talk", "listen", "sad"):
+        return Pose(left_arm=10*cycle, right_arm=-18*arc, head=4*cycle,
+                    bob=-arc, eyelids=.2*arc if action == "sad" else 0)
 
     if action == "read":
         return Pose(head=2 * math.sin(seconds * 1.1) * fade, right_arm=-12 * fade)

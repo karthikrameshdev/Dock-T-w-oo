@@ -227,6 +227,17 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
 
     companion = manager.companion
 
+    # Match explicit animation requests before "play" is interpreted as ball play.
+    from dock_twoo.brain.animation import ACTIONS
+    requested = re.sub(r"^(?:(?:please\s+)?(?:show|do|perform|play|start)\s+(?:the\s+)?)", "", clean_text)
+    requested = re.sub(r"\s+(?:animation|gesture|motion)[.!?]*$", "", requested).strip(' .!?').replace(' ', '_')
+    explicit_animation = bool(re.match(r"^(?:please\s+)?(?:show|do|perform|play|start)\b", clean_text) or
+                              re.search(r"\b(?:animation|gesture|motion)[.!?]*$", clean_text))
+    new_gestures = {'magnifier','scan_code','drag','push','hover','land','type','greet','happy','sad','run','talk','listen'}
+    if requested in ACTIONS and (explicit_animation or requested in new_gestures):
+        companion.play_action(requested)
+        return f"Showing {ACTIONS[requested][0].lower()}."
+
     # 1. Window Top Border & Text Box Walking
     if re.search(r"\b(walk\s+on\s+(?:the\s+|top\s+of\s+(?:the\s+)?)?text\s*box|walk\s+on\s+(?:the\s+|top\s+of\s+(?:the\s+)?)?input\s*box)\b", clean_text):
         companion.walk_window_surface(target_type="text_box")
@@ -291,7 +302,7 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
     if move_match:
         style = move_match.group(1)
         dest = move_match.group(2).replace("corner", "").strip()
-        if style in ("go", "move", "run", "head"):
+        if style in ("go", "move", "head"):
             style = "walk"
         companion.travel_to_corner(dest, style=style)
         return f"{style.capitalize()}ing to the {dest}!"

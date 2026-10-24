@@ -30,3 +30,31 @@ export class FaceOverlay {
   }
   scales() { return this.eyes.map(part=>part.eye?.scale.y ?? 0); }
 }
+
+/** Coordinated visemes for the lip, inner mouth, teeth and tongue. */
+export class SpeechOverlay {
+  constructor(meshes) {
+    this.meshes=meshes; this.level=0; this.time=0;
+    // Keep mixer-owned morphs separate from the live audio output. PropertyMixer
+    // caches unchanged values, so writing over its target can freeze expressions.
+    for(const mesh of meshes)mesh.authoredMorphTargetInfluences=[...mesh.morphTargetInfluences];
+  }
+  beforeMixer() {}
+  update({mouth=0, speaking=false, reducedMotion=false, preserveAuthored=false}, dt) {
+    if(preserveAuthored) for(const mesh of this.meshes)mesh.morphTargetInfluences.splice(0,mesh.morphTargetInfluences.length,...mesh.authoredMorphTargetInfluences);
+    this.time += reducedMotion ? 0 : dt;
+    const target=Math.max(0,Math.min(1,Number.isFinite(mouth)?mouth:0));
+    this.level += (target-this.level)*(1-Math.exp(-dt*(target>this.level?22:16)));
+    if(this.level<.001)this.level=0;
+    if(preserveAuthored && !speaking && this.level===0)return this.level;
+    // Alternate open and rounded vowels while retaining the incoming amplitude.
+    const rounded=speaking ? this.level*(.5+.5*Math.sin(this.time*9.3))*.65 : 0;
+    for(const mesh of this.meshes){
+      const keys=mesh.morphTargetDictionary;
+      mesh.morphTargetInfluences[keys.mouth_open]=this.level;
+      if(keys.mouth_round!==undefined)mesh.morphTargetInfluences[keys.mouth_round]=rounded;
+      if(keys.tongue_curl!==undefined)mesh.morphTargetInfluences[keys.tongue_curl]=this.level*(.5+.5*Math.sin(this.time*14))*.5;
+    }
+    return this.level;
+  }
+}

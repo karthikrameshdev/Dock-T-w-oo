@@ -1,9 +1,9 @@
 {
-  "blend_sha256": "25cb51de270a4944e858ca868878ea7752420cc8e7b3bd496c022d7b6700b474",
-  "glb_sha256": "ccddadd2706fb35a25ef9ea89685ec4df04eb45c724aeee3e2332abf21a64cab",
+  "blend_sha256": "4fa3518b0b9c348934793baeb355f271d46679f25b6b7c99235ab7a20d7e20e0",
+  "glb_sha256": "fd1bd74dc1cd0b623838790601e609947d2e0df9e312dda36535ac2a06093a56",
   "success": true,
-  "clips": 35,
-  "frames": 1677,
-  "transition_samples": 315,
+  "clips": 47,
+  "frames": 2524,
+  "transition_samples": 423,
   "intersections": []
 }

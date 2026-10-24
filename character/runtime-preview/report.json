@@ -1,0 +1,373 @@
+{
+  "captures": [
+    "character/runtime-preview/front.png",
+    "character/runtime-preview/blink_closed.png",
+    "character/runtime-preview/eyes_reopened.png",
+    "character/runtime-preview/speech.png",
+    "character/runtime-preview/quarter.png",
+    "character/runtime-preview/side_walk.png",
+    "character/runtime-preview/wave.png",
+    "character/runtime-preview/climb.png",
+    "character/runtime-preview/pull.png",
+    "character/runtime-preview/magnifier.png",
+    "character/runtime-preview/camera.png",
+    "character/runtime-preview/read.png",
+    "character/runtime-preview/scan_code.png",
+    "character/runtime-preview/fly.png",
+    "character/runtime-preview/library_celebrate.png",
+    "character/runtime-preview/library_chase_ball.png",
+    "character/runtime-preview/library_climb_dock.png",
+    "character/runtime-preview/library_dance.png",
+    "character/runtime-preview/library_drag.png",
+    "character/runtime-preview/library_explore.png",
+    "character/runtime-preview/library_fold_arms.png",
+    "character/runtime-preview/library_greet.png",
+    "character/runtime-preview/library_happy.png",
+    "character/runtime-preview/library_hover.png",
+    "character/runtime-preview/library_inspect_icon.png",
+    "character/runtime-preview/library_inspect_window.png",
+    "character/runtime-preview/library_jump.png",
+    "character/runtime-preview/library_kick_ball.png",
+    "character/runtime-preview/library_land.png",
+    "character/runtime-preview/library_listen.png",
+    "character/runtime-preview/library_nod.png",
+    "character/runtime-preview/library_peek.png",
+    "character/runtime-preview/library_point.png",
+    "character/runtime-preview/library_ponder.png",
+    "character/runtime-preview/library_push.png",
+    "character/runtime-preview/library_replace_text.png",
+    "character/runtime-preview/library_roll.png",
+    "character/runtime-preview/library_run.png",
+    "character/runtime-preview/library_sad.png",
+    "character/runtime-preview/library_scan_screen.png",
+    "character/runtime-preview/library_search.png",
+    "character/runtime-preview/library_sensor_scan.png",
+    "character/runtime-preview/library_sleep.png",
+    "character/runtime-preview/library_stretch.png",
+    "character/runtime-preview/library_surprised.png",
+    "character/runtime-preview/library_talk.png",
+    "character/runtime-preview/library_turn_around.png",
+    "character/runtime-preview/library_type.png",
+    "character/runtime-preview/library_walk_window.png",
+    "character/runtime-preview/library_whistle.png",
+    "character/runtime-preview/library_wink.png",
+    "character/runtime-preview/listening.png",
+    "character/runtime-preview/thinking.png",
+    "character/runtime-preview/reduced_motion.png"
+  ],
+  "errors": [],
+  "animation_probes": [
+    {
+      "action": "walk",
+      "hand_displacement": 0.6426
+    },
+    {
+      "action": "wave",
+      "hand_displacement": 0.0138
+    },
+    {
+      "action": "climb",
+      "hand_displacement": 0.0932
+    },
+    {
+      "action": "pull_scroll",
+      "hand_displacement": 0.0222
+    },
+    {
+      "action": "celebrate",
+      "pose_change": 0.3776
+    },
+    {
+      "action": "chase_ball",
+      "pose_change": 2.1993
+    },
+    {
+      "action": "climb_dock",
+      "pose_change": 0.7907
+    },
+    {
+      "action": "dance",
+      "pose_change": 0.3673
+    },
+    {
+      "action": "drag",
+      "pose_change": 0.0578
+    },
+    {
+      "action": "explore",
+      "pose_change": 3.5091
+    },
+    {
+      "action": "fold_arms",
+      "pose_change": 0.6203
+    },
+    {
+      "action": "greet",
+      "pose_change": 0.0838
+    },
+    {
+      "action": "happy",
+      "pose_change": 0.1821
+    },
+    {
+      "action": "hover",
+      "pose_change": 0.1362
+    },
+    {
+      "action": "inspect_icon",
+      "pose_change": 0.0727
+    },
+    {
+      "action": "inspect_window",
+      "pose_change": 0.189
+    },
+    {
+      "action": "jump",
+      "pose_change": 0.3729
+    },
+    {
+      "action": "kick_ball",
+      "pose_change": 0.2241
+    },
+    {
+      "action": "land",
+      "pose_change": 0.2069
+    },
+    {
+      "action": "listen",
+      "pose_change": 0.1803
+    },
+    {
+      "action": "nod",
+      "pose_change": 0.117
+    },
+    {
+      "action": "peek",
+      "pose_change": 0.2168
+    },
+    {
+      "action": "point",
+      "pose_change": 0.7481
+    },
+    {
+      "action": "ponder",
+      "pose_change": 0.2341
+    },
+    {
+      "action": "push",
+      "pose_change": 0.082
+    },
+    {
+      "action": "replace_text",
+      "pose_change": 0.3393
+    },
+    {
+      "action": "roll",
+      "pose_change": 0.8336
+    },
+    {
+      "action": "run",
+      "pose_change": 2.3043
+    },
+    {
+      "action": "sad",
+      "pose_change": 2.8293
+    },
+    {
+      "action": "scan_screen",
+      "pose_change": 2.6303
+    },
+    {
+      "action": "search",
+      "pose_change": 2.0103
+    },
+    {
+      "action": "sensor_scan",
+      "pose_change": 2.2967
+    },
+    {
+      "action": "sleep",
+      "pose_change": 2.8484
+    },
+    {
+      "action": "stretch",
+      "pose_change": 1.1141
+    },
+    {
+      "action": "surprised",
+      "pose_change": 0.6146
+    },
+    {
+      "action": "talk",
+      "pose_change": 2.7903
+    },
+    {
+      "action": "turn_around",
+      "pose_change": 2.9019
+    },
+    {
+      "action": "type",
+      "pose_change": 3.1932
+    },
+    {
+      "action": "walk_window",
+      "pose_change": 4.2921
+    },
+    {
+      "action": "whistle",
+      "pose_change": 4.0113
+    },
+    {
+      "action": "wink",
+      "pose_change": 0.9791
+    }
+  ],
+  "eye_pixels": {
+    "front": 346,
+    "blink_closed": 12,
+    "eyes_reopened": 343
+  },
+  "runtime": {
+    "version": "3.0.0",
+    "assetHash": "fd1bd74dc1cd0b623838790601e609947d2e0df9e312dda36535ac2a06093a56",
+    "clips": [
+      "camera",
+      "celebrate",
+      "chase_ball",
+      "climb",
+      "climb_dock",
+      "dance",
+      "drag",
+      "explore",
+      "fly",
+      "fold_arms",
+      "greet",
+      "happy",
+      "hover",
+      "idle",
+      "inspect_icon",
+      "inspect_window",
+      "jump",
+      "kick_ball",
+      "land",
+      "listen",
+      "magnifier",
+      "nod",
+      "peek",
+      "point",
+      "ponder",
+      "pull_scroll",
+      "push",
+      "read",
+      "replace_text",
+      "roll",
+      "run",
+      "sad",
+      "scan_code",
+      "scan_screen",
+      "search",
+      "sensor_scan",
+      "sleep",
+      "stretch",
+      "surprised",
+      "talk",
+      "turn_around",
+      "type",
+      "walk",
+      "walk_window",
+      "wave",
+      "whistle",
+      "wink"
+    ],
+    "bones": [
+      "root",
+      "thighL",
+      "shinL",
+      "footL",
+      "thighR",
+      "shinR",
+      "footR",
+      "torso",
+      "head",
+      "antenna",
+      "browL",
+      "browR",
+      "eyeL",
+      "pupilL",
+      "eyeR",
+      "pupilR",
+      "speech",
+      "jetL",
+      "jetR",
+      "propscan",
+      "propscanline",
+      "upper_armL",
+      "forearmL",
+      "handL",
+      "fingersL",
+      "digit0L",
+      "digit_tip0L",
+      "digit1L",
+      "digit_tip1L",
+      "digit2L",
+      "digit_tip2L",
+      "digit3L",
+      "digit_tip3L",
+      "propcamera",
+      "propmagnifier",
+      "thumbL",
+      "thumb_tipL",
+      "upper_armR",
+      "forearmR",
+      "handR",
+      "fingersR",
+      "digit0R",
+      "digit_tip0R",
+      "digit1R",
+      "digit_tip1R",
+      "digit2R",
+      "digit_tip2R",
+      "digit3R",
+      "digit_tip3R",
+      "proptablet",
+      "thumbR",
+      "thumb_tipR"
+    ],
+    "meshes": 222,
+    "renderedFrames": 2061,
+    "nonFinite": false,
+    "translucent": false,
+    "eyeScales": [
+      1,
+      1
+    ],
+    "action": "dance",
+    "mouth": 0,
+    "actionTime": 0,
+    "speechMeshes": 4,
+    "triangles": 121022,
+    "drawCalls": 222,
+    "propScales": {
+      "propmagnifier": 0.0009999996014247317,
+      "propcamera": 0.0009999996014247317,
+      "proptablet": 0.0009999996014247317,
+      "propscan": 0.0010000022789827198,
+      "jetL": 0.0010000022789827198,
+      "jetR": 0.0010000022789827198
+    },
+    "handPositions": [
+      [
+        1.1200005070392047,
+        1.5813042357837077,
+        0.37276085072938936
+      ],
+      [
+        -1.120000511839905,
+        1.4899999339549046,
+        0.025000141880060917
+      ]
+    ]
+  },
+  "average_render_fps": 43.7,
+  "success": true
+}

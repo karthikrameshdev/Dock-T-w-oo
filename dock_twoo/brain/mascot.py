@@ -606,7 +606,7 @@ class Companion(QWidget):
 
         if keep_orientation:
             self.turn_target = previous_turn_target
-        elif action in ("walk", "walk_window", "chase_ball"):
+        elif action in ("walk", "run", "walk_window", "chase_ball"):
             self.turn_target = 1.0
         elif action in ("climb", "climb_dock"):
             self.turn_target = 0.6
@@ -619,9 +619,9 @@ class Companion(QWidget):
         self.motion_started = time.monotonic()
         self._last_turn_update = self.motion_started
         self.motion_duration = duration or ACTIONS[action][1]
-        if destination is not None and action in ("walk", "walk_window", "chase_ball"):
+        if destination is not None and action in ("walk", "run", "walk_window", "chase_ball"):
             distance = math.hypot(destination.x() - self.x(), destination.y() - self.y())
-            self.motion_duration = max(self.motion_duration, distance / (230 if action == "chase_ball" else 160))
+            self.motion_duration = max(self.motion_duration, distance / (230 if action in ("run", "chase_ball") else 160))
         self.gait_distance = self.gait_blend = 0.0
         self.motion_timer.start()
         self.update()
@@ -1070,7 +1070,7 @@ class Companion(QWidget):
         else:
             target = QPoint(int(area.center().x()) - self.width() // 2, int(area.center().y()) - self.height() // 2)
 
-        valid_style = style if style in ("jump", "fly", "walk", "roll", "glide") else "walk"
+        valid_style = style if style in ("jump", "fly", "walk", "run", "roll", "glide") else "walk"
         duration = 1.3 if valid_style == "jump" else (1.6 if valid_style == "fly" else 2.2)
         self.play_action(valid_style, destination=target, duration=duration)
         self.arrival = lambda: self.turn_to_user()
