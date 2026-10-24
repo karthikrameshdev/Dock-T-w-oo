@@ -364,6 +364,12 @@ def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
     cfg_mgr.update({"edge": "left"})
     assert dock.width() == right_width
 
+    # 5. When dock_height is customized independently on top, returning to right restores original dock_width
+    cfg_mgr.update({"edge": "top", "dock_height": 52})
+    assert dock.height() == 52 + 16
+    cfg_mgr.update({"edge": "right"})
+    assert dock.width() == right_width
+
     dock.close()
 
 

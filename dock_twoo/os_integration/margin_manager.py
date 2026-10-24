@@ -32,6 +32,7 @@ class DesktopMarginManager(QObject):
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._last_state: tuple = ()
+        self._adjusted_windows: dict[str, dict] = {}
 
     def update_dock_geometry(self, rect: QRect) -> None:
         """Update the active dock boundary used for clamping."""
@@ -39,9 +40,20 @@ class DesktopMarginManager(QObject):
             self._dock_rect = rect
 
     def update_config(self, config: DockConfig) -> None:
-        """Update configuration settings."""
+        """Update configuration settings and revert windows on vacated edges."""
+        old_edge = None
+        old_enabled = True
         with self._lock:
+            old_edge = self.config.edge
+            old_enabled = self.config.reserve_screen_space
             self.config = config
+            new_edge = config.edge
+            new_enabled = config.reserve_screen_space
+
+        if old_edge != new_edge:
+            self.restore_all_adjusted_windows(vacated_edge=old_edge)
+        elif old_enabled and not new_enabled:
+            self.restore_all_adjusted_windows()
 
     def start(self) -> None:
         """Start the background margin monitor."""
@@ -52,11 +64,74 @@ class DesktopMarginManager(QObject):
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop the background margin monitor."""
+        """Stop the background margin monitor and restore any clamped windows."""
         self._running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
             self._thread = None
+        self.restore_all_adjusted_windows()
+
+    def restore_all_adjusted_windows(self, vacated_edge: Optional[str] = None) -> None:
+        """Restore windows that were clamped on a vacated edge, or all if vacated_edge is None."""
+        if platform.system().lower() != "darwin":
+            return
+
+        with self._lock:
+            if vacated_edge is not None:
+                to_restore = [app for app, state in self._adjusted_windows.items() if state.get("edge") == vacated_edge]
+            else:
+                to_restore = list(self._adjusted_windows.keys())
+
+        for app_name in to_restore:
+            self.restore_adjusted_window(app_name)
+
+    def restore_adjusted_window(self, app_name: str) -> None:
+        """Restore an adjusted application window back to its pre-clamped position and dimensions."""
+        with self._lock:
+            state = self._adjusted_windows.pop(app_name, None)
+        if not state:
+            return
+
+        edge = state.get("edge")
+        orig_x = state.get("orig_x")
+        orig_y = state.get("orig_y")
+        orig_w = state.get("orig_w")
+        orig_h = state.get("orig_h")
+
+        restore_cmds = []
+        if edge == "top":
+            restore_cmds.append(f"set position of w to {{curX, {orig_y}}}")
+            restore_cmds.append(f"set size of w to {{curW, {orig_h}}}")
+        elif edge == "bottom":
+            restore_cmds.append(f"set size of w to {{curW, {orig_h}}}")
+        elif edge == "left":
+            restore_cmds.append(f"set position of w to {{{orig_x}, curY}}")
+            restore_cmds.append(f"set size of w to {{{orig_w}, curH}}")
+        elif edge == "right":
+            restore_cmds.append(f"set size of w to {{{orig_w}, curH}}")
+
+        if not restore_cmds:
+            return
+
+        cmd_str = "\n                        ".join(restore_cmds)
+        script = f'''
+        tell application "System Events"
+            if exists process "{app_name}" then
+                tell process "{app_name}"
+                    if (count of windows) > 0 then
+                        set w to window 1
+                        set {{curX, curY}} to position of w
+                        set {{curW, curH}} to size of w
+                        {cmd_str}
+                    end if
+                end tell
+            end if
+        end tell
+        '''
+        try:
+            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=1.2)
+        except Exception:
+            pass
 
     def _monitor_loop(self) -> None:
         """Background loop monitoring the frontmost window on macOS."""
@@ -94,7 +169,7 @@ class DesktopMarginManager(QObject):
         max_bottom: int,
         edge: str,
     ) -> None:
-        """Run a lightweight AppleScript to check and clamp the frontmost window if needed."""
+        """Run a lightweight AppleScript to check, clamp, or restore the frontmost window."""
         script = f'''
         tell application "System Events"
             set frontApp to first application process whose frontmost is true
@@ -111,7 +186,7 @@ class DesktopMarginManager(QObject):
                             set newW to ({max_right} - wx)
                             if newW >= 300 then
                                 set size of w to {{newW, wh}}
-                                return "adjusted:" & appName & ":" & newW
+                                return "adjusted:" & appName & ":right:" & wx & ":" & wy & ":" & ww & ":" & wh & ":" & newW
                             end if
                         end if
                         
@@ -122,7 +197,7 @@ class DesktopMarginManager(QObject):
                             if newW >= 300 then
                                 set position of w to {{newX, wy}}
                                 set size of w to {{newW, wh}}
-                                return "adjusted:" & appName & ":" & newW
+                                return "adjusted:" & appName & ":left:" & wx & ":" & wy & ":" & ww & ":" & wh & ":" & newW
                             end if
                         end if
 
@@ -133,7 +208,7 @@ class DesktopMarginManager(QObject):
                             if newH >= 200 then
                                 set position of w to {{wx, newY}}
                                 set size of w to {{ww, newH}}
-                                return "adjusted:" & appName & ":" & newH
+                                return "adjusted:" & appName & ":top:" & wx & ":" & wy & ":" & ww & ":" & wh & ":" & newH
                             end if
                         end if
 
@@ -142,7 +217,7 @@ class DesktopMarginManager(QObject):
                             set newH to ({max_bottom} - wy)
                             if newH >= 200 then
                                 set size of w to {{ww, newH}}
-                                return "adjusted:" & appName & ":" & newH
+                                return "adjusted:" & appName & ":bottom:" & wx & ":" & wy & ":" & ww & ":" & wh & ":" & newH
                             end if
                         end if
                         
@@ -163,5 +238,33 @@ class DesktopMarginManager(QObject):
         out = res.stdout.strip()
         if out.startswith("adjusted:"):
             parts = out.split(":")
-            if len(parts) >= 3:
-                self.margin_adjusted.emit(parts[1], int(parts[2]), 0)
+            if len(parts) >= 8:
+                app_name = parts[1]
+                edge_clamped = parts[2]
+                orig_x = int(parts[3])
+                orig_y = int(parts[4])
+                orig_w = int(parts[5])
+                orig_h = int(parts[6])
+                new_dim = int(parts[7])
+
+                with self._lock:
+                    if app_name not in self._adjusted_windows:
+                        self._adjusted_windows[app_name] = {
+                            "edge": edge_clamped,
+                            "orig_x": orig_x,
+                            "orig_y": orig_y,
+                            "orig_w": orig_w,
+                            "orig_h": orig_h,
+                        }
+                    else:
+                        self._adjusted_windows[app_name]["edge"] = edge_clamped
+
+                self.margin_adjusted.emit(app_name, new_dim, 0)
+        elif out.startswith("ok:"):
+            parts = out.split(":")
+            if len(parts) >= 2:
+                app_name = parts[1]
+                with self._lock:
+                    # If this app was adjusted on an edge that is no longer the active dock edge, restore it!
+                    if app_name in self._adjusted_windows and self._adjusted_windows[app_name].get("edge") != edge:
+                        self.restore_adjusted_window(app_name)

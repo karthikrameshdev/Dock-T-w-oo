@@ -49,3 +49,32 @@ def test_margin_manager_signals(qapp):
     mgr.margin_adjusted.emit("Safari", 1370, 900)
     assert len(received) == 1
     assert received[0] == ("Safari", 1370, 900)
+
+
+def test_margin_manager_window_restoration_on_edge_change(qapp, monkeypatch):
+    cfg = DockConfig(reserve_screen_space=True, edge="top")
+    mgr = DesktopMarginManager(cfg)
+
+    # Simulate Safari having been clamped on top edge
+    mgr._adjusted_windows["Safari"] = {
+        "edge": "top",
+        "orig_x": 50,
+        "orig_y": 25,
+        "orig_w": 1200,
+        "orig_h": 900,
+    }
+
+    restored_apps = []
+    def mock_restore(app_name):
+        restored_apps.append(app_name)
+        mgr._adjusted_windows.pop(app_name, None)
+
+    monkeypatch.setattr(mgr, "restore_adjusted_window", mock_restore)
+
+    # When config changes to "right" (vacating "top"):
+    new_cfg = DockConfig(reserve_screen_space=True, edge="right")
+    mgr.update_config(new_cfg)
+
+    # Safari must have been restored!
+    assert "Safari" in restored_apps
+    assert "Safari" not in mgr._adjusted_windows

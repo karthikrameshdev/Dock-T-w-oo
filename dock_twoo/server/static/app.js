@@ -172,8 +172,7 @@ function initForm(cfg) {
   // 1. Placement & Sizing
   setSegmentActive(edgeControl, cfg.edge);
   setSegmentActive(heightModeControl, cfg.dock_height_mode);
-  dockWidth.value = cfg.dock_width;
-  dockWidthVal.textContent = `${cfg.dock_width} px`;
+  updateThicknessControl(cfg);
   dockRadius.value = cfg.dock_corner_radius;
   dockRadiusVal.textContent = `${cfg.dock_corner_radius} px`;
   edgeOffsetX.value = cfg.edge_offset_x || 12;
@@ -326,6 +325,25 @@ function escapeHtml(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function updateThicknessControl(cfg) {
+  const dockWidthLabel = document.getElementById('dockWidthLabel');
+  const dockWidthHelp = document.getElementById('dockWidthHelp');
+  const isHoriz = (cfg.edge === 'top' || cfg.edge === 'bottom');
+  if (isHoriz) {
+    if (dockWidthLabel) dockWidthLabel.textContent = 'Dock Height';
+    if (dockWidthHelp) dockWidthHelp.textContent = 'Capsule cross-axis height along the screen edge';
+    const val = (cfg.dock_height !== undefined ? cfg.dock_height : (cfg.dock_width || 60));
+    dockWidth.value = val;
+    dockWidthVal.textContent = `${val} px`;
+  } else {
+    if (dockWidthLabel) dockWidthLabel.textContent = 'Dock Width';
+    if (dockWidthHelp) dockWidthHelp.textContent = 'Capsule cross-axis width along the screen edge';
+    const val = cfg.dock_width || 60;
+    dockWidth.value = val;
+    dockWidthVal.textContent = `${val} px`;
+  }
+}
+
 // Live Update Desktop Preview Mockup
 function updatePreview(cfg) {
   if (!cfg || !desktopMockup || !mockupDock) return;
@@ -346,7 +364,18 @@ function updatePreview(cfg) {
   }
 
   // 2. Dock Dimensions & Styling
-  mockupDock.style.width = `${cfg.dock_width}px`;
+  const isHoriz = (cfg.edge === 'top' || cfg.edge === 'bottom');
+  const thickness = isHoriz
+    ? (cfg.dock_height !== undefined ? cfg.dock_height : (cfg.dock_width || 60))
+    : (cfg.dock_width || 60);
+
+  if (isHoriz) {
+    mockupDock.style.height = `${thickness}px`;
+    mockupDock.style.width = '90%';
+  } else {
+    mockupDock.style.width = `${thickness}px`;
+    mockupDock.style.height = '90%';
+  }
   mockupDock.style.borderRadius = `${cfg.dock_corner_radius}px`;
   mockupDock.style.backgroundColor = cfg.dock_bg_color;
   mockupDock.style.opacity = cfg.dock_opacity;
@@ -465,6 +494,7 @@ if (edgeControl) {
     if (!btn) return;
     setSegmentActive(edgeControl, btn.dataset.edge);
     currentConfig.edge = btn.dataset.edge;
+    updateThicknessControl(currentConfig);
     updatePreview(currentConfig);
     autoSave();
   });
@@ -504,7 +534,11 @@ if (themeControl) {
 dockWidth.addEventListener('input', (e) => {
   const val = parseInt(e.target.value);
   dockWidthVal.textContent = `${val} px`;
-  currentConfig.dock_width = val;
+  if (currentConfig.edge === 'top' || currentConfig.edge === 'bottom') {
+    currentConfig.dock_height = val;
+  } else {
+    currentConfig.dock_width = val;
+  }
   updatePreview(currentConfig);
 });
 dockWidth.addEventListener('change', autoSave);

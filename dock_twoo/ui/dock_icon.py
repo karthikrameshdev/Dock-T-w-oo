@@ -44,7 +44,8 @@ class DockIconButton(QWidget):
 
     def _update_geometry(self) -> None:
         """Set standard bounding box so all icons are strictly uniform."""
-        btn_dimension = self.config.dock_width - (self.config.dock_padding_x * 2)
+        base_dim = self.config.dock_height if self.config.edge in ("top", "bottom") else self.config.dock_width
+        btn_dimension = base_dim - (self.config.dock_padding_x * 2)
         self.setFixedSize(btn_dimension, btn_dimension)
 
     def set_active(self, active: bool) -> None:

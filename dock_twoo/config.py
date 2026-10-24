@@ -171,12 +171,17 @@ class DockConfig:
     offset_y: int = 0
 
     # Dock dimensions & shape
-    dock_width: int = 60
+    dock_width: int = 60  # Cross-axis width when dock is pinned to left or right edge
+    dock_height: int = 60  # Cross-axis height when dock is pinned to top or bottom edge
     dock_height_mode: str = "fill"  # "fill" (pill taking ~90% height) or "auto" or "fixed"
     dock_height_fixed: int = 700
     dock_corner_radius: int = 12
     dock_padding_y: int = 10
     dock_padding_x: int = 8
+
+    def get_effective_thickness(self) -> int:
+        """Return the cross-axis thickness: dock_height for top/bottom edges, dock_width for left/right edges."""
+        return self.dock_height if self.edge in ("top", "bottom") else self.dock_width
 
     # Dock appearance
     theme_mode: str = "system"  # "system", "dark", "light", "custom"
@@ -290,6 +295,8 @@ class DockConfig:
                 cfg.app_settings = merged
             elif hasattr(cfg, k):
                 setattr(cfg, k, v)
+        if "dock_height" not in data and "dock_width" in data:
+            cfg.dock_height = data["dock_width"]
         return cfg
 
 

@@ -93,7 +93,8 @@ class DockLogoWidget(QWidget):
         self.update()
 
     def _update_geometry(self) -> None:
-        dim = self.config.dock_width - (self.config.dock_padding_x * 2)
+        base_dim = self.config.dock_height if self.config.edge in ("top", "bottom") else self.config.dock_width
+        dim = base_dim - (self.config.dock_padding_x * 2)
         self.setFixedSize(dim, dim)
 
     def set_hover(self, hover: bool) -> None:
@@ -154,7 +155,8 @@ class ThreeDotsDivider(QWidget):
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _update_size(self) -> None:
-        dim = self.config.dock_width - (self.config.dock_padding_x * 2)
+        base_dim = self.config.dock_height if self.config.edge in ("top", "bottom") else self.config.dock_width
+        dim = base_dim - (self.config.dock_padding_x * 2)
         if self.config.edge in ("top", "bottom"):
             self.setFixedSize(14, dim)
         else:
@@ -246,8 +248,9 @@ class DockWindow(QWidget):
             QWidget().setLayout(old_layout)
 
         glow_pad = 8 if self.config.glow_enabled else 2
-        thickness = self.config.dock_width + (glow_pad * 2)
         is_horizontal = self.config.edge in ("top", "bottom")
+        base_thickness = self.config.dock_height if is_horizontal else self.config.dock_width
+        thickness = base_thickness + (glow_pad * 2)
 
         # Explicitly reset minimum/maximum size limits when reconstructing layout
         self.setMinimumSize(0, 0)
@@ -292,7 +295,7 @@ class DockWindow(QWidget):
 
         # 3. Scrollable app icons container (Notes is the first app icon)
         self.scroll_area = DockScrollArea(is_horizontal=is_horizontal, parent=self)
-        dim = self.config.dock_width - (self.config.dock_padding_x * 2)
+        dim = base_thickness - (self.config.dock_padding_x * 2)
         if is_horizontal:
             self.scroll_area.setFixedHeight(dim)
             self.scroll_area.setSizePolicy(
@@ -420,8 +423,9 @@ class DockWindow(QWidget):
     def reposition_dock(self) -> None:
         """Calculate screen edge position and update dock geometry."""
         glow_pad = 8 if self.config.glow_enabled else 2
-        thickness = self.config.dock_width + (glow_pad * 2)
         is_horizontal = self.config.edge in ("top", "bottom")
+        base_thickness = self.config.dock_height if is_horizontal else self.config.dock_width
+        thickness = base_thickness + (glow_pad * 2)
 
         # Explicitly reset minimum/maximum size limits to avoid stale orientation constraints
         self.setMinimumSize(0, 0)

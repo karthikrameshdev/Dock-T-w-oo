@@ -130,7 +130,8 @@ class ScreenManager:
 
         is_horizontal = config.edge in ("top", "bottom")
         glow_pad = 8 if config.glow_enabled else 2
-        thickness = config.dock_width + (glow_pad * 2)
+        base_thickness = config.dock_height if is_horizontal else config.dock_width
+        thickness = base_thickness + (glow_pad * 2)
 
         if is_horizontal:
             height = thickness

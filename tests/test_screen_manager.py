@@ -102,10 +102,10 @@ def test_dock_cross_axis_symmetry_across_orientations(qapp):
             glow_pad = 8 if glow else 2
             expected_thickness = width + (glow_pad * 2)
 
-            cfg_right = DockConfig(edge="right", dock_width=width, glow_enabled=glow)
-            cfg_left = DockConfig(edge="left", dock_width=width, glow_enabled=glow)
-            cfg_top = DockConfig(edge="top", dock_width=width, glow_enabled=glow)
-            cfg_bottom = DockConfig(edge="bottom", dock_width=width, glow_enabled=glow)
+            cfg_right = DockConfig(edge="right", dock_width=width, dock_height=width, glow_enabled=glow)
+            cfg_left = DockConfig(edge="left", dock_width=width, dock_height=width, glow_enabled=glow)
+            cfg_top = DockConfig(edge="top", dock_width=width, dock_height=width, glow_enabled=glow)
+            cfg_bottom = DockConfig(edge="bottom", dock_width=width, dock_height=width, glow_enabled=glow)
 
             g_right = ScreenManager.calculate_dock_geometry(cfg_right)
             g_left = ScreenManager.calculate_dock_geometry(cfg_left)
@@ -117,6 +117,17 @@ def test_dock_cross_axis_symmetry_across_orientations(qapp):
             assert g_top.height() == expected_thickness
             assert g_bottom.height() == expected_thickness
             assert g_right.width() == g_top.height()
+
+
+def test_independent_dock_width_and_height(qapp):
+    """Verify that dock_height on horizontal edges does not alter dock_width on vertical edges."""
+    cfg = DockConfig(edge="top", dock_width=80, dock_height=52, glow_enabled=True)
+    geom_top = ScreenManager.calculate_dock_geometry(cfg)
+    assert geom_top.height() == 52 + 16
+
+    cfg.edge = "right"
+    geom_right = ScreenManager.calculate_dock_geometry(cfg)
+    assert geom_right.width() == 80 + 16
 
 
 def test_attached_window_geometry_top_and_bottom(qapp):
