@@ -912,22 +912,167 @@ function showToast(msg, isError = false) {
 // Initial Load
 loadConfig();
 initBrainConsole();
+initStorageConsole();
 
-// Brain Voice Assistant Console Module
+// Global Storage & Data Management Console Module
+async function initStorageConsole() {
+  const globalStoragePath = document.getElementById('globalStoragePath');
+  const browseStorageBtn = document.getElementById('browseStorageBtn');
+  const applyStorageBtn = document.getElementById('applyStorageBtn');
+  const refreshStorageBtn = document.getElementById('refreshStorageBtn');
+  const storageStatusHint = document.getElementById('storageStatusHint');
+
+  const storageNotesPath = document.getElementById('storageNotesPath');
+  const storageNotesCount = document.getElementById('storageNotesCount');
+  const storageNotesSize = document.getElementById('storageNotesSize');
+
+  const storageVaultPath = document.getElementById('storageVaultPath');
+  const storageVaultCount = document.getElementById('storageVaultCount');
+  const storageVaultSize = document.getElementById('storageVaultSize');
+
+  const storageModelsPath = document.getElementById('storageModelsPath');
+  const storageModelsCount = document.getElementById('storageModelsCount');
+  const storageModelsSize = document.getElementById('storageModelsSize');
+
+  const storageBrainPath = document.getElementById('storageBrainPath');
+  const storageBrainCount = document.getElementById('storageBrainCount');
+  const storageBrainSize = document.getElementById('storageBrainSize');
+
+  async function loadStorageData() {
+    try {
+      const res = await fetch('/api/storage');
+      const data = await res.json();
+      if (!data) return;
+
+      if (globalStoragePath) globalStoragePath.value = data.storage_path || '~/.dock2';
+
+      const subs = data.subsystems || {};
+      if (subs.notes) {
+        if (storageNotesPath) storageNotesPath.textContent = subs.notes.path;
+        if (storageNotesCount) storageNotesCount.textContent = `${subs.notes.file_count} files`;
+        if (storageNotesSize) storageNotesSize.textContent = `${subs.notes.size_mb} MB`;
+      }
+      if (subs.vault) {
+        if (storageVaultPath) storageVaultPath.textContent = subs.vault.path;
+        if (storageVaultCount) storageVaultCount.textContent = `${subs.vault.file_count} files`;
+        if (storageVaultSize) storageVaultSize.textContent = `${subs.vault.size_mb} MB`;
+      }
+      if (subs.models) {
+        if (storageModelsPath) storageModelsPath.textContent = subs.models.path;
+        if (storageModelsCount) storageModelsCount.textContent = `${subs.models.file_count} files`;
+        if (storageModelsSize) storageModelsSize.textContent = `${subs.models.size_mb} MB`;
+      }
+      if (subs.brain) {
+        if (storageBrainPath) storageBrainPath.textContent = subs.brain.path;
+        if (storageBrainCount) storageBrainCount.textContent = `${subs.brain.file_count} files`;
+        if (storageBrainSize) storageBrainSize.textContent = `${subs.brain.size_mb} MB`;
+      }
+    } catch (err) {
+      console.warn('Could not load storage data:', err);
+    }
+  }
+
+  if (browseStorageBtn) {
+    browseStorageBtn.addEventListener('click', async () => {
+      try {
+        showToast('Opening native folder picker…');
+        const res = await fetch('/api/storage/browse', { method: 'POST' });
+        const data = await res.json();
+        if (data.success && data.path) {
+          if (globalStoragePath) globalStoragePath.value = data.path;
+          showToast(`Selected folder: ${data.path}`);
+        } else if (!data.cancelled) {
+          showToast('Folder browse cancelled', true);
+        }
+      } catch (err) {
+        showToast('Failed to open folder picker', true);
+      }
+    });
+  }
+
+  if (applyStorageBtn) {
+    applyStorageBtn.addEventListener('click', async () => {
+      const targetPath = globalStoragePath ? globalStoragePath.value.trim() : '';
+      if (!targetPath) {
+        showToast('Please enter or select a root storage path', true);
+        return;
+      }
+      try {
+        showToast('Migrating all data to new storage path…');
+        const res = await fetch('/api/storage/change', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_path: targetPath }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Migrated all data to: ${data.storage_path}`);
+          if (storageStatusHint) {
+            storageStatusHint.textContent = `Root storage active at ${data.storage_path} (${data.migration?.file_count || 0} files migrated)`;
+          }
+          await loadStorageData();
+        } else {
+          showToast(`Storage change failed: ${data.error || 'Unknown error'}`, true);
+        }
+      } catch (err) {
+        showToast('Failed to change storage path', true);
+      }
+    });
+  }
+
+  if (refreshStorageBtn) {
+    refreshStorageBtn.addEventListener('click', async () => {
+      await loadStorageData();
+      showToast('Storage statistics refreshed');
+    });
+  }
+
+  await loadStorageData();
+}
+
+// Brain Voice Assistant Console Module with Dynamic Providers & Role Routing
 async function initBrainConsole() {
   const agentStatusBadge = document.getElementById('brainAgentStatusBadge');
   const summonBtn = document.getElementById('brainSummonBtn');
   const hideBtn = document.getElementById('brainHideBtn');
   const talkBtn = document.getElementById('brainTalkBtn');
   const loopAnimBtn = document.getElementById('brainLoopAnimBtn');
+
+  // Profile management elements
   const activeProfileSel = document.getElementById('brainActiveProfile');
   const providerSel = document.getElementById('brainProvider');
+  const profileNameInput = document.getElementById('brainProfileName');
+  const profileStatusBadge = document.getElementById('brainProfileStatusBadge');
+  const newProfileBtn = document.getElementById('brainNewProfileBtn');
+  const deleteProfileBtn = document.getElementById('brainDeleteProfileBtn');
+  const saveProfileBtn = document.getElementById('brainSaveProfileBtn');
+
+  // Custom provider fields
+  const customProviderFields = document.getElementById('customProviderFields');
+  const customProviderName = document.getElementById('customProviderName');
+  const customAuthHeader = document.getElementById('customAuthHeader');
+
+  // Model & Base URL
   const modelIdInput = document.getElementById('brainModelId');
   const baseUrlInput = document.getElementById('brainBaseUrl');
+  const baseUrlHint = document.getElementById('baseUrlHint');
+  const popularModelsRow = document.getElementById('popularModelsRow');
+
+  // Modality & Role Routing inputs
+  const routeTextOutput = document.getElementById('routeTextOutput');
+  const routeAudioOutput = document.getElementById('routeAudioOutput');
+  const routeImageInput = document.getElementById('routeImageInput');
+  const routeResearch = document.getElementById('routeResearch');
+  const routeComputerUse = document.getElementById('routeComputerUse');
+  const routeAudioInput = document.getElementById('routeAudioInput');
+
+  // Credentials & toggles
   const apiKeyInput = document.getElementById('brainApiKey');
   const saveKeyBtn = document.getElementById('brainSaveKeyBtn');
   const keyStatusHint = document.getElementById('brainKeyStatusHint');
   const localOnlyToggle = document.getElementById('brainLocalOnlyToggle');
+
+  // Voice Persona & Motion controls
   const voiceNameSel = document.getElementById('brainVoiceName');
   const speechRateSlider = document.getElementById('brainSpeechRate');
   const speechRateVal = document.getElementById('brainSpeechRateVal');
@@ -940,6 +1085,10 @@ async function initBrainConsole() {
   const wakeWordToggle = document.getElementById('brainWakeWordToggle');
   const wakeWordInput = document.getElementById('brainWakeWord');
   const pushToTalkSel = document.getElementById('brainPushToTalkKey');
+
+  let cachedProfiles = [];
+  let cachedCatalog = {};
+  let currentEditingProfile = null;
 
   // Brain Multi-Tab Switching Logic
   document.querySelectorAll('.brain-tab-btn').forEach((btn) => {
@@ -1042,11 +1191,223 @@ async function initBrainConsole() {
         const data = await res.json();
         if (data.success) {
           showToast(`${provider.toUpperCase()} API Key saved`);
-          if (keyStatusHint) keyStatusHint.textContent = `Key configured for ${provider}`;
+          if (keyStatusHint) keyStatusHint.textContent = `Key configured securely for ${provider}`;
           apiKeyInput.value = '';
+          await loadBrainStatus();
         }
       } catch (err) {
         showToast('Failed to save API key', true);
+      }
+    });
+  }
+
+  function renderPopularChips(providerKind, activeModel) {
+    if (!popularModelsRow) return;
+    popularModelsRow.innerHTML = '';
+    const provInfo = cachedCatalog[providerKind] || {};
+    const models = provInfo.models || [];
+    models.forEach((mod) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'model-chip' + (mod === activeModel ? ' selected' : '');
+      chip.textContent = mod;
+      chip.dataset.model = mod;
+      chip.addEventListener('click', () => {
+        if (modelIdInput) modelIdInput.value = mod;
+        if (routeTextOutput) routeTextOutput.value = mod;
+        document.querySelectorAll('.model-chip').forEach((c) => c.classList.remove('selected'));
+        chip.classList.add('selected');
+      });
+      popularModelsRow.appendChild(chip);
+    });
+  }
+
+  function handleProviderChange(providerKind, isUserAction = false) {
+    if (customProviderFields) {
+      customProviderFields.style.display = providerKind === 'custom' ? 'block' : 'none';
+    }
+    const provInfo = cachedCatalog[providerKind] || {};
+    if (isUserAction) {
+      if (provInfo.default_base_url && baseUrlInput) {
+        baseUrlInput.value = provInfo.default_base_url;
+      }
+      if (provInfo.default_model && modelIdInput) {
+        modelIdInput.value = provInfo.default_model;
+      }
+      if (routeTextOutput && provInfo.default_model) {
+        routeTextOutput.value = provInfo.default_model;
+      }
+    }
+    if (baseUrlHint) {
+      baseUrlHint.textContent = provInfo.default_base_url
+        ? `Default endpoint: ${provInfo.default_base_url}`
+        : 'Custom private endpoint (OpenAI-compatible)';
+    }
+    renderPopularChips(providerKind, modelIdInput ? modelIdInput.value : '');
+  }
+
+  if (providerSel) {
+    providerSel.addEventListener('change', () => {
+      handleProviderChange(providerSel.value, true);
+    });
+  }
+
+  function populateProfileForm(profile) {
+    if (!profile) return;
+    currentEditingProfile = profile;
+    if (profileNameInput) profileNameInput.value = profile.name || '';
+    if (providerSel) {
+      providerSel.value = profile.provider || 'local';
+      if (providerSel._refreshCustomDropdown) providerSel._refreshCustomDropdown();
+    }
+    if (modelIdInput) modelIdInput.value = profile.model || 'local';
+    if (baseUrlInput) baseUrlInput.value = profile.base_url || '';
+    if (localOnlyToggle) localOnlyToggle.checked = !!profile.local_only;
+
+    if (customProviderName) customProviderName.value = profile.custom_provider_name || '';
+    if (customAuthHeader) customAuthHeader.value = profile.custom_auth_header || '';
+
+    const r = profile.routes || {};
+    if (routeTextOutput) routeTextOutput.value = r.text_output || profile.model || '';
+    if (routeAudioOutput) routeAudioOutput.value = r.audio_output || profile.voice_model || (profile.voice && profile.voice.voice_name) || '';
+    if (routeImageInput) routeImageInput.value = r.image_input || '';
+    if (routeResearch) routeResearch.value = r.research || '';
+    if (routeComputerUse) routeComputerUse.value = r.computer_use || '';
+    if (routeAudioInput) routeAudioInput.value = r.audio_input || '';
+
+    const status = (profile.status || 'active').toLowerCase();
+    if (profileStatusBadge) {
+      if (status === 'active') {
+        profileStatusBadge.textContent = 'Active · Online';
+        profileStatusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+        profileStatusBadge.style.color = '#34d399';
+      } else if (status === 'offline') {
+        profileStatusBadge.textContent = 'Offline · Unreachable';
+        profileStatusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+        profileStatusBadge.style.color = '#f87171';
+      } else {
+        profileStatusBadge.textContent = 'Not Configured · Missing Key';
+        profileStatusBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+        profileStatusBadge.style.color = '#fbbf24';
+      }
+    }
+
+    handleProviderChange(profile.provider || 'local', false);
+  }
+
+  if (activeProfileSel) {
+    activeProfileSel.addEventListener('change', async () => {
+      const selectedId = activeProfileSel.value;
+      const targetProf = cachedProfiles.find((p) => p.id === selectedId);
+      if (targetProf) {
+        populateProfileForm(targetProf);
+      }
+      try {
+        const res = await fetch('/api/brain/activate-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_id: selectedId }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Active profile set to: ${data.active.name}`);
+          loadBrainStatus();
+        }
+      } catch (err) {
+        showToast('Failed to switch profile', true);
+      }
+    });
+  }
+
+  if (newProfileBtn) {
+    newProfileBtn.addEventListener('click', () => {
+      const newProf = {
+        id: 'prof_' + Math.random().toString(36).substring(2, 9),
+        name: 'New Custom Profile',
+        provider: 'custom',
+        model: 'custom-model',
+        base_url: 'http://127.0.0.1:8000/v1',
+        local_only: false,
+        status: 'active',
+        routes: {
+          text_output: 'custom-model',
+          audio_output: 'Aoede',
+          image_input: 'custom-model',
+          research: 'custom-model',
+          computer_use: 'custom-model',
+          audio_input: '',
+        },
+      };
+      populateProfileForm(newProf);
+      showToast('New profile created. Configure inputs and click "Save Profile"');
+    });
+  }
+
+  if (saveProfileBtn) {
+    saveProfileBtn.addEventListener('click', async () => {
+      const pId = currentEditingProfile ? currentEditingProfile.id : ('prof_' + Math.random().toString(36).substring(2, 9));
+      const pName = profileNameInput ? profileNameInput.value.trim() : 'Custom Profile';
+      const pProvider = providerSel ? providerSel.value : 'custom';
+      const pModel = modelIdInput ? modelIdInput.value.trim() : 'local';
+      const pBaseUrl = baseUrlInput ? baseUrlInput.value.trim() : '';
+      const pLocalOnly = localOnlyToggle ? localOnlyToggle.checked : false;
+
+      const profilePayload = {
+        id: pId,
+        name: pName || 'Custom Profile',
+        provider: pProvider,
+        model: pModel,
+        base_url: pBaseUrl,
+        local_only: pLocalOnly,
+        custom_provider_name: customProviderName ? customProviderName.value.trim() : '',
+        custom_auth_header: customAuthHeader ? customAuthHeader.value.trim() : '',
+        routes: {
+          text_output: routeTextOutput ? routeTextOutput.value.trim() : pModel,
+          audio_output: routeAudioOutput ? routeAudioOutput.value.trim() : 'Aoede',
+          image_input: routeImageInput ? routeImageInput.value.trim() : '',
+          research: routeResearch ? routeResearch.value.trim() : '',
+          computer_use: routeComputerUse ? routeComputerUse.value.trim() : '',
+          audio_input: routeAudioInput ? routeAudioInput.value.trim() : '',
+        },
+      };
+
+      try {
+        const res = await fetch('/api/brain/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(profilePayload),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Saved profile: ${profilePayload.name}`);
+          await loadBrainStatus();
+        }
+      } catch (err) {
+        showToast('Failed to save profile', true);
+      }
+    });
+  }
+
+  if (deleteProfileBtn) {
+    deleteProfileBtn.addEventListener('click', async () => {
+      if (!currentEditingProfile) return;
+      if (confirm(`Delete profile "${currentEditingProfile.name}"?`)) {
+        try {
+          const res = await fetch('/api/brain/profile/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profile_id: currentEditingProfile.id }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Profile deleted');
+            await loadBrainStatus();
+          } else {
+            showToast(data.error || 'Cannot delete profile', true);
+          }
+        } catch (err) {
+          showToast('Failed to delete profile', true);
+        }
       }
     });
   }
@@ -1073,25 +1434,6 @@ async function initBrainConsole() {
       saveBrainSettings(update);
     });
   });
-
-  if (activeProfileSel) {
-    activeProfileSel.addEventListener('change', async () => {
-      try {
-        const res = await fetch('/api/brain/activate-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile_id: activeProfileSel.value }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast(`Active profile set to: ${data.active.name}`);
-          loadBrainStatus();
-        }
-      } catch (err) {
-        showToast('Failed to switch profile', true);
-      }
-    });
-  }
 
   async function loadBrainStatus() {
     try {
@@ -1126,32 +1468,37 @@ async function initBrainConsole() {
         if (speechRateVal) speechRateVal.textContent = `${s.speech_rate.toFixed(1)}x`;
       }
 
-      // Populate Profiles
-      if (activeProfileSel && data.profiles) {
-        activeProfileSel.innerHTML = '';
-        data.profiles.forEach((p) => {
-          const opt = document.createElement('option');
-          opt.value = p.id;
-          const status = (p.status || 'active').toLowerCase();
-          const displayStatus = status === 'not configured' ? 'Not Configured' : (status === 'offline' ? 'Offline' : 'Active');
-          opt.textContent = `${p.name} (${displayStatus})`;
-          opt.dataset.status = status;
-          if (data.active_profile && p.id === data.active_profile.id) opt.selected = true;
-          activeProfileSel.appendChild(opt);
-        });
-        if (activeProfileSel._refreshCustomDropdown) {
-          activeProfileSel._refreshCustomDropdown();
+      // Fetch full profiles and provider catalog
+      const profRes = await fetch('/api/brain/profiles');
+      const profData = await profRes.json();
+      if (profData && profData.profiles) {
+        cachedProfiles = profData.profiles;
+        if (profData.catalog && profData.catalog.catalog) {
+          cachedCatalog = profData.catalog.catalog;
         }
+
+        if (activeProfileSel) {
+          activeProfileSel.innerHTML = '';
+          cachedProfiles.forEach((p) => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            const status = (p.status || 'active').toLowerCase();
+            const displayStatus = status === 'not configured' ? 'Not Configured' : (status === 'offline' ? 'Offline' : 'Active');
+            opt.textContent = `${p.name} (${displayStatus})`;
+            opt.dataset.status = status;
+            if (profData.active && p.id === profData.active.id) opt.selected = true;
+            activeProfileSel.appendChild(opt);
+          });
+          if (activeProfileSel._refreshCustomDropdown) {
+            activeProfileSel._refreshCustomDropdown();
+          }
+        }
+
+        const activeProf = profData.active || cachedProfiles[0];
+        populateProfileForm(activeProf);
       }
 
-      // Populate Active Profile fields
-      const ap = data.active_profile || {};
-      if (providerSel && ap.provider) providerSel.value = ap.provider;
-      if (modelIdInput && ap.model) modelIdInput.value = ap.model;
-      if (baseUrlInput) baseUrlInput.value = ap.base_url || '';
-      if (localOnlyToggle) localOnlyToggle.checked = !!ap.local_only;
-
-      // Refresh any initialized dropdowns with new values
+      // Refresh custom dropdowns
       document.querySelectorAll('select.select-input').forEach((sel) => {
         if (sel._refreshCustomDropdown) sel._refreshCustomDropdown();
       });

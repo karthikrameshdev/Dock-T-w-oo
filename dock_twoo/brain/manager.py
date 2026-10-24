@@ -33,6 +33,10 @@ class BrainManager(QObject):
     action_requested = Signal(str)
     activity_requested = Signal(str)
     speech_start_requested = Signal(str)
+    show_mini_agent_requested = Signal()
+    hide_mini_agent_requested = Signal()
+    toggle_mini_agent_requested = Signal()
+    wake_detected_requested = Signal()
 
     _instance: Optional[BrainManager] = None
 
@@ -62,6 +66,10 @@ class BrainManager(QObject):
         self.activity_requested.connect(self.companion.set_activity)
         self.speech_start_requested.connect(self._do_speech_start)
         self.action_requested.connect(self._do_action)
+        self.show_mini_agent_requested.connect(self._do_show_mini_agent, Qt.ConnectionType.QueuedConnection)
+        self.hide_mini_agent_requested.connect(self._do_hide_mini_agent, Qt.ConnectionType.QueuedConnection)
+        self.toggle_mini_agent_requested.connect(self._do_toggle_mini_agent, Qt.ConnectionType.QueuedConnection)
+        self.wake_detected_requested.connect(self._do_wake_detected, Qt.ConnectionType.QueuedConnection)
 
         self._active_query_thread: Optional[threading.Thread] = None
         self._is_listening: bool = False
@@ -110,38 +118,47 @@ class BrainManager(QObject):
         return self.companion.isVisible()
 
     @Slot()
-    def show_mini_agent(self) -> None:
-        """Summon and display the robot mini agent on the desktop."""
-        if QThread.currentThread() != self.thread():
-            QMetaObject.invokeMethod(self, "show_mini_agent", Qt.ConnectionType.QueuedConnection)
-            return
+    def _do_show_mini_agent(self) -> None:
         self.store.set_setting("companion_visible", True)
         self.companion.show()
         self.companion.raise_()
         self.visibility_changed.emit(True)
 
+    def show_mini_agent(self) -> None:
+        """Summon and display the robot mini agent on the desktop safely across threads."""
+        if QThread.currentThread() == self.thread():
+            self._do_show_mini_agent()
+        else:
+            self.show_mini_agent_requested.emit()
+
     @Slot()
-    def hide_mini_agent(self) -> None:
-        """Hide the mini agent and stop active speech."""
-        if QThread.currentThread() != self.thread():
-            QMetaObject.invokeMethod(self, "hide_mini_agent", Qt.ConnectionType.QueuedConnection)
-            return
+    def _do_hide_mini_agent(self) -> None:
         self.store.set_setting("companion_visible", False)
         self.stop_talking()
         self.companion.stop_motion()
         self.companion.hide()
         self.visibility_changed.emit(False)
 
+    def hide_mini_agent(self) -> None:
+        """Hide the mini agent and stop active speech safely across threads."""
+        if QThread.currentThread() == self.thread():
+            self._do_hide_mini_agent()
+        else:
+            self.hide_mini_agent_requested.emit()
+
     @Slot()
+    def _do_toggle_mini_agent(self) -> None:
+        if self.companion.isVisible():
+            self._do_hide_mini_agent()
+        else:
+            self._do_show_mini_agent()
+
     def toggle_mini_agent(self) -> None:
         """Clicking Brain in the dock acts like an on/off toggle for the Mini Agent."""
-        if QThread.currentThread() != self.thread():
-            QMetaObject.invokeMethod(self, "toggle_mini_agent", Qt.ConnectionType.QueuedConnection)
-            return
-        if self.companion.isVisible():
-            self.hide_mini_agent()
+        if QThread.currentThread() == self.thread():
+            self._do_toggle_mini_agent()
         else:
-            self.show_mini_agent()
+            self.toggle_mini_agent_requested.emit()
 
     @Slot()
     def _on_speech_started(self) -> None:
@@ -177,21 +194,24 @@ class BrainManager(QObject):
         self.activity_requested.emit("idle")
 
     @Slot()
-    def _on_wake_detected(self) -> None:
-        """Invoked when user says 'Brain' or 'Hey Brain'."""
-        if QThread.currentThread() != self.thread():
-            QMetaObject.invokeMethod(self, "_on_wake_detected", Qt.ConnectionType.QueuedConnection)
-            return
+    def _do_wake_detected(self) -> None:
         self.in_conversation_session = True
         self.conversation_history.clear()
         self.session_timer.stop()
 
         if not self.companion.isVisible():
-            self.show_mini_agent()
+            self._do_show_mini_agent()
         self.companion.turn_to_user()
         self.companion.set_activity("listening")
         # Greet user immediately and start listening for their statement!
         self.speech.start("Hey Karthik, I'm listening.")
+
+    def _on_wake_detected(self) -> None:
+        """Invoked when user says 'Brain' or 'Hey Brain'."""
+        if QThread.currentThread() == self.thread():
+            self._do_wake_detected()
+        else:
+            self.wake_detected_requested.emit()
 
     @Slot()
     def _on_shortcut_press(self) -> None:

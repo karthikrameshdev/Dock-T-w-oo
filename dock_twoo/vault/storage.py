@@ -19,8 +19,10 @@ from dock_twoo.vault.models import CustomField, VaultItem, VaultStore
 
 
 def default_vault_data_dir() -> Path:
-    """Return default application data directory for Vault."""
-    dir_path = get_default_config_dir() / "vault"
+    """Return default application data directory for Vault from unified root storage."""
+    from dock_twoo.config import DockConfig
+    cfg = DockConfig()
+    dir_path = cfg.get_vault_dir()
     dir_path.mkdir(parents=True, exist_ok=True)
     return dir_path
 

@@ -82,3 +82,54 @@ def test_web_console_serves_html(test_server):
         html = resp.read().decode("utf-8")
         assert "<title>Dock T(w)oo" in html
         assert "Settings Console" in html
+        assert "Global Storage &amp; Data" in html or "Global Storage & Data" in html
+        assert "cursor: pointer !important;" in html
+
+
+def test_web_console_storage_endpoint_and_migration(test_server, tmp_path):
+    server, port, mgr = test_server
+    url = f"http://127.0.0.1:{port}/api/storage"
+
+    # 1. GET /api/storage returns root path and subdirectories
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=3) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert "storage_path" in data
+        assert "subsystems" in data
+        assert "notes" in data["subsystems"]
+        assert "vault" in data["subsystems"]
+        assert "models" in data["subsystems"]
+        assert "brain" in data["subsystems"]
+
+    # 2. POST /api/storage/change migrates safely to new directory
+    target_storage = tmp_path / "custom_dock2_storage"
+    change_url = f"http://127.0.0.1:{port}/api/storage/change"
+    payload = json.dumps({"new_path": str(target_storage)}).encode("utf-8")
+    req = urllib.request.Request(change_url, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=3) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert data["success"] is True
+        assert data["storage_path"] == str(target_storage.resolve())
+        assert (target_storage / "notes").exists()
+        assert (target_storage / "vault").exists()
+        assert (target_storage / "models").exists()
+        assert (target_storage / "brain").exists()
+
+
+def test_web_console_brain_providers_catalog(test_server):
+    server, port, mgr = test_server
+    url = f"http://127.0.0.1:{port}/api/brain/providers"
+
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req, timeout=3) as resp:
+        assert resp.status == 200
+        data = json.loads(resp.read().decode("utf-8"))
+        assert "catalog" in data
+        catalog = data["catalog"]
+        for p in ("local", "gemini", "openai", "anthropic", "openrouter", "xai", "huggingface", "custom"):
+            assert p in catalog
+        assert "roles" in data
+        for r in ("text_output", "audio_output", "image_input", "research", "computer_use"):
+            assert r in data["roles"]

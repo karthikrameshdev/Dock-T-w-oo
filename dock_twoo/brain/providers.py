@@ -16,12 +16,92 @@ import urllib.request
 from typing import Any, Dict, List, Optional
 
 
+ROLES = (
+    "text_input",
+    "text_output",
+    "audio_input",
+    "audio_output",
+    "image_input",
+    "research",
+    "computer_use",
+)
+
 PRESETS = {
     "local": "http://127.0.0.1:11434/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
     "openrouter": "https://openrouter.ai/api/v1",
     "openai": "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com/v1",
+    "xai": "https://api.x.ai/v1",
+    "huggingface": "https://router.huggingface.co/v1",
+    "custom": "",
+}
+
+PROVIDER_CATALOG = {
+    "local": {
+        "name": "Local (On-Device Local Engine / Ollama)",
+        "kind": "local",
+        "default_base_url": "http://127.0.0.1:11434/v1",
+        "models": ["local", "llama3.2:latest", "mistral:latest", "qwen2.5:latest", "deepseek-r1:latest", "phi3:latest"],
+        "default_model": "local",
+        "roles": ["text_input", "text_output", "audio_input", "audio_output", "image_input", "research", "computer_use"],
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "kind": "gemini",
+        "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "models": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash-thinking"],
+        "default_model": "gemini-2.0-flash",
+        "roles": ["text_input", "text_output", "audio_input", "audio_output", "image_input", "research", "computer_use"],
+    },
+    "openai": {
+        "name": "OpenAI",
+        "kind": "openai",
+        "default_base_url": "https://api.openai.com/v1",
+        "models": ["gpt-4o", "gpt-4o-mini", "o3-mini", "o1", "gpt-4-turbo"],
+        "default_model": "gpt-4o",
+        "roles": ["text_input", "text_output", "audio_input", "audio_output", "image_input", "research", "computer_use"],
+    },
+    "anthropic": {
+        "name": "Anthropic Claude",
+        "kind": "anthropic",
+        "default_base_url": "https://api.anthropic.com/v1",
+        "models": ["claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
+        "default_model": "claude-3-5-sonnet-20241022",
+        "roles": ["text_input", "text_output", "image_input", "research", "computer_use"],
+    },
+    "openrouter": {
+        "name": "OpenRouter",
+        "kind": "openrouter",
+        "default_base_url": "https://openrouter.ai/api/v1",
+        "models": ["meta-llama/llama-3.3-70b-instruct", "deepseek/deepseek-r1", "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-001", "qwen/qwen-2.5-72b-instruct"],
+        "default_model": "meta-llama/llama-3.3-70b-instruct",
+        "roles": ["text_input", "text_output", "image_input", "research", "computer_use"],
+    },
+    "xai": {
+        "name": "xAI Grok",
+        "kind": "xai",
+        "default_base_url": "https://api.x.ai/v1",
+        "models": ["grok-2", "grok-2-mini", "grok-beta"],
+        "default_model": "grok-2",
+        "roles": ["text_input", "text_output", "image_input", "research", "computer_use"],
+    },
+    "huggingface": {
+        "name": "Hugging Face",
+        "kind": "huggingface",
+        "default_base_url": "https://router.huggingface.co/v1",
+        "models": ["meta-llama/Llama-3.2-3B-Instruct", "mistralai/Mistral-7B-Instruct-v0.3", "Qwen/Qwen2.5-72B-Instruct"],
+        "default_model": "meta-llama/Llama-3.2-3B-Instruct",
+        "roles": ["text_input", "text_output", "image_input", "research", "computer_use"],
+    },
+    "custom": {
+        "name": "Custom Provider (Private / Compatible)",
+        "kind": "custom",
+        "default_base_url": "",
+        "models": ["custom-model", "vllm-model", "local-model"],
+        "default_model": "custom-model",
+        "roles": ["text_input", "text_output", "audio_input", "audio_output", "image_input", "research", "computer_use"],
+    },
 }
 
 
@@ -144,21 +224,27 @@ def query_llm(
     """
     profile = profile or {}
     provider = profile.get("provider", "local")
-    model = profile.get("model", "local")
+    # Check role routes if configured
+    routes = profile.get("routes") or {}
+    model = routes.get("text_output") or profile.get("model", "local")
     base_url = (profile.get("base_url") or PRESETS.get(provider, PRESETS["local"])).rstrip("/")
 
     # Check for environment keys if api_key not explicitly set
     if not api_key:
-        if provider == "gemini":
-            api_key = os.environ.get("GEMINI_API_KEY", "")
-        elif provider == "openrouter":
-            api_key = os.environ.get("OPENROUTER_API_KEY", "")
-        elif provider == "openai":
-            api_key = os.environ.get("OPENAI_API_KEY", "")
+        env_map = {
+            "gemini": "GEMINI_API_KEY",
+            "openrouter": "OPENROUTER_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "xai": "XAI_API_KEY",
+            "huggingface": "HF_TOKEN",
+            "custom": "CUSTOM_API_KEY",
+        }
+        if provider in env_map:
+            api_key = os.environ.get(env_map[provider], "")
 
-    # If no profile or local provider or no cloud API key:
-    # Run locally!
-    if provider == "local" or not api_key:
+    # If local provider or no cloud API key (and not custom without key):
+    if provider == "local" or (not api_key and provider not in ("custom",)):
         # Check if a local LLM endpoint (like Ollama on 11434) is reachable
         try:
             local_url = base_url if provider == "local" else PRESETS["local"]
@@ -199,7 +285,46 @@ def query_llm(
 
         return answer_locally(prompt)
 
-    # Cloud profile with API key available
+    # Anthropic Messages API
+    if provider == "anthropic":
+        endpoint = f"{base_url}/messages"
+        anthropic_msgs = []
+        if history:
+            for h in history[-6:]:
+                role = "assistant" if h.get("role") == "assistant" else "user"
+                anthropic_msgs.append({"role": role, "content": h.get("content", "")})
+        anthropic_msgs.append({"role": "user", "content": prompt})
+
+        sys_prompt = system_instruction or (
+            "You are Brain, a resident desktop voice assistant. Give concise, natural conversational answers "
+            "suitable for text-to-speech in 1 to 2 sentences. Never output markdown tables, raw code blocks, or bullets."
+        )
+
+        payload = {
+            "model": model,
+            "max_tokens": 250,
+            "system": sys_prompt,
+            "messages": anthropic_msgs,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "User-Agent": "DockTwoo-Brain/1.0",
+        }
+        try:
+            req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                content_blocks = data.get("content", [])
+                for block in content_blocks:
+                    if block.get("type") == "text":
+                        return block.get("text", "").strip()
+        except Exception:
+            return answer_locally(prompt)
+        return answer_locally(prompt)
+
+    # Standard OpenAI-compatible format (OpenAI, Gemini, OpenRouter, xAI, HuggingFace, Custom)
     endpoint = f"{base_url}/chat/completions"
     messages = []
     if system_instruction:
@@ -229,8 +354,9 @@ def query_llm(
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "DockTwoo-Brain/1.0",
-        "Authorization": f"Bearer {api_key}",
     }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
     req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
 

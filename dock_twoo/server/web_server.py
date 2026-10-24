@@ -15,8 +15,23 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from dock_twoo.brain import get_brain_manager
+from dock_twoo.brain.profiles import ProfileManager
+from dock_twoo.brain.storage import BrainStore
 from dock_twoo.config import ConfigManager, DockConfig
+
+
+def _get_safe_profile_mgr() -> ProfileManager:
+    from dock_twoo.brain.manager import BrainManager
+    if BrainManager._instance is not None:
+        return BrainManager._instance.profile_mgr
+    return ProfileManager(BrainStore())
+
+
+def _get_safe_brain_store() -> BrainStore:
+    from dock_twoo.brain.manager import BrainManager
+    if BrainManager._instance is not None:
+        return BrainManager._instance.store
+    return BrainStore()
 
 
 def get_static_dir() -> Path:
@@ -69,19 +84,85 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(status_data).encode("utf-8"))
             return
 
-        if path == "/api/brain/status":
-            bm = get_brain_manager()
+        if path == "/api/storage":
+            cfg = self.config_manager.config
+            storage_root = cfg.get_storage_path()
+            subdirs = {
+                "notes": cfg.get_notes_dir(),
+                "vault": cfg.get_vault_dir(),
+                "models": cfg.get_models_dir(),
+                "brain": cfg.get_brain_dir(),
+            }
+            folder_info = {}
+            total_files = 0
+            total_bytes = 0
+            for name, p in subdirs.items():
+                count = 0
+                bytes_val = 0
+                if p.exists():
+                    for f in p.rglob("*"):
+                        if f.is_file():
+                            count += 1
+                            bytes_val += f.stat().st_size
+                total_files += count
+                total_bytes += bytes_val
+                folder_info[name] = {
+                    "path": str(p),
+                    "file_count": count,
+                    "size_mb": round(bytes_val / (1024 * 1024), 2),
+                }
+
+            storage_data = {
+                "storage_path": str(storage_root),
+                "total_files": total_files,
+                "total_size_mb": round(total_bytes / (1024 * 1024), 2),
+                "subsystems": folder_info,
+            }
             self._set_headers(HTTPStatus.OK, "application/json")
-            self.wfile.write(json.dumps(bm.get_status()).encode("utf-8"))
+            self.wfile.write(json.dumps(storage_data).encode("utf-8"))
             return
 
-        if path == "/api/brain/profiles":
-            bm = get_brain_manager()
+        if path == "/api/brain/providers":
+            from dock_twoo.brain.providers import PRESETS, PROVIDER_CATALOG, ROLES
             self._set_headers(HTTPStatus.OK, "application/json")
             self.wfile.write(
                 json.dumps({
-                    "profiles": bm.profile_mgr.get_profiles(),
-                    "active": bm.profile_mgr.get_active_profile(),
+                    "catalog": PROVIDER_CATALOG,
+                    "presets": PRESETS,
+                    "roles": list(ROLES),
+                }).encode("utf-8")
+            )
+            return
+
+        if path == "/api/brain/status":
+            from dock_twoo.brain.manager import BrainManager
+            if BrainManager._instance is not None:
+                status_dict = BrainManager._instance.get_status()
+            else:
+                pm = _get_safe_profile_mgr()
+                active = pm.get_active_profile()
+                status_dict = {
+                    "active_profile": active["name"] if active else "None",
+                    "provider": active["provider"] if active else "none",
+                    "model": active["model"] if active else "none",
+                    "status": "idle",
+                    "speech_enabled": True,
+                    "wake_word_enabled": True,
+                    "auto_listen": True,
+                    "companion_visible": False,
+                }
+            self._set_headers(HTTPStatus.OK, "application/json")
+            self.wfile.write(json.dumps(status_dict).encode("utf-8"))
+            return
+
+        if path == "/api/brain/profiles":
+            pm = _get_safe_profile_mgr()
+            self._set_headers(HTTPStatus.OK, "application/json")
+            self.wfile.write(
+                json.dumps({
+                    "profiles": pm.get_profiles(),
+                    "active": pm.get_active_profile(),
+                    "catalog": pm.get_provider_catalog(),
                 }).encode("utf-8")
             )
             return
@@ -158,11 +239,15 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                bm = get_brain_manager()
-                success = bm.profile_mgr.activate_profile(body.get("profile_id", ""))
+                pm = _get_safe_profile_mgr()
+                profile_id = body.get("profile_id", "")
+                success = pm.activate_profile(profile_id)
+                from dock_twoo.brain.manager import BrainManager
+                if BrainManager._instance is not None:
+                    BrainManager._instance._update_status_indicator()
                 self._set_headers(HTTPStatus.OK, "application/json")
                 self.wfile.write(
-                    json.dumps({"success": success, "active": bm.profile_mgr.get_active_profile()}).encode("utf-8")
+                    json.dumps({"success": success, "active": pm.get_active_profile()}).encode("utf-8")
                 )
             except Exception as e:
                 self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
@@ -173,8 +258,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                bm = get_brain_manager()
-                saved = bm.profile_mgr.save_profile(body)
+                pm = _get_safe_profile_mgr()
+                saved = pm.save_profile(body)
                 self._set_headers(HTTPStatus.OK, "application/json")
                 self.wfile.write(json.dumps({"success": True, "profile": saved}).encode("utf-8"))
             except Exception as e:
@@ -186,8 +271,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                bm = get_brain_manager()
-                updated = bm.store.update_settings(body)
+                store = _get_safe_brain_store()
+                updated = store.update_settings(body)
                 self._set_headers(HTTPStatus.OK, "application/json")
                 self.wfile.write(json.dumps({"success": True, "settings": updated}).encode("utf-8"))
             except Exception as e:
@@ -199,8 +284,11 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                bm = get_brain_manager()
-                bm.profile_mgr.set_key(body.get("provider", "gemini"), body.get("key", ""))
+                pm = _get_safe_profile_mgr()
+                pm.set_key(body.get("provider", "gemini"), body.get("key", ""))
+                from dock_twoo.brain.manager import BrainManager
+                if BrainManager._instance is not None:
+                    BrainManager._instance._update_status_indicator()
                 self._set_headers(HTTPStatus.OK, "application/json")
                 self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
             except Exception as e:
@@ -212,19 +300,74 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                bm = get_brain_manager()
                 action = body.get("action")
-                if action == "summon":
-                    bm.show_mini_agent()
-                elif action == "hide":
-                    bm.hide_mini_agent()
-                elif action == "talk":
-                    bm.start_talking()
-                elif action == "animation":
-                    anim_name = body.get("name", "wave")
-                    bm.action_requested.emit(anim_name)
+                from dock_twoo.brain.manager import BrainManager
+                if BrainManager._instance is not None:
+                    bm = BrainManager._instance
+                    if action == "summon":
+                        bm.show_mini_agent()
+                    elif action == "hide":
+                        bm.hide_mini_agent()
+                    elif action == "talk":
+                        bm.start_talking()
+                    elif action == "animation":
+                        anim_name = body.get("name", "wave")
+                        bm.action_requested.emit(anim_name)
                 self._set_headers(HTTPStatus.OK, "application/json")
                 self.wfile.write(json.dumps({"success": True, "action": action}).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
+        if path == "/api/storage/change":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                new_path_str = body.get("new_path", "").strip()
+                if not new_path_str:
+                    raise ValueError("Target root storage path cannot be empty.")
+                new_path = Path(new_path_str).expanduser().resolve()
+                old_path = self.config_manager.config.get_storage_path()
+                from dock_twoo.config import migrate_storage_data
+                res = migrate_storage_data(old_path, new_path)
+                self.config_manager.update({"storage_path": str(new_path)})
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "storage_path": str(new_path),
+                    "migration": res,
+                }).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
+        if path == "/api/storage/browse":
+            try:
+                import subprocess
+                script = 'POSIX path of (choose folder with prompt "Select Dock 2 Root Storage Folder:")'
+                res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=60)
+                if res.returncode == 0 and res.stdout.strip():
+                    chosen = res.stdout.strip()
+                    self._set_headers(HTTPStatus.OK, "application/json")
+                    self.wfile.write(json.dumps({"success": True, "path": chosen}).encode("utf-8"))
+                else:
+                    self._set_headers(HTTPStatus.OK, "application/json")
+                    self.wfile.write(json.dumps({"success": False, "cancelled": True}).encode("utf-8"))
+            except Exception as e:
+                self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR, "application/json")
+                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
+            return
+
+        if path == "/api/brain/profile/delete":
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                pm = _get_safe_profile_mgr()
+                deleted = pm.delete_profile(body.get("profile_id", ""))
+                self._set_headers(HTTPStatus.OK, "application/json")
+                self.wfile.write(json.dumps({"success": deleted}).encode("utf-8"))
             except Exception as e:
                 self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))

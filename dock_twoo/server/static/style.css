@@ -38,6 +38,58 @@ body.theme-light {
   padding: 0;
 }
 
+/* Universal Hand Symbol (cursor: pointer) across all interactive console elements */
+button,
+a,
+select,
+option,
+input[type="range"],
+input[type="checkbox"],
+input[type="radio"],
+input[type="button"],
+input[type="submit"],
+.nav-item,
+.nav-btn,
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-action,
+.segment,
+.app-toggle-item,
+.app-card,
+.modern-toggle,
+.modern-toggle input,
+.slider-switch,
+.badge-btn,
+.tab-btn,
+.brain-tab-btn,
+.brain-anim-trigger,
+.action-btn,
+.card-clickable,
+.dropdown,
+.select,
+.custom-dropdown-container,
+.custom-dropdown-trigger,
+.custom-dropdown-item,
+summary,
+[role="button"],
+[role="tab"],
+[data-action],
+[data-tab],
+[data-page] {
+  cursor: pointer !important;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  cursor: pointer !important;
+}
+input[type="range"]::-moz-range-thumb {
+  cursor: pointer !important;
+}
+input[type="range"]::-ms-thumb {
+  cursor: pointer !important;
+}
+
 body {
   font-family: var(--font-family);
   background: var(--bg-color);
@@ -1383,4 +1435,142 @@ body.theme-light .brain-tab-btn:hover {
 @keyframes dropdownFadeUp {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Global Storage & Data Management Styles */
+.storage-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.storage-subsystem-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.storage-subsystem-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+body.theme-light .storage-subsystem-card {
+  background: rgba(0, 0, 0, 0.02);
+}
+body.theme-light .storage-subsystem-card:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.storage-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.storage-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.storage-card-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.storage-card-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+body.theme-light .storage-card-path {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Role Routing Grid & Chips */
+.role-routing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.role-routing-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+body.theme-light .role-routing-item {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.role-routing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.role-tag {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent);
+}
+
+.model-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.model-chip {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  transition: all 0.15s ease;
+  cursor: pointer !important;
+}
+
+.model-chip:hover {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.model-chip.selected {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+  font-weight: 600;
 }

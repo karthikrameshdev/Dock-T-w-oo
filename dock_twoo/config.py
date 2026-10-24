@@ -24,6 +24,72 @@ def get_default_config_dir() -> Path:
     return config_dir
 
 
+def migrate_storage_data(old_root: Path, new_root: Path) -> Dict[str, Any]:
+    """Safely migrate all component app data from old storage directory to new storage directory."""
+    import shutil
+
+    old_path = Path(old_root).expanduser().resolve()
+    new_path = Path(new_root).expanduser().resolve()
+    new_path.mkdir(parents=True, exist_ok=True)
+
+    # Ensure all target subsystem subdirectories exist
+    for sub in ("notes", "vault", "models", "brain"):
+        (new_path / sub).mkdir(parents=True, exist_ok=True)
+
+    migrated_items = []
+    file_count = 0
+
+    if old_path.exists() and old_path != new_path:
+        for item in old_path.iterdir():
+            target = new_path / item.name
+            try:
+                if item.is_dir():
+                    if not target.exists():
+                        shutil.copytree(str(item), str(target), dirs_exist_ok=True)
+                    else:
+                        for sub_file in item.rglob("*"):
+                            if sub_file.is_file():
+                                rel = sub_file.relative_to(item)
+                                dest = target / rel
+                                dest.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(str(sub_file), str(dest))
+                                file_count += 1
+                    migrated_items.append(item.name)
+                elif item.is_file():
+                    shutil.copy2(str(item), str(target))
+                    migrated_items.append(item.name)
+                    file_count += 1
+            except Exception as e:
+                print(f"[Dock T(w)oo] Error migrating item {item} to {target}: {e}")
+
+    # Also automatically import legacy ~/.dock_twoo contents if target is missing files
+    legacy_dir = Path.home() / ".dock_twoo"
+    if legacy_dir.exists() and legacy_dir != new_path:
+        for sub in ("notes", "vault", "brain"):
+            leg_sub = legacy_dir / sub
+            target_sub = new_path / sub
+            if leg_sub.exists() and leg_sub.is_dir():
+                for leg_file in leg_sub.rglob("*"):
+                    if leg_file.is_file():
+                        rel = leg_file.relative_to(leg_sub)
+                        dest = target_sub / rel
+                        if not dest.exists():
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            try:
+                                shutil.copy2(str(leg_file), str(dest))
+                                file_count += 1
+                            except Exception:
+                                pass
+
+    return {
+        "success": True,
+        "old_path": str(old_path),
+        "new_path": str(new_path),
+        "migrated_items": migrated_items,
+        "file_count": file_count,
+    }
+
+
 def detect_system_theme() -> str:
     """Detect whether system theme is 'dark' or 'light'."""
     system = platform.system().lower()
@@ -229,6 +295,39 @@ class DockConfig:
     # Web Console server
     server_host: str = "127.0.0.1"
     server_port: int = 28842
+
+    # Storage Root & Unified Data Path (Single storage point for all Dock 2 apps & models)
+    storage_path: str = str(Path.home() / ".dock2")
+
+    def get_storage_path(self) -> Path:
+        """Return unified root storage path and ensure base directory exists."""
+        p = Path(self.storage_path).expanduser().resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def get_notes_dir(self) -> Path:
+        """Return dedicated notes directory under root storage: <storage_path>/notes."""
+        p = self.get_storage_path() / "notes"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def get_vault_dir(self) -> Path:
+        """Return dedicated secure vault directory under root storage: <storage_path>/vault."""
+        p = self.get_storage_path() / "vault"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def get_models_dir(self) -> Path:
+        """Return dedicated models download directory under root storage: <storage_path>/models."""
+        p = self.get_storage_path() / "models"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def get_brain_dir(self) -> Path:
+        """Return dedicated brain data directory under root storage: <storage_path>/brain."""
+        p = self.get_storage_path() / "brain"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
 
     # App items
     apps: List[DockAppItem] = field(default_factory=get_default_apps)

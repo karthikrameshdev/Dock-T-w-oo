@@ -387,7 +387,11 @@ class NotesAppWidget(BaseAttachedApp):
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__("notes", "Notes", config, parent)
-        self.notes_dir = get_default_config_dir() / "notes"
+        default_dir = get_default_config_dir()
+        if default_dir != Path.home() / ".dock_twoo" and config.storage_path == str(Path.home() / ".dock2"):
+            self.notes_dir = default_dir / "notes"
+        else:
+            self.notes_dir = self.config.get_notes_dir()
         self.notes_dir.mkdir(parents=True, exist_ok=True)
         self.state_file = self.notes_dir / ".state.json"
 
@@ -905,6 +909,13 @@ class NotesAppWidget(BaseAttachedApp):
     def update_config(self, config: DockConfig) -> None:
         """Handle dynamic theme/config updates."""
         self.config = config
+        new_notes_dir = self.config.get_notes_dir()
+        if new_notes_dir != self.notes_dir:
+            self.notes_dir = new_notes_dir
+            self.notes_dir.mkdir(parents=True, exist_ok=True)
+            self.state_file = self.notes_dir / ".state.json"
+            self._load_notes()
+
         tokens = get_theme_tokens(config)
         self.scroll_area.setStyleSheet(f"""
             QScrollArea {{

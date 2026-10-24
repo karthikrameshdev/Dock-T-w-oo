@@ -6,6 +6,19 @@
   <title>Dock T(w)oo — Settings Console</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/svg+xml" href="/icons/logo.svg">
+  <style>
+    /* High-priority hand symbol (cursor: pointer) across all interactive console elements */
+    button, a, select, option, input[type="range"], input[type="checkbox"], input[type="radio"], input[type="button"], input[type="submit"],
+    .nav-item, .nav-btn, .btn, .btn-primary, .btn-secondary, .btn-action, .segment, .app-toggle-item, .app-card,
+    .modern-toggle, .modern-toggle input, .slider-switch, .badge-btn, .tab-btn, .brain-tab-btn, .brain-anim-trigger,
+    .action-btn, .card-clickable, .dropdown, .select, .custom-dropdown-container, .custom-dropdown-trigger, .custom-dropdown-item,
+    .model-chip, summary, [role="button"], [role="tab"], [data-action], [data-tab], [data-page] {
+      cursor: pointer !important;
+    }
+    input[type="range"]::-webkit-slider-thumb { cursor: pointer !important; }
+    input[type="range"]::-moz-range-thumb { cursor: pointer !important; }
+    input[type="range"]::-ms-thumb { cursor: pointer !important; }
+  </style>
 </head>
 <body class="theme-dark">
   <div class="app-layout">
@@ -110,6 +123,11 @@
 
           <div class="nav-group">
             <span class="nav-group-title">System</span>
+            <button class="nav-item" data-page="page-storage">
+              <span class="nav-icon">💾</span>
+              <span class="nav-label">Global Storage & Data</span>
+              <span class="nav-tag">Unified</span>
+            </button>
             <button class="nav-item" data-page="page-about">
               <span class="nav-icon">ℹ️</span>
               <span class="nav-label">About & Status</span>
@@ -548,45 +566,169 @@
           <!-- Tab 2: Model Profiles & Status -->
           <div class="brain-tab-panel" id="brain-tab-profiles">
             <div class="settings-card">
-              <h3 class="card-subheading">Model Profile & LLM Routing</h3>
-              <p class="field-desc">Select active brain profile and manage API credentials directly</p>
+              <div class="card-header-flex">
+                <div>
+                  <h3 class="card-subheading">Model Profile & LLM Routing</h3>
+                  <p class="field-desc">Manage providers, custom endpoints, model IDs, and modality role routing</p>
+                </div>
+                <div class="action-btn-row">
+                  <button type="button" id="brainNewProfileBtn" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span>+ New Profile</span>
+                  </button>
+                  <button type="button" id="brainDeleteProfileBtn" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; color: var(--danger);">
+                    <span>🗑️ Delete</span>
+                  </button>
+                  <button type="button" id="brainSaveProfileBtn" class="btn btn-primary" style="font-size: 12px; padding: 6px 12px;">
+                    <span>💾 Save Profile</span>
+                  </button>
+                </div>
+              </div>
 
-              <div class="form-row">
+              <!-- Profile & Provider Selection -->
+              <div class="form-row" style="margin-top: 14px;">
                 <div class="form-group flex-1">
                   <label for="brainActiveProfile">Active Model Profile</label>
                   <select id="brainActiveProfile" class="select-input">
-                    <option value="local">Local (Active)</option>
-                    <option value="gemini">Google Gemini (Not Configured)</option>
-                    <option value="openrouter">OpenRouter (Not Configured)</option>
+                    <!-- Populated dynamically via JS -->
                   </select>
                 </div>
 
                 <div class="form-group flex-1">
-                  <label for="brainProvider">Provider</label>
+                  <label for="brainProvider">Provider Kind</label>
                   <select id="brainProvider" class="select-input">
-                    <option value="local">Local (Local Engine)</option>
+                    <option value="local">Local (On-Device Local Engine / Ollama)</option>
                     <option value="gemini">Google Gemini</option>
-                    <option value="openrouter">OpenRouter</option>
                     <option value="openai">OpenAI</option>
                     <option value="anthropic">Anthropic Claude</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="xai">xAI Grok</option>
+                    <option value="huggingface">Hugging Face</option>
+                    <option value="custom">Custom Provider (Private / Compatible)</option>
                   </select>
                 </div>
               </div>
 
+              <!-- Profile Display Name -->
               <div class="form-row">
                 <div class="form-group flex-1">
-                  <label for="brainModelId">Model Identifier</label>
-                  <input type="text" id="brainModelId" class="text-input" value="local" placeholder="e.g. local, gemini-2.0-flash, llama3.3">
+                  <label for="brainProfileName">Profile Display Name</label>
+                  <input type="text" id="brainProfileName" class="text-input" placeholder="e.g. My Production Assistant, Fast Flash">
+                </div>
+                <div class="form-group flex-1" id="brainStatusDisplayGroup">
+                  <label>Current Status</label>
+                  <div style="padding-top: 8px;">
+                    <span class="badge" id="brainProfileStatusBadge">Active · Ready</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Custom Provider Specific Fields (Only shown when provider === 'custom') -->
+              <div id="customProviderFields" style="display: none; background: rgba(59, 130, 246, 0.05); border: 1px dashed rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--accent);">Custom Provider Configuration</h4>
+                <div class="form-row">
+                  <div class="form-group flex-1">
+                    <label for="customProviderName">Custom Provider Label</label>
+                    <input type="text" id="customProviderName" class="text-input" placeholder="e.g. Self-Hosted vLLM / Internal Gateway">
+                  </div>
+                  <div class="form-group flex-1">
+                    <label for="customAuthHeader">Auth Header / Token Name (Optional)</label>
+                    <input type="text" id="customAuthHeader" class="text-input" placeholder="Authorization: Bearer <key>">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Model Identifier & Base URL -->
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label for="brainModelId">Primary Model Identifier</label>
+                  <input type="text" id="brainModelId" class="text-input" value="local" placeholder="e.g. local, gemini-2.0-flash, gpt-4o, claude-3-5-sonnet">
+                  <!-- Popular Presets Quick Chips -->
+                  <div style="margin-top: 6px;">
+                    <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Quick Select Popular Models:</span>
+                    <div id="popularModelsRow" class="model-chips-row">
+                      <!-- Chips dynamically injected per provider -->
+                    </div>
+                  </div>
                 </div>
 
                 <div class="form-group flex-1">
                   <label for="brainBaseUrl">Endpoint / Base URL</label>
-                  <input type="text" id="brainBaseUrl" class="text-input" placeholder="Default provider URL or http://127.0.0.1:11434/v1">
+                  <input type="text" id="brainBaseUrl" class="text-input" placeholder="http://127.0.0.1:11434/v1">
+                  <span class="field-hint" id="baseUrlHint">Default provider API endpoint URL</span>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="brainApiKey">Provider API Key</label>
+              <!-- Modality & Role-Based Routing (Brain 2 Style) -->
+              <div style="margin-top: 18px; border-top: 1px solid var(--card-border); padding-top: 16px;">
+                <h4 class="card-subheading">Input-Type & Modality Routing</h4>
+                <p class="field-desc">Route specific cognitive tasks, perception, research, and audio to specialized models</p>
+
+                <div class="role-routing-grid">
+                  <!-- 1. Text Output / Conversational Core -->
+                  <div class="role-routing-item">
+                    <div class="role-routing-header">
+                      <span style="font-weight: 600; font-size: 13px;">💬 Text & Conversation</span>
+                      <span class="role-tag">text_output</span>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted);">Main assistant responses and reasoning</p>
+                    <input type="text" id="routeTextOutput" class="text-input" placeholder="Inherit primary model">
+                  </div>
+
+                  <!-- 2. Voice / Speech Output -->
+                  <div class="role-routing-item">
+                    <div class="role-routing-header">
+                      <span style="font-weight: 600; font-size: 13px;">🔊 Voice & Speech Output</span>
+                      <span class="role-tag">audio_output</span>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted);">Text-to-speech engine or audio model</p>
+                    <input type="text" id="routeAudioOutput" class="text-input" placeholder="Aoede / System / Model">
+                  </div>
+
+                  <!-- 3. Screen & Vision Inspection -->
+                  <div class="role-routing-item">
+                    <div class="role-routing-header">
+                      <span style="font-weight: 600; font-size: 13px;">👁️ Vision & Screen Analysis</span>
+                      <span class="role-tag">image_input</span>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted);">Window inspection and screenshot OCR</p>
+                    <input type="text" id="routeImageInput" class="text-input" placeholder="gemini-2.0-flash / gpt-4o / local">
+                  </div>
+
+                  <!-- 4. In-Depth Web Research -->
+                  <div class="role-routing-item">
+                    <div class="role-routing-header">
+                      <span style="font-weight: 600; font-size: 13px;">🌐 Live Web Research</span>
+                      <span class="role-tag">research</span>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted);">Google web research and synthesis</p>
+                    <input type="text" id="routeResearch" class="text-input" placeholder="gemini-2.0-flash / deepseek-r1">
+                  </div>
+
+                  <!-- 5. Computer Use & Automation -->
+                  <div class="role-routing-item">
+                    <div class="role-routing-header">
+                      <span style="font-weight: 600; font-size: 13px;">⚡ Computer GUI Automation</span>
+                      <span class="role-tag">computer_use</span>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted);">Autonomous desktop actions and app typing</p>
+                    <input type="text" id="routeComputerUse" class="text-input" placeholder="claude-3-5-sonnet / gemini-2.0-flash">
+                  </div>
+
+                  <!-- 6. Speech / Audio Input -->
+                  <div class="role-routing-item">
+                    <div class="role-routing-header">
+                      <span style="font-weight: 600; font-size: 13px;">🎙️ Audio & Voice Input</span>
+                      <span class="role-tag">audio_input</span>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted);">Voice recognition and transcription</p>
+                    <input type="text" id="routeAudioInput" class="text-input" placeholder="whisper / native speech">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Provider API Key -->
+              <div class="form-group" style="margin-top: 18px;">
+                <label for="brainApiKey">Provider API Key / Secret Token</label>
                 <div class="input-with-button">
                   <input type="password" id="brainApiKey" class="text-input" placeholder="Enter API Key (stored securely in local Brain vault)">
                   <button type="button" id="brainSaveKeyBtn" class="btn btn-secondary">Save Key</button>
@@ -594,7 +736,8 @@
                 <span class="field-hint" id="brainKeyStatusHint">Saved keys are kept encrypted in local machine storage</span>
               </div>
 
-              <div class="toggle-card-item">
+              <!-- Strict Local Toggle -->
+              <div class="toggle-card-item" style="margin-top: 14px;">
                 <div>
                   <label class="toggle-title">Strict 100% Local Offline Mode</label>
                   <p class="field-desc">Never route queries or speech to external cloud APIs</p>
@@ -809,6 +952,109 @@
           <div class="settings-card">
             <div id="appsList" class="apps-list">
               <!-- Dynamically populated via JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Page: Global Storage & Data Management -->
+        <div class="page-view" id="page-storage">
+          <div class="page-header">
+            <h2>Global Storage & Data Management</h2>
+            <p>Single unified root storage location for all Dock 2 subsystems, model weights, Notes, and Vault secure data</p>
+          </div>
+
+          <!-- Root Storage Point Card -->
+          <div class="settings-card highlight-card">
+            <h3 class="card-subheading">Active Root Storage Point</h3>
+            <p class="field-desc">All applications and downloaded models reside strictly under this single master directory</p>
+
+            <div class="form-group" style="margin-top: 14px;">
+              <label for="globalStoragePath">Root Storage Directory</label>
+              <div class="input-with-button">
+                <input type="text" id="globalStoragePath" class="text-input" placeholder="~/.dock2" style="font-family: monospace;">
+                <button type="button" id="browseStorageBtn" class="btn btn-secondary">
+                  <span>📂 Browse Folder…</span>
+                </button>
+                <button type="button" id="applyStorageBtn" class="btn btn-primary">
+                  <span>🚀 Change & Migrate Data</span>
+                </button>
+              </div>
+              <span class="field-hint" id="storageStatusHint">Default: <code>~/.dock2</code>. When changed, all existing notes, vault data, and models are safely migrated to the target folder.</span>
+            </div>
+
+            <div class="info-box" style="margin-top: 14px;">
+              <div class="info-box-icon">📦</div>
+              <div class="info-box-content">
+                <strong>Automatic Data Migration Guarantee:</strong>
+                <p>When you select or change your root storage point, Dock 2 immediately moves all current data, component app stores, and model weights to the new target. All future downloads will strictly target this location.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Subsystem Storage Breakdown Grid -->
+          <div class="settings-card">
+            <div class="card-header-flex">
+              <div>
+                <h3 class="card-subheading">Subsystem Storage Directory Breakdown</h3>
+                <p class="field-desc">Live directory mapping and disk usage across all Dock 2 features</p>
+              </div>
+              <button type="button" id="refreshStorageBtn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                <span>🔄 Refresh Stats</span>
+              </button>
+            </div>
+
+            <div class="storage-overview-grid">
+              <!-- Notes -->
+              <div class="storage-subsystem-card">
+                <div class="storage-card-header">
+                  <span class="storage-card-title">📝 Notes Data</span>
+                  <span class="badge" id="storageNotesCount">0 files</span>
+                </div>
+                <div class="storage-card-path" id="storageNotesPath">~/.dock2/notes</div>
+                <div class="storage-card-stats">
+                  <span>Size: <strong id="storageNotesSize">0.0 MB</strong></span>
+                  <span>Markdown & JSON Notes</span>
+                </div>
+              </div>
+
+              <!-- Vault -->
+              <div class="storage-subsystem-card">
+                <div class="storage-card-header">
+                  <span class="storage-card-title">🛡️ Vault Secure</span>
+                  <span class="badge" id="storageVaultCount">0 files</span>
+                </div>
+                <div class="storage-card-path" id="storageVaultPath">~/.dock2/vault</div>
+                <div class="storage-card-stats">
+                  <span>Size: <strong id="storageVaultSize">0.0 MB</strong></span>
+                  <span>AES-256 Encrypted Key & DB</span>
+                </div>
+              </div>
+
+              <!-- Models -->
+              <div class="storage-subsystem-card">
+                <div class="storage-card-header">
+                  <span class="storage-card-title">📦 Downloaded Models</span>
+                  <span class="badge" id="storageModelsCount">0 files</span>
+                </div>
+                <div class="storage-card-path" id="storageModelsPath">~/.dock2/models</div>
+                <div class="storage-card-stats">
+                  <span>Size: <strong id="storageModelsSize">0.0 MB</strong></span>
+                  <span>Local LLMs & Weights</span>
+                </div>
+              </div>
+
+              <!-- Brain -->
+              <div class="storage-subsystem-card">
+                <div class="storage-card-header">
+                  <span class="storage-card-title">🧠 Brain Assistant</span>
+                  <span class="badge" id="storageBrainCount">0 files</span>
+                </div>
+                <div class="storage-card-path" id="storageBrainPath">~/.dock2/brain</div>
+                <div class="storage-card-stats">
+                  <span>Size: <strong id="storageBrainSize">0.0 MB</strong></span>
+                  <span>Memory, Settings & Profiles</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

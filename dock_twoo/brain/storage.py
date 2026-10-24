@@ -13,7 +13,8 @@ def default_brain_data_dir() -> Path:
     override = os.environ.get("DOCK_TWOO_BRAIN_DATA_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    return (Path.home() / ".dock_twoo" / "brain").resolve()
+    from dock_twoo.config import DockConfig
+    return DockConfig().get_brain_dir()
 
 
 class BrainStore:
