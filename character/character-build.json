@@ -1,8 +1,8 @@
 {
   "project": "character/MiniAssistant.blend",
   "glb": "dock_twoo/server/static/brain3d/brain.glb",
-  "meshes": 67,
-  "bones": 21,
+  "meshes": 119,
+  "bones": 37,
   "actions": [
     "camera",
     "celebrate",
@@ -51,7 +51,9 @@
     "Material",
     "Midnight glass visor",
     "Mint pearl helmet",
+    "Satin lavender titanium trim",
     "Teal status accents",
+    "Titanium joint cores",
     "White eye and smile light"
   ]
 }

@@ -1,12 +1,13 @@
 # Brain character source
 
 Open `MiniAssistant.blend` in Blender. This is the editable source for the desktop
-assistant, including its mint pillow-shaped helmet, curved inset visor, white eyes
-and smile, dark pupils, ivory body, lavender joints, and matching gloves and boots.
+assistant, including its mint pillow-shaped helmet, curved inset visor, large white eyes
+with mint irises and dark pupils, a bold smile, exposed ringed neck, ivory armor,
+lavender joints, titanium mechanisms, and articulated fingers and boots.
 Original reference images are packed into the hidden **Original design references**
 collection. There is one helmet and one antenna; no bag, scan fan, or faded sprites.
 
-**Brain_Rig** has 21 bones and 35 named Actions. Select the rig and open the Action
+**Brain_Rig** has 37 bones and 35 named Actions. Select the rig and open the Action
 Editor to preview idle, walking, running, climbing, waving, reading, pulling, and the
 other assistant gestures. Each solid mechanical part is rigidly weighted to its
 joint. The smile has a `mouth_open` shape key, with its default value zero. The eyes
@@ -44,8 +45,10 @@ The Blender audit evaluates every frame and sampled idle/action transitions agai
 conservative helmet and ear clearance envelopes for both forearms and gloves.
 `animation-validation.json` records its result; this is a clearance check rather
 than a full rigid-body physics simulation. The native Qt check loads the actual
-GLB, verifies its animation library, renders six transparent overlay views, and
-reports invalid transforms or translucent body materials under `/tmp`.
+GLB, checks that skeletal poses change over time, verifies blink recovery and speech
+morphing, and renders nine transparent overlay views under `/tmp`.
+`node scripts/verify_brain_face.mjs` exercises 20 repeated blinks and gaze updates
+against the real Three.js mixer to prevent disappearing eyes.
 
 The interactive preview at `http://127.0.0.1:28842/brain3d/index.html` (or your
 configured console port) offers animation selection and continuous head/body yaw.

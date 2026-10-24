@@ -1,6 +1,6 @@
 """Render the actual transparent Qt/WebGL companion without opening the microphone.
 
-Requires the local Dock console server. Writes six native overlay captures and a
+Requires the local Dock console server. Writes nine native overlay captures and a
 runtime report to /tmp/dock-twoo-3d-check (or --output).
 """
 import argparse
@@ -31,11 +31,15 @@ widget.resize(264, 268)
 widget.action, widget._yaw, widget.motion_started, widget.motion_duration = None, 0., time.monotonic(), 100
 widget.gait_distance, widget.blink_amount, widget.mouth_level = 0., 0., 0.
 widget.activity, widget._gaze_offset = 'idle', QPointF()
+widget.reduced_motion = False
 view = CharacterView(widget)
 widget.show()
-checks = [('front', 'idle', 0), ('quarter', 'idle', .55), ('side_walk', 'walk', 1),
+checks = [('front', 'idle', 0), ('blink_closed', 'idle', 0), ('eyes_reopened', 'idle', 0),
+          ('speech', 'idle', 0), ('quarter', 'idle', .55), ('side_walk', 'walk', 1),
           ('wave', 'wave', 0), ('climb', 'climb', -.65), ('pull', 'pull_scroll', .2)]
-report = {'captures': [], 'errors': []}
+report = {'captures': [], 'errors': [], 'animation_probes': [], 'eye_pixels': {}}
+phase_probe = None
+probe_requested = False
 started = time.monotonic()
 index = -1
 phase_start = started
@@ -58,7 +62,7 @@ def inspect_result(raw):
     app.exit(0 if report['success'] else 1)
 
 def tick():
-    global index, phase_start
+    global index, phase_start, phase_probe, probe_requested
     now = time.monotonic()
     if now - started > 35:
         report['errors'].append(view.error or 'Qt WebGL load timed out')
@@ -71,15 +75,55 @@ def tick():
     label, action, yaw = checks[index]
     widget.action, widget._yaw = action, yaw
     widget.gait_distance += 1.6
-    widget.motion_started = now - .5
-    widget.motion_duration = 1.0
+    widget.motion_started = phase_start
+    widget.motion_duration = 1.6
+    widget.blink_amount = 1.0 if label == 'blink_closed' else 0.0
+    widget.activity = 'speaking' if label == 'speech' else 'idle'
+    widget.mouth_level = .7 if label == 'speech' else 0.0
+    if now-phase_start > .3 and not probe_requested:
+        probe_requested = True
+        def first_probe(raw):
+            global phase_probe
+            phase_probe = json.loads(raw)
+        view.page().runJavaScript('JSON.stringify(window.brainDiagnostics)', first_probe)
     if now - phase_start < .8:
         return
     capture = view.grab().toImage()
     assert not capture.isNull()
     path = args.output / (label + '.png')
     capture.save(str(path))
+    if label in ('front', 'blink_closed', 'eyes_reopened'):
+        logical = capture.scaled(264, 268)
+        white_pixels = 0
+        for y in range(65, 92):
+            for x in range(104, 160):
+                color = logical.pixelColor(x, y)
+                white_pixels += color.red()>190 and color.green()>190 and color.blue()>190 and color.alpha()>200
+        report['eye_pixels'][label] = white_pixels
+        if (label == 'blink_closed' and white_pixels > 100) or (label != 'blink_closed' and white_pixels < 150):
+            report['errors'].append(f'{label}: rendered eye pixels do not match the intended blink state')
     report['captures'].append(str(path))
+    expected_label, expected_action, first = label, action, phase_probe
+    def check_motion(raw):
+        runtime = json.loads(raw)
+        try:
+            assert runtime['action'] == expected_action, f'{expected_label}: controller action did not reach renderer'
+            if expected_label in ('front', 'eyes_reopened'):
+                assert min(runtime['eyeScales']) > .98, f'{expected_label}: eyes did not open'
+            if expected_label == 'blink_closed':
+                assert max(runtime['eyeScales']) < .04
+            if expected_label == 'speech':
+                assert runtime['mouth'] > .6, 'Speaking mouth morph did not reach renderer'
+            if expected_action in ('walk','wave','climb','pull_scroll'):
+                a = sum(first['handPositions'], [])
+                b = sum(runtime['handPositions'], [])
+                displacement = sum((x-y)**2 for x,y in zip(a,b)) ** .5
+                assert displacement > .01, f'{expected_label}: skeleton remained static'
+                report['animation_probes'].append({'action':expected_action, 'hand_displacement':round(displacement,4)})
+        except Exception as exc:
+            report['errors'].append(str(exc))
+    view.page().runJavaScript('JSON.stringify(window.brainDiagnostics)', check_motion)
+    phase_probe, probe_requested = None, False
     index += 1
     phase_start = now
     if index == len(checks):

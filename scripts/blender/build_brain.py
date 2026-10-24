@@ -60,17 +60,23 @@ def material(name, color, roughness=.28, metallic=.12, emission=0):
     return result
 
 
-MINT = material('Mint pearl helmet', '#70DECA', .24)
+MINT = material('Mint pearl helmet', '#62D7BE', .3)
 IVORY = material('Ivory ceramic body and gloves', '#F3EDD8', .3, .05)
 PURPLE = material('Lavender mechanical joints', '#B19BCB', .25, .2)
 PURPLE_DARK = material('Joint recess', '#655A79', .32, .25)
-VISOR = material('Midnight glass visor', '#111C30', .16, .12)
-WHITE = material('White eye and smile light', '#F3FFFC', .25, .02, .25)
+VISOR = material('Midnight glass visor', '#111C30', .46, .02)
+visor_shader = VISOR.node_tree.nodes.get('Principled BSDF')
+visor_shader.inputs['Coat Weight'].default_value = .025
+visor_shader.inputs['Specular IOR Level'].default_value = .18
+GRAPHITE = material('Titanium joint cores', '#354650', .29, .72)
+TRIM = material('Satin lavender titanium trim', '#9488AE', .3, .55)
+WHITE = material('White eye and smile light', '#F3FFFC', .32, .02, .65)
 PUPIL = material('Dark pupils', '#142036', .24, .02)
 TEAL = material('Teal status accents', '#38E8D6', .22, .1, .5)
 GREEN = material('Emerald antenna light', '#06DCA6', .2, .12, .35)
 SEAM = material('Helmet seam', '#71B8AE', .32)
 
+HEAD_RISE = .34
 objects = []
 bindings = {}
 
@@ -106,6 +112,14 @@ def rounded_box(name, location, size, radius, mat, bone):
     return finish(obj, name, mat, bone)
 
 
+def armor(name, start, end, width, depth, mat, bone):
+    direction = Vector(end) - Vector(start)
+    obj = rounded_box(name, (Vector(start) + Vector(end)) / 2,
+                      (width, depth, direction.length), min(width, depth) * .25, mat, bone)
+    obj.rotation_euler = direction.to_track_quat('Z', 'Y').to_euler()
+    return obj
+
+
 def cylinder(name, start, end, radius, mat, bone, radius_end=None):
     direction = Vector(end) - Vector(start)
     midpoint = (Vector(start) + Vector(end)) / 2
@@ -127,6 +141,7 @@ def torus(name, location, major, minor, mat, bone, rotation=(0, 0, 0)):
 
 
 def rounded_panel(name, location, width, height, depth, radius, mat, bone, conform=False):
+    surface = conform if callable(conform) else helmet_front
     outline = []
     for center, begin in (((width / 2 - radius, height / 2 - radius), 0),
                           ((-width / 2 + radius, height / 2 - radius), 90),
@@ -140,18 +155,18 @@ def rounded_panel(name, location, width, height, depth, radius, mat, bone, confo
                 for y in (-depth / 2, depth / 2) for x, z in outline]
     if conform:
         # Curved, flush visor follows the actual helmet instead of a projecting TV screen.
-        vertices = [(x, helmet_front(x, z) + y, z)
+        vertices = [(x, surface(x, z) + y, z)
                     for x, y, z in vertices]
     faces = [tuple(range(count - 1, -1, -1)), tuple(range(count, count * 2))]
     faces += [(index, (index + 1) % count, (index + 1) % count + count, index + count) for index in range(count)]
     if conform:
         # Tessellate the curved face; a single ngon would cut through the shell.
-        vertices = [(location[0], helmet_front(location[0], location[2]) + location[1] - depth / 2, location[2])]
+        vertices = [(location[0], surface(location[0], location[2]) + location[1] - depth / 2, location[2])]
         radial_steps = 16
         for ring in range(1, radial_steps + 1):
             for x, z in outline:
                 px, pz = location[0] + x * ring / radial_steps, location[2] + z * ring / radial_steps
-                vertices.append((px, helmet_front(px, pz) + location[1] - depth / 2, pz))
+                vertices.append((px, surface(px, pz) + location[1] - depth / 2, pz))
         faces = [(0, 1 + i, 1 + (i + 1) % count) for i in range(count)]
         for ring in range(radial_steps - 1):
             for i in range(count):
@@ -221,11 +236,13 @@ rounded_panel('Visor glass', (0, -.026, 3.36), 1.94, 1.24, .014, .34, VISOR, 'he
 for sign, side in ((1, 'L'), (-1, 'R')):
     eye_x = sign * .38
     eye_y = helmet_front(eye_x, 3.49) - .054
-    sphere('Eye white.' + side, (eye_x, eye_y, 3.49), (.14, .035, .205), WHITE, 'eye.' + side)
-    sphere('Pupil.' + side, (eye_x, eye_y - .035, 3.48), (.048, .012, .074), PUPIL, 'pupil.' + side)
-    sphere('Eye glint.' + side, (eye_x - .015, eye_y - .048, 3.515), (.014, .006, .020), WHITE, 'pupil.' + side, 20)
+    sphere('Eye socket.' + side, (eye_x, eye_y + .015, 3.49), (.235, .035, .29), GRAPHITE, 'head')
+    sphere('Eye white.' + side, (eye_x, eye_y - .018, 3.49), (.202, .04, .254), WHITE, 'eye.' + side)
+    sphere('Eye iris.' + side, (eye_x, eye_y - .06, 3.48), (.123, .018, .162), TEAL, 'pupil.' + side)
+    sphere('Pupil.' + side, (eye_x, eye_y - .080, 3.48), (.087, .016, .121), PUPIL, 'pupil.' + side)
+    sphere('Eye glint.' + side, (eye_x - .035, eye_y - .099, 3.535), (.026, .009, .036), WHITE, 'pupil.' + side, 20)
     points = [(eye_x - .12, 3.82), (eye_x, 3.86), (eye_x + .12, 3.82)]
-    curve('Eyebrow.' + side, [(x, helmet_front(x, z) - .05, z) for x, z in points], .018, WHITE, 'head')
+    curve('Eyebrow.' + side, [(x, helmet_front(x, z) - .055, z) for x, z in points], .024, WHITE, 'head')
     cylinder('Ear housing.' + side, (sign * 1.10, .015, 3.36), (sign * 1.27, .015, 3.36), .39, PURPLE, 'head')
     cylinder('Ear lavender face.' + side, (sign * 1.28, .015, 3.36), (sign * 1.35, .015, 3.36), .29, PURPLE, 'head')
     torus('Ear ivory ring.' + side, (sign * 1.32, .015, 3.36), .32, .055, IVORY, 'head', (0, math.pi / 2, 0))
@@ -234,34 +251,66 @@ for sign, side in ((1, 'L'), (-1, 'R')):
 sphere('Antenna base', (0, 0, 4.205), (.24, .21, .10), PURPLE, 'head')
 cylinder('Antenna stem', (0, 0, 4.22), (0, 0, 4.62), .055, PURPLE, 'head')
 sphere('Antenna bulb', (0, 0, 4.74), (.16, .16, .16), GREEN, 'head')
-cylinder('Neck joint', (0, 0, 2.48), (0, 0, 2.62), .27, PURPLE_DARK, 'torso')
-torus('Neck ivory collar', (0, 0, 2.48), .28, .06, IVORY, 'torso')
-sphere('Pearl torso', (0, 0, 1.99), (.67, .45, .64), IVORY, 'torso')
-rounded_panel('Mint chest plate', (0, -.445, 2.22), .76, .61, .07, .19, MINT, 'torso')
-torus('Chest status bezel', (0, -.51, 2.22), .15, .028, PURPLE, 'torso', (math.pi / 2, 0, 0))
-sphere('Chest status light', (0, -.532, 2.22), (.115, .035, .115), TEAL, 'torso')
+# An exposed gimbal neck separates the head from the shoulder armor.
+cylinder('Neck titanium spindle', (0, 0, 2.50), (0, 0, 2.85), .205, GRAPHITE, 'torso')
+for height in (2.57, 2.66, 2.75):
+    torus('Neck articulation ring ' + str(height), (0, 0, height), .21, .035, TRIM, 'torso')
+torus('Lower neck ivory collar', (0, 0, 2.51), .265, .055, IVORY, 'torso')
+torus('Upper neck mint collar', (0, 0, 2.81), .235, .04, MINT, 'head')
+
+# A tapered chest shell, waist core, and overlapping breastplate form a coherent suit.
+rounded_box('Torso titanium frame', (0, .015, 1.98), (.88, .54, .74), .20, GRAPHITE, 'torso')
+sphere('Pearl chest armor', (0, -.015, 2.03), (.64, .435, .60), IVORY, 'torso')
+def chest_front(x, z):
+    return -.015 - .435 * math.sqrt(max(.01, 1-(x/.64)**2-((z-2.03)/.60)**2))
+
+rounded_panel('Sculpted mint breastplate', (0, -.015, 2.25), .70, .47, .016, .19, MINT, 'torso', chest_front)
+torus('Chest status titanium bezel', (0, -.46, 2.27), .115, .024, TRIM, 'torso', (math.pi / 2, 0, 0))
+sphere('Chest status light', (0, -.485, 2.27), (.087, .025, .087), TEAL, 'torso')
+curve('Lower abdominal seam', [(x, chest_front(x, z)-.008, z) for x,z in ((-.27,1.75),(0,1.71),(.27,1.75))], .007, TRIM, 'torso')
+for sign in (-1, 1):
+    curve('Torso panel seam ' + str(sign), [(sign*x, chest_front(sign*x,z)-.008, z) for x,z in ((.47,2.19),(.49,2.01),(.36,1.84))], .009, TRIM, 'torso')
+    for vent in range(3):
+        rounded_box(f'Side cooling vent {sign} {vent}', (sign * .575, .12, 2.04 + vent * .075),
+                    (.022, .20, .023), .01, GRAPHITE, 'torso')
+rounded_box('Waist flexible core', (0, 0, 1.52), (.68, .46, .17), .08, GRAPHITE, 'root')
+rounded_panel('Pelvis ivory armor', (0, -.23, 1.49), .67, .18, .045, .08, IVORY, 'root')
 
 for sign, side in ((1, 'L'), (-1, 'R')):
-    shoulder, elbow, wrist = (sign * .77, 0, 2.35), (sign * 1.0, 0, 1.88), (sign * 1.12, -.025, 1.49)
-    sphere('Shoulder joint.' + side, shoulder, (.23, .22, .23), PURPLE, 'upper_arm.' + side)
-    cylinder('Upper arm ceramic.' + side, (sign * .82, 0, 2.22), (sign * .97, 0, 1.97), .15, IVORY, 'upper_arm.' + side, .14)
-    sphere('Elbow joint.' + side, elbow, (.14, .14, .14), PURPLE_DARK, 'forearm.' + side)
-    cylinder('Forearm ceramic.' + side, (sign * 1.02, 0, 1.82), (sign * 1.10, -.02, 1.56), .145, IVORY, 'forearm.' + side, .17)
-    sphere('Wrist cuff.' + side, wrist, (.17, .16, .13), PURPLE_DARK, 'hand.' + side)
-    sphere('Glove palm.' + side, (sign * 1.14, -.055, 1.37), (.20, .17, .22), IVORY, 'hand.' + side)
-    sphere('Glove outer joint.' + side, (sign * 1.30, -.02, 1.40), (.065, .13, .10), PURPLE, 'hand.' + side)
+    shoulder, elbow, wrist = (sign * .77, 0, 2.35), (sign * 1., 0, 1.88), (sign * 1.12, -.025, 1.49)
+    sphere('Shoulder titanium core.' + side, shoulder, (.22, .21, .22), GRAPHITE, 'upper_arm.' + side)
+    sphere('Shoulder lavender armor.' + side, (sign * .80, .025, 2.40), (.24, .22, .185), PURPLE, 'upper_arm.' + side)
+    torus('Shoulder inset ring.' + side, (sign * .965, -.005, 2.35), .145, .024, TRIM, 'upper_arm.' + side, (0, math.pi / 2, 0))
+    armor('Upper arm ivory armor.' + side, (sign * .84, 0, 2.21), (sign * .97, 0, 1.99), .29, .29, IVORY, 'upper_arm.' + side)
+    sphere('Elbow titanium hinge.' + side, elbow, (.145, .145, .145), GRAPHITE, 'forearm.' + side)
+    sphere('Elbow lavender pivot.' + side, (sign * 1.13, 0, 1.88), (.045, .09, .09), TRIM, 'forearm.' + side)
+    armor('Forearm sculpted gauntlet.' + side, (sign * 1.02, 0, 1.79), (sign * 1.10, -.02, 1.58), .31, .32, IVORY, 'forearm.' + side)
+    sphere('Forearm status accent.' + side, (sign * 1.22, -.01, 1.67), (.018, .065, .035), MINT, 'forearm.' + side)
+    sphere('Wrist flexible joint.' + side, wrist, (.13, .135, .10), GRAPHITE, 'hand.' + side)
+    sphere('Ivory glove palm.' + side, (sign * 1.14, -.055, 1.37), (.18, .135, .17), IVORY, 'hand.' + side)
+    sphere('Lavender glove backplate.' + side, (sign * 1.14, .055, 1.39), (.145, .045, .12), PURPLE, 'hand.' + side)
     for finger in range(3):
-        sphere(f'Lavender finger.{side}.{finger}', (sign * (1.02 + finger * .105), -.075, 1.23), (.075, .135, .13), PURPLE, 'fingers.' + side)
-    sphere('Thumb.' + side, (sign * 1.31, -.08, 1.28), (.09, .12, .13), PURPLE, 'fingers.' + side)
-    hip, knee, ankle = (sign * .38, 0, 1.42), (sign * .38, 0, .87), (sign * .38, 0, .30)
-    sphere('Hip joint.' + side, hip, (.19, .19, .19), PURPLE, 'thigh.' + side)
-    cylinder('Thigh ceramic.' + side, (sign * .38, 0, 1.29), (sign * .38, 0, .99), .17, IVORY, 'thigh.' + side, .19)
-    sphere('Knee joint.' + side, knee, (.17, .17, .16), PURPLE_DARK, 'shin.' + side)
-    cylinder('Shin ceramic.' + side, (sign * .38, 0, .78), (sign * .38, 0, .43), .18, IVORY, 'shin.' + side, .22)
-    rounded_box('Boot ivory upper.' + side, (sign * .38, -.17, .27), (.66, .93, .37), .16, IVORY, 'foot.' + side)
-    rounded_box('Boot lavender sole.' + side, (sign * .38, -.17, .105), (.71, .99, .12), .055, PURPLE, 'foot.' + side)
-    sphere('Boot toe cap.' + side, (sign * .38, -.49, .24), (.29, .17, .16), PURPLE, 'foot.' + side)
-    sphere('Boot ankle accent.' + side, (sign * .69, -.09, .39), (.025, .075, .10), TEAL, 'foot.' + side)
+        x = sign * (1.02 + finger * .105)
+        length = .20 if finger == 1 else .18
+        cylinder(f'Finger proximal armor.{side}.{finger}', (x, -.055, 1.245), (x, -.075, 1.15), .041, IVORY, f'digit{finger}.' + side)
+        sphere(f'Finger knuckle.{side}.{finger}', (x, -.075, 1.15), (.045, .045, .045), GRAPHITE, f'digit_tip{finger}.' + side, 20)
+        cylinder(f'Finger distal armor.{side}.{finger}', (x, -.075, 1.15), (x, -.12, 1.245 - length), .038, PURPLE, f'digit_tip{finger}.' + side)
+    cylinder('Thumb proximal armor.' + side, (sign * 1.29, -.055, 1.40), (sign * 1.34, -.10, 1.32), .055, IVORY, 'thumb.' + side)
+    sphere('Thumb titanium knuckle.' + side, (sign * 1.34, -.10, 1.32), (.052, .052, .052), GRAPHITE, 'thumb_tip.' + side, 20)
+    cylinder('Thumb distal armor.' + side, (sign * 1.34, -.10, 1.32), (sign * 1.30, -.15, 1.26), .047, PURPLE, 'thumb_tip.' + side)
+
+    sphere('Hip titanium ball.' + side, (sign * .38, 0, 1.42), (.20, .19, .19), GRAPHITE, 'thigh.' + side)
+    sphere('Hip lavender side cap.' + side, (sign * .525, 0, 1.42), (.065, .13, .13), TRIM, 'thigh.' + side)
+    armor('Thigh ivory armor.' + side, (sign * .38, 0, 1.27), (sign * .38, 0, 1.01), .35, .35, IVORY, 'thigh.' + side)
+    sphere('Knee titanium hinge.' + side, (sign * .38, 0, .87), (.17, .17, .15), GRAPHITE, 'shin.' + side)
+    sphere('Knee lavender armor.' + side, (sign * .38, -.135, .89), (.145, .07, .12), PURPLE, 'shin.' + side)
+    cylinder('Sculpted shin armor.' + side, (sign * .38, 0, .74), (sign * .38, 0, .39), .18, IVORY, 'shin.' + side, .235)
+    rounded_panel('Shin mint inset.' + side, (sign * .38, -.196, .58), .115, .23, .018, .05, MINT, 'shin.' + side)
+    sphere('Ankle ball.' + side, (sign * .38, 0, .30), (.16, .16, .13), GRAPHITE, 'foot.' + side)
+    sphere('Boot sculpted upper.' + side, (sign * .38, -.19, .24), (.33, .48, .23), IVORY, 'foot.' + side)
+    rounded_box('Boot lavender sole.' + side, (sign * .38, -.19, .095), (.69, .96, .105), .05, PURPLE, 'foot.' + side)
+    sphere('Boot mint toe accent.' + side, (sign * .38, -.56, .24), (.23, .07, .09), MINT, 'foot.' + side)
+    sphere('Boot ankle status.' + side, (sign * .69, -.05, .32), (.025, .07, .075), TEAL, 'foot.' + side)
 
 # A small morph target opens the same smile during speech (no face sprite swap).
 vertices, opened, faces = [], [], []
@@ -269,12 +318,19 @@ for step in range(49):
     t = step / 48
     for radial in range(8):
         phi = radial / 8 * math.tau
-        offset = (.022 * math.cos(phi), .022 * math.sin(phi), 0)
-        x, z = -.28 + .56 * t, 3.04 - .11 * math.sin(math.pi * t)
-        vertices.append((x + offset[0], helmet_front(x, z) - .052 + offset[1], z))
         angle = math.pi + t * math.tau
-        ox, oz = .215 * math.cos(angle), 3.005 + .12 * math.sin(angle)
-        opened.append((ox + offset[0], helmet_front(ox, oz) - .052 + offset[1], oz))
+        x = .28 * math.cos(angle)
+        z = 3.04 - .10 * math.sin(angle)**2 + .012 * math.sin(angle)
+        tangent = Vector((-.28 * math.sin(angle), 0,
+                          -.20 * math.sin(angle)*math.cos(angle) + .012*math.cos(angle)))
+        normal = Vector((-tangent.z, 0, tangent.x)).normalized()
+        offset = normal * (.024 * math.cos(phi)) + Vector((0, .024 * math.sin(phi), 0))
+        vertices.append((x + offset.x, helmet_front(x, z) - .075 + offset.y, z + offset.z))
+        ox, oz = .23 * math.cos(angle), 3.005 + .11 * math.sin(angle)
+        open_normal = Vector((-.11 * math.cos(angle), 0, -.23 * math.sin(angle))).normalized()
+        open_offset = open_normal * (.024 * math.cos(phi)) + Vector((0, .024*math.sin(phi), 0))
+        opened.append((ox + open_offset.x, helmet_front(ox, oz) - .075 + open_offset.y, oz + open_offset.z))
+
 for step in range(48):
     for radial in range(8):
         a, b = step * 8 + radial, step * 8 + (radial + 1) % 8
@@ -291,6 +347,16 @@ for vertex, point in zip(key.data, opened):
     vertex.co = point
 key.value = 0
 mouth.active_shape_key_index = 0
+
+# Leave a real neck gap. Shape-key meshes must move every target together.
+for obj in objects:
+    if bindings[obj.name] in ('head', 'eye.L', 'eye.R', 'pupil.L', 'pupil.R') and not obj.name.startswith('Upper neck'):
+        if obj.data.shape_keys:
+            for shape in obj.data.shape_keys.key_blocks:
+                for vertex in shape.data:
+                    vertex.co.z += HEAD_RISE
+        else:
+            obj.location.z += HEAD_RISE
 
 # Rigid mechanical pieces share one real skeleton and one set of materials.
 armature = bpy.data.armatures.new('Brain mechanical skeleton')
@@ -311,17 +377,24 @@ def bone(name, head, tail, parent=None):
 
 bone('root', (0, 0, 0), (0, 0, .3))
 bone('torso', (0, 0, 1.42), (0, 0, 2.48), 'root')
-bone('head', (0, 0, 2.55), (0, 0, 3.7), 'torso')
+bone('head', (0, 0, 2.80), (0, 0, 4.04), 'torso')
 for sign, side in ((1, 'L'), (-1, 'R')):
     bone('upper_arm.' + side, (sign * .77, 0, 2.35), (sign * 1., 0, 1.88), 'torso')
     bone('forearm.' + side, (sign * 1., 0, 1.88), (sign * 1.12, -.025, 1.49), 'upper_arm.' + side)
     bone('hand.' + side, (sign * 1.12, -.025, 1.49), (sign * 1.14, -.055, 1.25), 'forearm.' + side)
     bone('fingers.' + side, (sign * 1.14, -.055, 1.34), (sign * 1.14, -.055, 1.18), 'hand.' + side)
+    for finger in range(3):
+        x = sign * (1.02 + finger * .105)
+        length = .20 if finger == 1 else .18
+        bone(f'digit{finger}.' + side, (x, -.055, 1.245), (x, -.075, 1.15), 'fingers.' + side)
+        bone(f'digit_tip{finger}.' + side, (x, -.075, 1.15), (x, -.12, 1.245 - length), f'digit{finger}.' + side)
+    bone('thumb.' + side, (sign * 1.29, -.055, 1.40), (sign * 1.34, -.10, 1.32), 'hand.' + side)
+    bone('thumb_tip.' + side, (sign * 1.34, -.10, 1.32), (sign * 1.30, -.15, 1.26), 'thumb.' + side)
     bone('thigh.' + side, (sign * .38, 0, 1.42), (sign * .38, 0, .87), 'root')
     bone('shin.' + side, (sign * .38, 0, .87), (sign * .38, 0, .30), 'thigh.' + side)
     bone('foot.' + side, (sign * .38, 0, .30), (sign * .38, -.35, .16), 'shin.' + side)
-    bone('eye.' + side, (sign * .38, helmet_front(sign * .38, 3.49) - .054, 3.49), (sign * .38, helmet_front(sign * .38, 3.49) - .054, 3.59), 'head')
-    bone('pupil.' + side, (sign * .38, helmet_front(sign * .38, 3.49) - .089, 3.48), (sign * .38, helmet_front(sign * .38, 3.49) - .089, 3.53), 'eye.' + side)
+    bone('eye.' + side, (sign * .38, helmet_front(sign * .38, 3.49) - .072, 3.49 + HEAD_RISE), (sign * .38, helmet_front(sign * .38, 3.49) - .072, 3.59 + HEAD_RISE), 'head')
+    bone('pupil.' + side, (sign * .38, helmet_front(sign * .38, 3.49) - .134, 3.48 + HEAD_RISE), (sign * .38, helmet_front(sign * .38, 3.49) - .134, 3.53 + HEAD_RISE), 'eye.' + side)
 bpy.ops.object.mode_set(mode='OBJECT')
 rig.show_in_front = True
 for obj in objects:
@@ -452,6 +525,14 @@ def pose(name, p):
         rig.pose.bones['torso'].location.y = .018 * cycle
         rotation('head', (0, 0, 1), .025 * cycle)
 
+    for side in ('L', 'R'):
+        grip = (.9 if name == 'point' else .45 if name in ('climb', 'climb_dock', 'pull_scroll', 'fold_arms') else .12) * arc
+        for finger in range(3):
+            flex = 0 if name == 'point' and finger == 0 else grip
+            rotation(f'digit{finger}.' + side, (1, 0, 0), -flex)
+            rotation(f'digit_tip{finger}.' + side, (1, 0, 0), -flex * .75)
+        rotation('thumb_tip.' + side, (1, 0, 0), -grip * .6)
+
 
 # Clearance envelopes cover the entire forearm and glove, not just a wrist point.
 # Adjust joint rotations only: limb lengths and material geometry remain identical.
@@ -468,7 +549,7 @@ def limb_collisions(side):
     collisions = 0
     for world, radius in points:
         point = inverse_head @ world
-        x, y, z = point.x, point.y, point.z - 3.35
+        x, y, z = point.x, point.y, point.z - (3.35 + HEAD_RISE)
         shell = (abs(x / (1.175 + radius)) ** (2 / .55) +
                  abs(y / (.66 + radius)) ** (2 / .55)) ** (.55 / .5) + abs(z / (.86 + radius)) ** 4
         ear = (abs(x) < 1.40 + radius and abs(x) > 1.08 - radius and

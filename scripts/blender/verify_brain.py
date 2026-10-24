@@ -17,6 +17,7 @@ armature = rig.data
 source = ast.parse((REPO / 'scripts/blender/build_brain.py').read_text())
 function = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'limb_collisions')
 exec(compile(ast.Module(body=[function], type_ignores=[]), '<clearance>', 'exec'))
+HEAD_RISE = next(ast.literal_eval(node.value) for node in source.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'HEAD_RISE' for target in node.targets))
 scene = bpy.context.scene
 issues, frames, blends = [], 0, 0
 for action in bpy.data.actions:
