@@ -70,7 +70,7 @@ def test_text_only_reply_releases_microphone_suppression(tmp_path, monkeypatch, 
     store=BrainStore(tmp_path)
     store.set_setting('voice_reply',False)
     manager=module.BrainManager(store=store,start_services=False)
-    monkeypatch.setattr(module,'handle_voice_command',lambda *_args,**_kwargs:'Completed the local request.')
+    monkeypatch.setattr(manager.agent,'run',lambda *_args,**_kwargs:'Completed the local request.')
     manager._do_turn_complete('Open a test application')
     qtbot.waitUntil(lambda: manager.last_response['generation']>0)
     assert not manager.listener._output_active

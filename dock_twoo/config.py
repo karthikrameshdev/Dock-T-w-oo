@@ -33,7 +33,7 @@ def migrate_storage_data(old_root: Path, new_root: Path) -> Dict[str, Any]:
     new_path.mkdir(parents=True, exist_ok=True)
 
     # Ensure all target subsystem subdirectories exist
-    for sub in ("notes", "vault", "models", "brain"):
+    for sub in ("notes", "tasks", "vault", "models", "brain"):
         (new_path / sub).mkdir(parents=True, exist_ok=True)
 
     migrated_items = []
@@ -141,6 +141,7 @@ class DockAppItem:
 def get_default_apps() -> List[DockAppItem]:
     """Default dock app items: Notes and Vault at top, Settings and Brain at bottom with 3-dot dividers."""
     return [
+        DockAppItem(id="tasks",name="Tasks",icon="tasks",tooltip="Daily Tasks"),
         DockAppItem(
             id="notes",
             name="Notes",
@@ -166,6 +167,7 @@ def get_default_apps() -> List[DockAppItem]:
             is_separator=True,
             is_bottom=True,
         ),
+        DockAppItem(id="keep_awake",name="Keep Awake",icon="coffee",tooltip="Keep Awake · Off",is_bottom=True,action_type="action"),
         DockAppItem(
             id="settings",
             name="Settings",
@@ -423,7 +425,7 @@ class ConfigManager(QObject):
                     self._config = DockConfig.from_dict(data)
                     # Migrate legacy configurations if they contain removed apps
                     app_ids = {a.id for a in self._config.apps}
-                    if "launcher" in app_ids or "calendar" in app_ids or len(self._config.apps) > 6:
+                    if "launcher" in app_ids or "calendar" in app_ids:
                         self._config.apps = get_default_apps()
                         self.save()
                     elif "vault" not in app_ids:
@@ -444,6 +446,14 @@ class ConfigManager(QObject):
                                 )
                         self._config.apps = new_apps
                         self.save()
+
+                    # Add new apps without resetting the user's order or settings.
+                    app_ids = {a.id for a in self._config.apps}
+                    for addition in get_default_apps():
+                        if addition.id in ('tasks','keep_awake') and addition.id not in app_ids:
+                            index = next((i for i,a in enumerate(self._config.apps) if a.id == ('settings' if addition.id=='keep_awake' else 'vault')),len(self._config.apps))
+                            self._config.apps.insert(index,addition)
+                            self.save()
 
                     # Clean up any legacy tooltips or names containing "T(w)oo" for inner apps
                     needs_save = False

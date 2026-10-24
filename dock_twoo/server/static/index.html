@@ -54,6 +54,7 @@
           </svg>
           <span class="btn-text">Live Preview</span>
         </button>
+        <button type="button" class="btn btn-secondary" id="keepAwakeBtn" aria-pressed="false">Keep Awake · Off</button>
         <button id="resetBtn" class="btn btn-secondary">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
@@ -106,6 +107,7 @@
 
           <div class="nav-group">
             <span class="nav-group-title">Companion Apps</span>
+            <button class="nav-item" data-page="page-tasks"><span class="nav-icon">✓</span><span class="nav-label">Tasks</span><span class="nav-tag">Daily work log</span></button>
             <button class="nav-item" data-page="page-notes">
               <span class="nav-icon">📝</span>
               <span class="nav-label">Notes</span>
@@ -368,6 +370,16 @@
         </div>
 
         <!-- Page 5: Notes App Settings -->
+        <div class="page-view" id="page-tasks">
+          <div class="page-header"><h2>Tasks</h2><p>Record work by day. Ask Brain to add items or summarize a date.</p></div>
+          <div class="settings-card">
+            <div class="form-row"><div class="form-group flex-1"><label for="tasksDay">Work date</label><input id="tasksDay" type="date" class="text-input"></div><button type="button" id="tasksAllDays" class="btn btn-secondary" style="align-self:flex-end;margin-bottom:16px">All days</button></div>
+            <form id="tasksForm" class="form-row"><div class="form-group flex-1"><label for="tasksTitle">Work item</label><input id="tasksTitle" class="text-input" placeholder="What did you work on?" maxlength="1000" required></div><button type="submit" class="btn btn-primary" style="align-self:flex-end;margin-bottom:16px">Add work entry</button></form>
+            <p id="tasksStatus" class="field-desc" role="status"></p>
+            <div id="tasksList" aria-live="polite"></div>
+          </div>
+        </div>
+
         <div class="page-view" id="page-notes">
           <div class="page-header">
             <h2>Notes App Settings</h2>
@@ -439,7 +451,7 @@
         <div class="page-view" id="page-brain">
           <div class="page-header">
             <h2>Brain Voice Assistant & Robotic Mini Agent</h2>
-            <p>Dock 2 Core System: hands-free audio assistant, on-device wake word, multi-profile routing, and desktop robotics</p>
+            <p>Dock 2 Core System: hands-free audio assistant, on-device wake word, cloud agent planning, and desktop robotics</p>
           </div>
 
           <!-- Brain Multi-Tab Navigation Bar -->
@@ -450,7 +462,7 @@
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-profiles">
               <span class="tab-icon">🧠</span>
-              <span>Model Profiles & Status</span>
+              <span>Cloud Model</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-motions">
               <span class="tab-icon">🤖</span>
@@ -498,6 +510,9 @@
                 </div>
                 <button type="submit" class="btn btn-primary" id="brainRequestSend">Send to Brain</button>
               </form>
+              <div class="action-btn-row"><button type="button" class="btn btn-secondary" id="brainStopAgent">Stop request</button><button type="button" class="btn btn-secondary" data-reader="read_selected">Read Selected Text</button><button type="button" class="btn btn-secondary" data-reader="read_window">Read Active Window</button><button type="button" class="btn btn-secondary" data-reader="stop_reading">Stop Reading</button></div>
+              <p class="field-desc" id="brainAgentProgress" role="status"></p>
+              <p class="field-desc" id="brainLocalSpeechStatus" role="status"></p>
               <p id="brainRequestStatus" class="field-desc" role="status">Type a request here or speak to Brain. Both use the same assistant.</p>
             </div>
 
@@ -542,7 +557,7 @@
                   <p class="field-desc" id="brainEnrollVoiceStatus" role="status">Enrollment records five seconds locally; only a speaker vector is saved. Other or unverified speakers are greeted as “Buddy”.</p>
                 </div>
               </div>
-              <p class="field-desc">Wake detection and speech recognition run locally. Optional voice models add noise cleanup and Qwen speech; the assistant can respond while those extras are unavailable.</p>
+              <p class="field-desc">Wake detection and speech recognition run locally. Whisper ONNX transcribes locally. Kokoro ONNX provides local male and female voices, independently of your cloud provider.</p>
             </div>
 
             <!-- Voice Persona & Audio Settings -->
@@ -553,14 +568,7 @@
               <div class="form-row">
                 <div class="form-group flex-1">
                   <label for="brainVoiceName">Voice Persona</label>
-                  <select id="brainVoiceName" class="select-input">
-                    <option value="Aoede">Aoede (Warm & Natural)</option>
-                    <option value="Puck">Puck (Friendly & Playful)</option>
-                    <option value="Charon">Charon (Deep & Thoughtful)</option>
-                    <option value="Fenrir">Fenrir (Clear & Confident)</option>
-                    <option value="Kore">Kore (Calm & Expressive)</option>
-                    <option value="System">System Native Voice</option>
-                  </select>
+                  <select id="brainVoiceName" class="select-input"><option value="af_heart">Heart · American female</option><option value="af_bella">Bella · American female</option><option value="am_adam">Adam · American male</option><option value="am_michael">Michael · American male</option><option value="bf_emma">Emma · British female</option><option value="bm_george">George · British male</option></select>
                 </div>
 
                 <div class="form-group flex-1">
@@ -572,10 +580,7 @@
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="brainVoiceStyle">Voice Personality Prompt</label>
-                <input type="text" id="brainVoiceStyle" class="text-input" value="Warm, natural and conversational, with gentle expression and clear pacing.">
-              </div>
+
 
               <div class="toggle-card-item">
                 <div>
@@ -587,187 +592,22 @@
             </div>
           </div>
 
-          <!-- Tab 2: Model Profiles & Status -->
+          <!-- One configured external reasoning model -->
           <div class="brain-tab-panel" id="brain-tab-profiles">
             <div class="settings-card">
-              <div class="card-header-flex">
-                <div>
-                  <h3 class="card-subheading">Model Profile & LLM Routing</h3>
-                  <p class="field-desc">Manage providers, custom endpoints, model IDs, and modality role routing</p>
-                </div>
-                <div class="action-btn-row">
-                  <button type="button" id="brainNewProfileBtn" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-                    <span>+ New Profile</span>
-                  </button>
-                  <button type="button" id="brainDeleteProfileBtn" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; color: var(--danger);">
-                    <span>🗑️ Delete</span>
-                  </button>
-                  <button type="button" id="brainSaveProfileBtn" class="btn btn-primary" style="font-size: 12px; padding: 6px 12px;">
-                    <span>💾 Save Profile</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Profile & Provider Selection -->
-              <div class="form-row" style="margin-top: 14px;">
-                <div class="form-group flex-1">
-                  <label for="brainActiveProfile">Active Model Profile</label>
-                  <select id="brainActiveProfile" class="select-input">
-                    <!-- Populated dynamically via JS -->
-                  </select>
-                </div>
-
-                <div class="form-group flex-1">
-                  <label for="brainProvider">Provider Kind</label>
-                  <select id="brainProvider" class="select-input">
-                    <option value="local">Local (On-Device Local Engine / Ollama)</option>
-                    <option value="gemini">Google Gemini</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic Claude</option>
-                    <option value="openrouter">OpenRouter</option>
-                    <option value="xai">xAI Grok</option>
-                    <option value="huggingface">Hugging Face</option>
-                    <option value="custom">Custom Provider (Private / Compatible)</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Profile Display Name -->
-              <div class="form-row">
-                <div class="form-group flex-1">
-                  <label for="brainProfileName">Profile Display Name</label>
-                  <input type="text" id="brainProfileName" class="text-input" placeholder="e.g. My Production Assistant, Fast Flash">
-                </div>
-                <div class="form-group flex-1" id="brainStatusDisplayGroup">
-                  <label>Current Status</label>
-                  <div style="padding-top: 8px;">
-                    <span class="badge" id="brainProfileStatusBadge">Active · Ready</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Custom Provider Specific Fields (Only shown when provider === 'custom') -->
-              <div id="customProviderFields" style="display: none; background: rgba(59, 130, 246, 0.05); border: 1px dashed rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
-                <h4 style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--accent);">Custom Provider Configuration</h4>
+              <h3>Cloud model</h3>
+              <p class="field-desc">One model plans, answers, and chooses actions. Speech recognition, voices, image captions, and desktop tools run on this computer.</p>
+              <form id="brainCloudForm">
                 <div class="form-row">
-                  <div class="form-group flex-1">
-                    <label for="customProviderName">Custom Provider Label</label>
-                    <input type="text" id="customProviderName" class="text-input" placeholder="e.g. Self-Hosted vLLM / Internal Gateway">
-                  </div>
-                  <div class="form-group flex-1">
-                    <label for="customAuthHeader">Auth Header / Token Name (Optional)</label>
-                    <input type="text" id="customAuthHeader" class="text-input" placeholder="Authorization: Bearer <key>">
-                  </div>
+                  <div class="form-group flex-1"><label for="brainCloudProvider">Provider</label><select id="brainCloudProvider" class="select-input"><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="deepseek">DeepSeek</option><option value="xai">xAI</option><option value="huggingface">Hugging Face</option><option value="custom">Custom cloud provider</option></select></div>
+                  <div class="form-group flex-1"><label for="brainCloudProtocol">API format</label><select id="brainCloudProtocol" class="select-input"><option value="openai">OpenAI compatible</option><option value="anthropic">Anthropic Messages</option></select></div>
                 </div>
-              </div>
-
-              <!-- Model Identifier & Base URL -->
-              <div class="form-row">
-                <div class="form-group flex-1">
-                  <label for="brainModelId">Primary Model Identifier</label>
-                  <input type="text" id="brainModelId" class="text-input" value="local" placeholder="e.g. local, gemini-2.0-flash, gpt-4o, claude-3-5-sonnet">
-                  <!-- Popular Presets Quick Chips -->
-                  <div style="margin-top: 6px;">
-                    <span style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Quick Select Popular Models:</span>
-                    <div id="popularModelsRow" class="model-chips-row">
-                      <!-- Chips dynamically injected per provider -->
-                    </div>
-                  </div>
-                </div>
-
-                <div class="form-group flex-1">
-                  <label for="brainBaseUrl">Endpoint / Base URL</label>
-                  <input type="text" id="brainBaseUrl" class="text-input" placeholder="http://127.0.0.1:11434/v1">
-                  <span class="field-hint" id="baseUrlHint">Default provider API endpoint URL</span>
-                </div>
-              </div>
-
-              <!-- Modality & Role-Based Routing (Brain 2 Style) -->
-              <div style="margin-top: 18px; border-top: 1px solid var(--card-border); padding-top: 16px;">
-                <h4 class="card-subheading">Input-Type & Modality Routing</h4>
-                <p class="field-desc">Route specific cognitive tasks, perception, research, and audio to specialized models</p>
-
-                <div class="role-routing-grid">
-                  <!-- 1. Text Output / Conversational Core -->
-                  <div class="role-routing-item">
-                    <div class="role-routing-header">
-                      <span style="font-weight: 600; font-size: 13px;">💬 Text & Conversation</span>
-                      <span class="role-tag">text_output</span>
-                    </div>
-                    <p style="font-size: 11px; color: var(--text-muted);">Main assistant responses and reasoning</p>
-                    <input type="text" id="routeTextOutput" class="text-input" placeholder="Inherit primary model">
-                  </div>
-
-                  <!-- 2. Voice / Speech Output -->
-                  <div class="role-routing-item">
-                    <div class="role-routing-header">
-                      <span style="font-weight: 600; font-size: 13px;">🔊 Voice & Speech Output</span>
-                      <span class="role-tag">audio_output</span>
-                    </div>
-                    <p style="font-size: 11px; color: var(--text-muted);">Text-to-speech engine or audio model</p>
-                    <input type="text" id="routeAudioOutput" class="text-input" placeholder="Aoede / System / Model">
-                  </div>
-
-                  <!-- 3. Screen & Vision Inspection -->
-                  <div class="role-routing-item">
-                    <div class="role-routing-header">
-                      <span style="font-weight: 600; font-size: 13px;">👁️ Vision & Screen Analysis</span>
-                      <span class="role-tag">image_input</span>
-                    </div>
-                    <p style="font-size: 11px; color: var(--text-muted);">Window inspection and screenshot OCR</p>
-                    <input type="text" id="routeImageInput" class="text-input" placeholder="gemini-2.0-flash / gpt-4o / local">
-                  </div>
-
-                  <!-- 4. In-Depth Web Research -->
-                  <div class="role-routing-item">
-                    <div class="role-routing-header">
-                      <span style="font-weight: 600; font-size: 13px;">🌐 Live Web Research</span>
-                      <span class="role-tag">research</span>
-                    </div>
-                    <p style="font-size: 11px; color: var(--text-muted);">Google web research and synthesis</p>
-                    <input type="text" id="routeResearch" class="text-input" placeholder="gemini-2.0-flash / deepseek-r1">
-                  </div>
-
-                  <!-- 5. Computer Use & Automation -->
-                  <div class="role-routing-item">
-                    <div class="role-routing-header">
-                      <span style="font-weight: 600; font-size: 13px;">⚡ Computer GUI Automation</span>
-                      <span class="role-tag">computer_use</span>
-                    </div>
-                    <p style="font-size: 11px; color: var(--text-muted);">Autonomous desktop actions and app typing</p>
-                    <input type="text" id="routeComputerUse" class="text-input" placeholder="claude-3-5-sonnet / gemini-2.0-flash">
-                  </div>
-
-                  <!-- 6. Speech / Audio Input -->
-                  <div class="role-routing-item">
-                    <div class="role-routing-header">
-                      <span style="font-weight: 600; font-size: 13px;">🎙️ Audio & Voice Input</span>
-                      <span class="role-tag">audio_input</span>
-                    </div>
-                    <p style="font-size: 11px; color: var(--text-muted);">Voice recognition and transcription</p>
-                    <input type="text" id="routeAudioInput" class="text-input" placeholder="whisper / native speech">
-                  </div>
-                </div>
-              </div>
-
-              <!-- Provider API Key -->
-              <div class="form-group" style="margin-top: 18px;">
-                <label for="brainApiKey">Provider API Key / Secret Token</label>
-                <div class="input-with-button">
-                  <input type="password" id="brainApiKey" class="text-input" placeholder="Enter API Key (stored securely in local Brain vault)">
-                  <button type="button" id="brainSaveKeyBtn" class="btn btn-secondary">Save Key</button>
-                </div>
-                <span class="field-hint" id="brainKeyStatusHint">Saved keys are kept encrypted in local machine storage</span>
-              </div>
-
-              <!-- Strict Local Toggle -->
-              <div class="toggle-card-item" style="margin-top: 14px;">
-                <div>
-                  <label class="toggle-title">Strict 100% Local Offline Mode</label>
-                  <p class="field-desc">Never route queries or speech to external cloud APIs</p>
-                </div>
-                <input type="checkbox" id="brainLocalOnlyToggle" class="modern-toggle">
-              </div>
+                <div class="form-group"><label for="brainCloudUrl">Provider base URL</label><input id="brainCloudUrl" type="url" class="text-input" placeholder="https://provider.example/v1" required></div>
+                <div class="form-group"><label for="brainCloudModel">Model ID</label><input id="brainCloudModel" class="text-input" placeholder="Enter the provider's tool-capable model ID" required></div>
+                <div class="form-group"><label for="brainCloudKey">API key</label><input id="brainCloudKey" type="password" class="text-input" autocomplete="new-password" placeholder="Enter a key, or leave blank to retain the saved key"></div>
+                <div class="action-btn-row"><button type="submit" class="btn btn-primary">Save cloud model</button><button type="button" id="brainCloudTest" class="btn btn-secondary">Test connection</button></div>
+              </form>
+              <p id="brainCloudStatus" class="field-desc" role="status">Model is not configured.</p>
             </div>
           </div>
 

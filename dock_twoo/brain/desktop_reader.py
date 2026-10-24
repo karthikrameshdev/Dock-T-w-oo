@@ -82,6 +82,7 @@ class MacReadingBackend:
 
     def __init__(self):
         self.last_target: Optional[ReadingTarget] = None
+        self.focus_diagnostics = {}
 
     @staticmethod
     def _get(element, attribute):
@@ -112,9 +113,18 @@ class MacReadingBackend:
             return None
         import ApplicationServices as AX
         from Cocoa import NSWorkspace
+        from Cocoa import NSRunningApplication
         app = NSWorkspace.sharedWorkspace().frontmostApplication()
+        windows = self._windows()
+        self.focus_diagnostics = {'foreground_pid':int(app.processIdentifier()) if app else None,'own_pid':os.getpid(),'visible_windows':len(windows)}
         if app is None or app.processIdentifier() == os.getpid():
-            return self.last_target
+            if self.last_target:return self.last_target
+            # The dock can become active before the first timer sample. The
+            # frontmost external standard window is the document underneath it.
+            candidate=next((window for window in windows if int(window.get('kCGWindowOwnerPID',-1))!=os.getpid()),None)
+            if candidate is None:return None
+            app=NSRunningApplication.runningApplicationWithProcessIdentifier_(int(candidate['kCGWindowOwnerPID']))
+            if app is None:return None
         pid = int(app.processIdentifier())
         application = AX.AXUIElementCreateApplication(pid)
         AX.AXUIElementSetMessagingTimeout(application, .35)
@@ -123,7 +133,7 @@ class MacReadingBackend:
         # Opening our settings console must not replace the document to be read.
         if 'dock t(w)oo' in title.lower():
             return self.last_target
-        matches = [entry for entry in self._windows() if int(entry.get('kCGWindowOwnerPID', -1)) == pid]
+        matches = [entry for entry in windows if int(entry.get('kCGWindowOwnerPID', -1)) == pid]
         if not matches:
             return self.last_target
         info = next((entry for entry in matches if entry.get('kCGWindowName') == title), matches[0])
@@ -299,20 +309,24 @@ class MacReadingBackend:
 
     def _ocr(self, target, viewport):
         import Quartz
-        import ApplicationServices as Native
+        import Vision as Native
         if not Quartz.CGPreflightScreenCaptureAccess():
             raise RuntimeError('Allow Screen Recording for Dock2 or its Python launcher to read apps without accessible text.')
-        image = Quartz.CGWindowListCreateImage(Quartz.CGRectNull, Quartz.kCGWindowListOptionIncludingWindow,
-                                              target.window_id, Quartz.kCGWindowImageBoundsIgnoreFraming)
-        if image is None:
-            raise RuntimeError('The selected window could not be captured for reading.')
+        import tempfile
+        from pathlib import Path
+        from dock_twoo.brain.local_vision import capture_window
+        from Foundation import NSURL,NSDictionary
+        folder = tempfile.TemporaryDirectory(prefix='brain-reading-ocr-')
+        path = Path(folder.name)/'window.png'
+        capture_window(target.window_id,path)
         request = Native.VNRecognizeTextRequest.alloc().init()
         request.setRecognitionLevel_(0)  # Accurate recognition, on this Mac.
         request.setUsesLanguageCorrection_(True)
-        handler = Native.VNImageRequestHandler.alloc().initWithCGImage_options_(image, {})
+        handler = Native.VNImageRequestHandler.alloc().initWithURL_options_(NSURL.fileURLWithPath_(str(path)), NSDictionary.dictionary())
         ok, error = handler.performRequests_error_([request], None)
         if not ok:
             raise RuntimeError(f'Text recognition failed: {error}')
+        folder.cleanup()
         lines = []
         for observation in request.results() or []:
             candidate = observation.topCandidates_(1)
@@ -441,9 +455,22 @@ class DesktopReader(QObject):
         self.manager.speech.stop()
         self.manager.show_mini_agent()
         self.manager.companion.set_activity('processing')
+        self.mode = mode
         self._fetch(first=True)
         self.guard_timer.start()
         self.changed.emit()
+
+    def start_text(self, text):
+        if not isinstance(text,str) or not text.strip():
+            self.failed.emit('No text was supplied for reading.')
+            return
+        self.stop()
+        self.active=True;self.mode='text';self.last_error=''
+        self.lines_read=self.pages_read=0
+        self.manager.in_conversation_session=False
+        self.manager.session_timer.stop();self.manager.listener.suspend();self.manager.speech.stop()
+        viewport=QRect(0,0,1,1)
+        self._page_received(self.generation,None,ReadingPage([ReadingLine(text,viewport)],viewport,1.,'text',1.))
 
     def stop(self):
         was_active = self.active
@@ -469,7 +496,12 @@ class DesktopReader(QObject):
                 selected = self.backend.target() if first else target
                 if first and hasattr(self.backend, 'activate'):
                     self.backend.activate(selected, cancel)
-                result = self.backend.first_page(selected, cancel) if first else self.backend.scroll_page(selected, page, cancel)
+                if first and self.mode == 'selected':
+                    from dock_twoo.brain.desktop_driver import DesktopDriver
+                    text = DesktopDriver().selected_text(selected.pid)['text']
+                    result = ReadingPage([ReadingLine(text, selected.bounds)], selected.bounds, 1., 'selected', 1.)
+                else:
+                    result = self.backend.first_page(selected, cancel) if first else self.backend.scroll_page(selected, page, cancel)
                 if not cancel.is_set():
                     self.page_ready.emit(generation, selected, result)
             except Exception as exc:
@@ -500,13 +532,9 @@ class DesktopReader(QObject):
                 self.finished.emit()
             return
         self.pages_read += 1
-        self.queue.extend((chunk, line.bounds) for line in lines for chunk in speech_chunks(line.text))
-        if first:
-            destination = QPoint(result.viewport.right() - 90, result.viewport.top() - 80)
-            self.manager.companion.play_action('walk', destination=destination)
-            self.manager.companion.arrival = self._speak_next
-        else:
-            self._speak_next()
+        self.queue.extend((chunk, result.viewport) for chunk in speech_chunks('\n'.join(line.text for line in lines),limit=6000))
+        # Reading starts immediately. Mascot travel never delays the audio.
+        self._speak_next()
         self.changed.emit()
 
     def _speak_next(self):
@@ -551,4 +579,4 @@ class DesktopReader(QObject):
 
     def status(self):
         return {'active': self.active, 'window': self.target.title if self.target else '',
-                'lines_read': self.lines_read, 'pages_read': self.pages_read, 'error': self.last_error}
+                'focus':getattr(self.backend,'focus_diagnostics',{}), 'mode':getattr(self,'mode','window'), 'lines_read': self.lines_read, 'pages_read': self.pages_read, 'error': self.last_error}

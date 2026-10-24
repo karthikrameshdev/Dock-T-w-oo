@@ -105,7 +105,8 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
     assert "vault" in dock._icon_buttons
     assert "settings" in dock._icon_buttons
     assert "brain" in dock._icon_buttons
-    assert len(dock._icon_buttons) == 4
+    assert len(dock._icon_buttons) == 6
+    assert "tasks" in dock._icon_buttons and "keep_awake" in dock._icon_buttons
 
     # Simulate clicking notes icon
     notes_btn = dock._icon_buttons["notes"]
@@ -373,3 +374,29 @@ def test_dock_edge_orientation_and_no_overlap(qtbot, qapp, tmp_path):
     dock.close()
 
 
+
+
+def test_tasks_drawer_uses_the_persistent_voice_work_log(tmp_path,qtbot):
+    from PySide6.QtCore import QDate
+    from dock_twoo.ui.apps.tasks_app import TasksAppWidget
+    from dock_twoo.tasks import TaskStore
+    cfg=DockConfig(storage_path=str(tmp_path))
+    widget=TasksAppWidget(cfg);qtbot.addWidget(widget);widget.show()
+    widget.date.setDate(QDate(2026,1,5));widget.entry.setText('Reviewed voice agent');widget.add()
+    assert widget.list.count()==1
+    item=widget.list.item(0);widget.toggle(item)
+    assert TaskStore(tmp_path/'tasks').list(date='2026-01-05')['tasks'][0]['status']=='todo'
+    TaskStore(tmp_path/'tasks').add('Recorded through voice',date='2026-01-05')
+    widget.refresh();assert widget.list.count()==2
+    widget.date.setDate(QDate(2026,1,6));assert widget.list.count()==0
+    widget.close()
+
+
+def test_repeated_voice_open_keeps_tasks_visible(qtbot,tmp_path):
+    mgr=ConfigManager(config_path=tmp_path/'config.json');mgr.update({'storage_path':str(tmp_path/'storage')})
+    dock=DockWindow(mgr);qtbot.addWidget(dock);dock.show()
+    dock._open_voice_app('tasks')
+    assert dock.attached_window.is_showing_app('tasks')
+    dock._open_voice_app('tasks')
+    assert dock.attached_window.is_showing_app('tasks') and dock.attached_window.isVisible()
+    dock.attached_window.close();dock.close()

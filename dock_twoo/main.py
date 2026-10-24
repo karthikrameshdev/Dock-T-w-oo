@@ -79,7 +79,8 @@ def main() -> int:
         config_mgr.update({"theme_mode": args.theme})
 
     from dock_twoo.brain import get_brain_manager
-    get_brain_manager()
+    brain=get_brain_manager()
+    app.aboutToQuit.connect(brain.shutdown)
 
     # Start Web Console Server
     web_server = WebConsoleServer(config_mgr)
@@ -107,6 +108,8 @@ def main() -> int:
         ret = app.exec()
     finally:
         web_server.stop()
+        from dock_twoo.keep_awake import get_keep_awake
+        get_keep_awake().close()
 
     return ret
 

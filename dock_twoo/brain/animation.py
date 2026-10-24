@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import math
 
 ACTIONS = {
+    "handshake": ("Shake hands", 2.5),
     "run": ("Run", 1.0),
     "talk": ("Talk expressively", 2.8),
     "listen": ("Listen attentively", 2.4),

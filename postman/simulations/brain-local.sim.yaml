@@ -1,5 +1,0 @@
-simulation: brain-local
-routing: path
-mocks:
-  - routeKey: ollama
-    path: ../mocks/ollama/config.yaml

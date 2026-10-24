@@ -13,8 +13,8 @@ def default_brain_data_dir() -> Path:
     override = os.environ.get("DOCK_TWOO_BRAIN_DATA_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    from dock_twoo.config import DockConfig
-    return DockConfig().get_brain_dir()
+    from dock_twoo.config import ConfigManager
+    return ConfigManager().config.get_brain_dir()
 
 
 class BrainStore:
@@ -37,7 +37,6 @@ class BrainStore:
             "companion_position": None,
             "mascot_pose": "stand",
             "mascot_corner": "bottom_right",
-            "voice_name": "Aoede",
             "voice_style": "Warm, natural and conversational, clear pacing.",
             "speech_rate": 1.0,
             "wake_word_enabled": True,
@@ -49,36 +48,11 @@ class BrainStore:
             "retention_days": 30,
             "retention_max_mb": 1024,
             "cloud_keys": {},
-            "active_profile": "local",
-            "profiles": [
-                {
-                    "id": "local",
-                    "name": "Local",
-                    "provider": "local",
-                    "model": "local",
-                    "voice_model": "local",
-                    "local_only": True,
-                    "voice": {"voice_name": "System", "robot_voice": 0.0},
-                },
-                {
-                    "id": "gemini",
-                    "name": "Google Gemini",
-                    "provider": "gemini",
-                    "model": "gemini-2.0-flash",
-                    "voice_model": "gemini-2.0-flash",
-                    "local_only": False,
-                    "voice": {"voice_name": "Aoede", "robot_voice": 0.0},
-                },
-                {
-                    "id": "openrouter",
-                    "name": "OpenRouter",
-                    "provider": "openrouter",
-                    "model": "meta-llama/llama-3.3-70b-instruct",
-                    "voice_model": "local",
-                    "local_only": False,
-                    "voice": {"voice_name": "Aoede", "robot_voice": 0.0},
-                },
-            ],
+            "active_profile": "cloud",
+            "profiles": [],
+            "voice_name": "af_heart",
+            "agent_max_steps": 64,
+
         }
 
     def _load(self) -> Dict[str, Any]:

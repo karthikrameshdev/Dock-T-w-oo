@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import os
 import re
 import threading
 import time
@@ -13,14 +14,16 @@ from PySide6.QtCore import QMetaObject, QObject, QPoint, QThread, QTimer, Qt, Si
 from PySide6.QtWidgets import QMenu, QApplication
 
 from dock_twoo.brain.animation import ACTIONS
-from dock_twoo.brain.commands import handle_voice_command
 from dock_twoo.brain.listener import AudioListener, GlobalShortcutListener
 from dock_twoo.brain.mascot import Companion
 from dock_twoo.brain.profiles import ProfileManager
 from dock_twoo.brain.providers import query_llm
 from dock_twoo.brain.speech import SpeechPlayback
 from dock_twoo.brain.storage import BrainStore
-from dock_twoo.brain.local_chat import get_local_chat
+from dock_twoo.brain.agent import BrainAgent
+from dock_twoo.brain.cloud import NOT_CONFIGURED
+from dock_twoo.brain.local_tts import get_local_tts
+from dock_twoo.brain.animation_director import AnimationDirector
 
 
 class BrainManager(QObject):
@@ -28,6 +31,8 @@ class BrainManager(QObject):
 
     status_changed = Signal(str)
     reply_received = Signal(str)
+    app_open_requested = Signal(str)
+    app_data_changed = Signal(str)
     visibility_changed = Signal(bool)
 
     # Thread-safe dispatch signals for mascot updates from worker threads
@@ -58,9 +63,12 @@ class BrainManager(QObject):
 
     def __init__(self, parent: Optional[QObject] = None, *, store=None, start_services: bool = True, voice_model_dir=None):
         super().__init__(parent)
+        if "PYTEST_CURRENT_TEST" in os.environ:
+            start_services = False
         self.store = store or BrainStore()
         self.profile_mgr = ProfileManager(self.store)
         self.speech = SpeechPlayback(self)
+        self.speech.store = self.store
 
         self.companion = Companion(self)
         self.speech.activity.connect(self.companion.set_activity)
@@ -85,6 +93,7 @@ class BrainManager(QObject):
         self._last_wake_reply: str = ""
         self._query_generation = 0
         self.last_response = {'generation':0, 'text':''}
+        self._agent_cancel = threading.Event()
 
         self.session_timer = QTimer(self)
         self.session_timer.setSingleShot(True)
@@ -123,6 +132,8 @@ class BrainManager(QObject):
         self.reader = DesktopReader(self)
         if not start_services:
             self.reader.remember_timer.stop()
+        self.agent = BrainAgent(self.profile_mgr, self)
+        self.animation_director = AnimationDirector(self)
         self.reader.failed.connect(self._on_reading_failed)
         self.reader.finished.connect(lambda: self.status_changed.emit("Finished reading the document."))
         self.speech.progress.connect(self.companion.reading_progress)
@@ -130,7 +141,7 @@ class BrainManager(QObject):
             self.listener.start()
         if start_services:
             self.shortcut_listener.start()
-            get_local_chat().start()
+            get_local_tts().start()
 
         if self.store.setting("companion_visible", True):
             self.show_mini_agent()
@@ -310,7 +321,7 @@ class BrainManager(QObject):
         # This signal is delivered only after the entire wake statement ends.
         # Inline commands go directly to _do_turn_complete without a greeting.
         if self.store.setting("voice_reply", True):
-            self.speech.start(self.get_wake_greeting(self.listener.last_wake_owner_verified))
+            self.speech.start(NOT_CONFIGURED if self.profile_mgr.get_active_profile()['status']=='not configured' else self.get_wake_greeting(self.listener.last_wake_owner_verified))
         else:
             self.listener.start_recording()
             self.companion.set_activity("listening")
@@ -371,8 +382,20 @@ class BrainManager(QObject):
             self._do_wake_detected()
             return
 
+        from dock_twoo.brain.computer_actions import normalize_request
+        reading_text = re.sub(r'^(?:okay|ok|alright)[,\s]+','',normalize_request(user_text),flags=re.I).strip(' .!?')
+        if re.fullmatch(r'read\s+(?:(?:this|the|current)\s+)?(?:text|page|screen|document)', reading_text, re.I):
+            self.start_reading('window')
+            return
+        literal = re.fullmatch(r'read\s+(?:this\s+text|aloud)\s*:\s*(.+)',reading_text,re.I|re.S)
+        if literal:
+            self.read_text(literal.group(1))
+            return
         if re.fullmatch(r"\s*(?:hey\s+)?(?:brain[,\s]+)?read\s+(?:the\s+)?(?:desktop|(?:active\s+)?window)[.!?\s]*", user_text, re.I):
             self.start_reading("window")
+            return
+        if re.fullmatch(r"\s*(?:(?:hey\s+)?brain[,\s]+)?(?:please\s+)?read\s+(?:the\s+)?selected\s+text[.!?\s]*", user_text, re.I):
+            self.start_reading("selected")
             return
         if re.fullmatch(r"\s*(?:brain[,\s]+)?stop\s+reading[.!?\s]*", user_text, re.I):
             self.stop_reading()
@@ -392,6 +415,9 @@ class BrainManager(QObject):
             return
 
         self.session_timer.stop()
+        self._agent_cancel.set()
+        self._agent_cancel = threading.Event()
+        agent_cancel = self._agent_cancel
         self.listener.cancel_recording()
         self.listener.set_output_active(True)
         self.activity_requested.emit("processing")
@@ -415,20 +441,14 @@ class BrainManager(QObject):
             return
 
         def run_turn():
-            # 1. Check for dedicated voice command (movement, window walk, ball play, action, memory, CUA, research)
             try:
-                cmd_reply = handle_voice_command(user_text, self, history=history)
-                if cmd_reply:
-                    reply = cmd_reply
-                else:
-                    self.activity_requested.emit("thinking")
-                    active_profile = self.profile_mgr.get_active_profile()
-                    provider = active_profile.get("provider", "local") if active_profile else "local"
-                    api_key = self.profile_mgr.get_key(provider) if active_profile else ""
-                    reply = query_llm(user_text, profile=active_profile, api_key=api_key, history=history)
+                self.activity_requested.emit("thinking")
+                reply = self.agent.run(user_text, history=history, cancel=agent_cancel)
+            except InterruptedError:
+                return
             except Exception as exc:
                 self.status_changed.emit(f"Brain request failed: {type(exc).__name__}")
-                reply = "Hey Buddy, I'm sorry, I couldn't process that request. Could you try again?"
+                reply = f"I could not complete the request. {exc}"
 
             def deliver_reply():
                 if generation != self._query_generation:
@@ -436,8 +456,15 @@ class BrainManager(QObject):
                 self.conversation_history.append({"role": "assistant", "content": reply})
                 self.last_response = {'generation':generation, 'text':str(reply)}
                 self.reply_received.emit(str(reply))
+                self.animation_director.respond(reply)
+                if getattr(reply,"reading_started",False):
+                    return
                 if self.store.setting("voice_reply", True):
-                    if hasattr(reply,"lyrics"):
+                    if getattr(reply,"gesture",None)=="whistle":
+                        self.speech.whistle()
+                    elif getattr(reply,"delivery",None)=="sing":
+                        self.speech.sing(str(reply))
+                    elif hasattr(reply,"lyrics"):
                         self.speech.sing(reply.lyrics)
                     else:
                         self.speech.start(reply)
@@ -485,6 +512,9 @@ class BrainManager(QObject):
         if QThread.currentThread() != self.thread():
             QMetaObject.invokeMethod(self, "stop_talking", Qt.ConnectionType.QueuedConnection)
             return
+        self._agent_cancel.set()
+        self.agent.stop()
+        self.animation_director.cancel()
         self.reader.stop()
         self._is_listening = False
         self._query_generation += 1
@@ -494,6 +524,16 @@ class BrainManager(QObject):
         self.listener.arm_wake()
         self.speech.stop()
         self.companion.set_activity("idle")
+
+    def shutdown(self):
+        self.stop_talking()
+        self.reader.remember_timer.stop()
+        self.listener.stop()
+        self.shortcut_listener.stop()
+        self.companion.close()
+
+    def read_text(self, text: str) -> None:
+        self.reader.start_text(text)
 
     def start_reading(self, mode: str = "window") -> None:
         if QThread.currentThread() != self.thread():
@@ -549,6 +589,7 @@ class BrainManager(QObject):
         act_talk.setEnabled(True)
         menu.addAction("Read Desktop", lambda: self.start_reading("desktop"))
         menu.addAction("Read Active Window", lambda: self.start_reading("window"))
+        menu.addAction("Read Selected Text", lambda: self.start_reading("selected"))
         stop_read = menu.addAction("Stop Reading", self.stop_reading)
         stop_read.setEnabled(self.reader.active)
 
@@ -653,7 +694,10 @@ class BrainManager(QObject):
             },
             "voice_output": {"playing": self.speech.playing, "error": self.speech.last_error},
             "reading": self.reader.status(),
-            "language_model": get_local_chat().status(),
+            "language_model": {"state": self.profile_mgr.get_active_profile()["status"], "model": self.profile_mgr.get_active_profile().get("model", ""), "kind":"cloud"},
+            "agent": self.agent.status(),
+            "local_speech": get_local_tts().status(),
+            "animation": dict(self.animation_director.last_decision),
             "last_response": dict(self.last_response),
             "character": {
                 "version": self.companion.model_view.version if self.companion.model_view else "",

@@ -104,39 +104,16 @@ def test_brain_storage_and_profiles(tmp_path):
     reloaded_store = BrainStore(data_dir=tmp_path)
     assert reloaded_store.setting("roaming") is True
 
-    # Profile manager
     profile_mgr = ProfileManager(store)
     profiles = profile_mgr.get_profiles()
-    assert len(profiles) >= 3
-
-    # Check default active profile
-    active = profile_mgr.get_active_profile()
-    assert "id" in active
-    assert "model" in active
-
-    # Default active profile is local
-    active = profile_mgr.get_active_profile()
-    assert active["id"] == "local"
-    assert active["name"] == "Local"
-    assert active["status"] == "active"
-
-    # Status before key
-    gemini_prof = [p for p in profiles if p["id"] == "gemini"][0]
-    assert gemini_prof["status"] == "not configured"
-
-    openrouter_prof = [p for p in profiles if p["id"] == "openrouter"][0]
-    assert openrouter_prof["status"] == "not configured"
-
-    # Set key for gemini
-    profile_mgr.set_key("gemini", "ai-test-key-12345")
-    assert profile_mgr.get_key("gemini") == "ai-test-key-12345"
-    updated_profiles = profile_mgr.get_profiles()
-    gemini_updated = [p for p in updated_profiles if p["id"] == "gemini"][0]
-    assert gemini_updated["status"] == "active"
-
-    # Switch active profile
-    assert profile_mgr.activate_profile("gemini") is True
-    assert profile_mgr.get_active_profile()["id"] == "gemini"
+    assert len(profiles) == 1
+    assert profiles[0]['id'] == 'cloud' and profiles[0]['status'] == 'not configured'
+    profile_mgr.save_profile({'provider':'gemini','base_url':'https://generativelanguage.googleapis.com/v1beta/openai','model':'configured-model'})
+    profile_mgr.set_key('gemini','ai-test-key-12345')
+    assert profile_mgr.get_key('gemini') == 'ai-test-key-12345'
+    assert profile_mgr.get_active_profile()['status'] == 'configured'
+    assert 'ai-test-key-12345' not in store.settings_file.read_text()
+    assert profile_mgr.activate_profile('local') is False
 
 
 def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
@@ -304,31 +281,12 @@ def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeyp
     dock.close()
 
 
-def test_local_first_conversational_engine():
-    """Verify local-first spoken answers without API key prompt."""
-    from dock_twoo.brain.providers import query_llm, answer_locally, get_system_summary
-
-    # 1. System summary pulls machine status
-    summary = get_system_summary()
-    assert isinstance(summary, str)
-    assert len(summary) > 10
-
-    # 2. Querying without any API key or profile returns natural voice response
-    reply_system = query_llm("How is my system?", profile=None, api_key="")
-    assert "API key" not in reply_system
-    assert "Error" not in reply_system
-
-    reply_time = query_llm("What time is it?", profile=None, api_key="")
-    assert "currently" in reply_time.lower() or "pm" in reply_time.lower() or "am" in reply_time.lower()
-    assert "API key" not in reply_time
-
-    reply_hello = query_llm("Hello!", profile=None, api_key="")
-    assert len(reply_hello) > 5
-    assert "API key" not in reply_hello
-
-    reply_dock = query_llm("What can you do?", profile=None, api_key="")
-    assert any(word in reply_dock.lower() for word in ('brain','desktop','apps','cursor','sing'))
-    assert "API key" not in reply_dock
+def test_conversation_requires_one_configured_cloud_model():
+    from dock_twoo.brain.providers import query_llm, get_system_summary
+    from dock_twoo.brain.cloud import NOT_CONFIGURED
+    assert len(get_system_summary()) > 10
+    for prompt in ('How is my system?', 'What time is it?', 'Hello!', 'What can you do?'):
+        assert query_llm(prompt, profile=None, api_key='') == NOT_CONFIGURED
 
 
 def test_voice_commands_router(tmp_path):
@@ -508,11 +466,7 @@ def test_missing_wake_models_download_in_background(tmp_path, monkeypatch):
     for thread in models._download_threads.values():
         thread.join(timeout=2)
 
-    assert set(downloads) == {
-        ("recognizer", models.ASR_MODEL),
-        ("denoiser", models.ENHANCER_MODEL),
-        ("tts", models.TTS_MODEL),
-    }
+    assert set(downloads) == {("recognizer", models.ASR_MODEL), ("denoiser", models.ENHANCER_MODEL)}
 
 
 def test_continuous_multiturn_conversation_session(tmp_path):
@@ -729,7 +683,7 @@ def test_tightened_resource_gating():
 
     # Explicit resource request SHOULD trigger resource summary
     explicit_reply = answer_locally("what are my resources?")
-    assert "cpu" in explicit_reply.lower() or "battery" in explicit_reply.lower() or "memory" in explicit_reply.lower()
+    assert "Model is not configured" in explicit_reply
 
 
 def test_top_left_corner_voice_command(tmp_path):

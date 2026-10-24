@@ -1,0 +1,5 @@
+simulation: brain-cloud
+routing: path
+mocks:
+  - routeKey: cloud
+    path: ../mocks/cloud/config.yaml

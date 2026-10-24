@@ -1,9 +1,4 @@
-"""Lazy, local Hugging Face speech models used by Brain.
-
-The base runtime uses CPU ONNX Whisper for commands. On Apple Silicon the optional
-MLX runtime adds MossFormer2 enhancement and Qwen3-TTS. WavLM speaker verification
-is opt-in through voice enrollment.
-"""
+"""Local ONNX recognition, enhancement and speech, with optional speaker enrollment."""
 
 from __future__ import annotations
 
@@ -12,9 +7,7 @@ import importlib.util
 import os
 from pathlib import Path
 import platform
-import tempfile
 import threading
-import time
 import wave
 from typing import Optional, Sequence
 
@@ -22,9 +15,8 @@ from dock_twoo.brain.recognition import LocalRecognizer
 
 
 class LocalVoiceModels:
-    ENHANCER_MODEL = "starkdmi/MossFormer2-SE-8bit"
+    ENHANCER_MODEL = "GTCRN-ONNX"
     ASR_MODEL = LocalRecognizer.MODEL_ID
-    TTS_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
     SPEAKER_MODEL = "microsoft/wavlm-base-plus-sv"
     OWNER_THRESHOLD = 0.86
 
@@ -34,14 +26,12 @@ class LocalVoiceModels:
         self._lock = threading.RLock()
         self._enhance_lock = threading.Lock()
         self._asr_lock = threading.Lock()
-        self._tts_lock = threading.Lock()
         self._speaker_lock = threading.Lock()
+        from dock_twoo.brain.denoiser import LocalDenoiser
+        self.denoiser = LocalDenoiser(self.model_dir)
         self._enhancer = None
         self._asr = None
         self.recognizer = LocalRecognizer(self.model_dir)
-        self._tts = None
-        self._tts_retry_after = 0.0
-        self.tts_fallback_reason = ""
         self._speaker = None
         self._processor = None
         self.errors: dict[str, str] = {}
@@ -49,6 +39,8 @@ class LocalVoiceModels:
         self._download_lock = threading.Lock()
         self._download_threads: dict[str, threading.Thread] = {}
         self._setup_hf_cache()
+        from dock_twoo.brain.local_tts import get_local_tts
+        self.local_tts = get_local_tts()
 
     def _setup_hf_cache(self) -> None:
         # Hugging Face downloads must trust the system Keychain on managed Macs
@@ -69,15 +61,10 @@ class LocalVoiceModels:
         """Fetch missing wake models in background; never download from the audio callback."""
         if "PYTEST_CURRENT_TEST" in os.environ:
             return
-        for component, model_id in (("recognizer", self.ASR_MODEL), ("denoiser", self.ENHANCER_MODEL), ("tts", self.TTS_MODEL)):
-            if component != "recognizer" and (platform.system() != "Darwin" or importlib.util.find_spec("mlx_audio") is None):
-                continue
+        for component, model_id in (("recognizer", self.ASR_MODEL), ("denoiser", self.ENHANCER_MODEL)):
             if component == "recognizer" and self.recognizer.ready:
                 continue
-            if component == "denoiser" and self.model_weights_cached(model_id):
-                self.download_state[component] = "ready"
-                continue
-            if component == "tts" and self._tts is not None:
+            if component == "denoiser" and self.denoiser.engine is not None:
                 continue
             with self._download_lock:
                 if component in self._download_threads and self._download_threads[component].is_alive():
@@ -98,24 +85,10 @@ class LocalVoiceModels:
                 if not self.recognizer.load():
                     raise RuntimeError(self.recognizer.error)
                 self._asr = self.recognizer
-            else:
-                # Finish the small command recognizer before competing for bandwidth
-                # with optional enhancement weights.
-                primary = self._download_threads.get("recognizer")
-                if primary and primary is not threading.current_thread():
-                    primary.join()
-                if component == "tts":
-                    enhancement = self._download_threads.get("denoiser")
-                    if enhancement:
-                        enhancement.join()
-                from huggingface_hub import snapshot_download
-                self.download_state[component] = "downloading"
-                folder = self.cached_snapshot(model_id) or Path(snapshot_download(repo_id=model_id, local_files_only=False))
-                if component == "tts":
-                    self.download_state[component] = "loading"
-                    from mlx_audio.tts.utils import load_model
-                    with self._lock:
-                        self._tts = load_model(str(folder))
+            elif component == "denoiser":
+                if not self.denoiser.load():
+                    raise RuntimeError(self.denoiser.error)
+                self._enhancer = self.denoiser
             if not self.model_weights_cached(model_id):
                 raise RuntimeError("download completed without a model weight file")
             self.download_state[component] = "ready"
@@ -139,9 +112,9 @@ class LocalVoiceModels:
             return "ready to load" if available else "install voice extra"
 
         return {
-            "denoiser": self.download_state["denoiser"] if self.download_state["denoiser"] in ("downloading", "queued") else state("denoiser", self._enhancer is not None, "mlx_audio"),
+            "denoiser": self.denoiser.state if not self.denoiser.error else self.denoiser.error,
             "recognizer": self.recognizer.state if self.recognizer.state in ("loading", "downloading") else state("recognizer", self.recognizer.ready, "sherpa_onnx"),
-            "tts": self.download_state["tts"] if self.download_state["tts"] in ("downloading", "queued", "loading") else state("tts", self._tts is not None, "mlx_audio"),
+            "tts": self.local_tts.status()["state"],
             "speaker": state("speaker", self._speaker is not None, "transformers")
             if importlib.util.find_spec("torch") is not None
             else "install voice extra",
@@ -160,8 +133,8 @@ class LocalVoiceModels:
         """Avoid starting a network download from the real-time microphone thread."""
         if model_id == self.ASR_MODEL:
             return self.recognizer.cached()
-        if model_id in (self.TTS_MODEL, self.ENHANCER_MODEL):
-            return self.cached_snapshot(model_id) is not None
+        if model_id == self.ENHANCER_MODEL:
+            return self.denoiser.cached()
         cache = Path(os.environ.get("HUGGINGFACE_HUB_CACHE", self.model_dir / "huggingface" / "hub"))
         snapshots = cache / f"models--{model_id.replace('/', '--')}" / "snapshots"
         try:
@@ -208,40 +181,12 @@ class LocalVoiceModels:
         resampled = np.interp(new_x, old_x, samples)
         return np.clip(resampled, -32768, 32767).astype("<i2").tobytes()
 
-    def _get_enhancer(self):
-        if self._enhancer is None:
-            with self._lock:
-                if self._enhancer is None:
-                    from mlx_audio.sts.models.mossformer2_se import MossFormer2SEModel
-                    folder = self.cached_snapshot(self.ENHANCER_MODEL)
-                    if folder is None:
-                        raise RuntimeError("Enhancement checkpoint is not cached")
-                    self._enhancer = MossFormer2SEModel.from_pretrained(str(folder))
-        return self._enhancer
-
     def enhance_pcm(self, pcm: bytes, sample_rate: int = 16000) -> bytes:
-        """Run MossFormer2 speech enhancement on a buffered utterance."""
-        if platform.system() != "Darwin" or not pcm or "PYTEST_CURRENT_TEST" in os.environ:
-            return pcm
-        if "denoiser" in self.errors:
-            return pcm
-        # Never let a first-time model download block wake-word detection. Enhancement
-        # is a best-effort stage; use the raw audio until the local checkpoint exists.
-        if not self.model_weights_cached(self.ENHANCER_MODEL):
+        """Enhance completed buffers on CPU; never load/download on the audio path."""
+        if not pcm or "PYTEST_CURRENT_TEST" in os.environ or self.denoiser.engine is None:
             return pcm
         try:
-            model = self._get_enhancer()
-            import numpy as np
-            pcm48 = self._resample_pcm(pcm, sample_rate, 48000)
-            with self._enhance_lock:
-                enhanced = np.asarray(model.enhance(np.frombuffer(pcm48, dtype="<i2").astype(np.float32) / 32768.0)).reshape(-1)
-            if not len(enhanced) or not np.isfinite(enhanced).all():
-                raise RuntimeError("Enhancer returned invalid audio")
-            clean_pcm = (np.clip(enhanced, -1.0, 1.0) * 32767).astype("<i2").tobytes()
-            result = self._resample_pcm(clean_pcm, 48000, sample_rate)
-            # STFT synthesis can omit the final partial hop. Preserve utterance
-            # duration so capture boundaries and owner verification remain aligned.
-            return result[:len(pcm)].ljust(len(pcm), b"\x00")
+            return self.denoiser.enhance(pcm, sample_rate)
         except Exception as exc:
             self.errors["denoiser"] = f"unavailable ({exc})"
             return pcm
@@ -275,53 +220,10 @@ class LocalVoiceModels:
             self.errors["recognizer"] = f"unavailable ({exc})"
             return ""
 
-    def synthesize_wav(self, message: str, path: Path | str, speaker: str = "Ryan", *, cancel=None, budget=None) -> bool:
-        """Bound local neural synthesis so an optional voice cannot mute Brain."""
-        if "PYTEST_CURRENT_TEST" in os.environ or "tts" in self.errors or self._tts is None:
+    def synthesize_wav(self, message, path, speaker=None, *, cancel=None, budget=None):
+        if not self.local_tts.engine:
             return False
-        if time.monotonic() < self._tts_retry_after or not self._tts_lock.acquire(blocking=False):
-            return False
-        cancel = cancel or threading.Event()
-        budget = budget if budget is not None else (1.5 if len(message) < 100 else 4.0)
-        done = threading.Event()
-        result = {}
-
-        def generate():
-            try:
-                chunks = self._tts.generate_custom_voice(
-                    text=message, speaker=speaker, language="English",
-                    instruct="Warm, natural, clear and conversational.",
-                    max_tokens=min(600, max(120, len(message) * 2)))
-                audio = next(iter(chunks), None)
-                if audio is None:
-                    raise RuntimeError("Qwen3-TTS returned no audio")
-                import numpy as np
-                samples = np.asarray(audio.audio, dtype=np.float32).reshape(-1)
-                result['pcm'] = (np.clip(samples, -1, 1) * 32767).astype('<i2').tobytes()
-                result['rate'] = int(getattr(audio, 'sample_rate', 24000))
-            except Exception as exc:
-                result['error'] = str(exc)
-            finally:
-                self._tts_lock.release()
-                done.set()
-
-        threading.Thread(target=generate, daemon=True, name='brain-optional-neural-voice').start()
-        deadline = time.monotonic() + budget
-        while not done.wait(.025):
-            if cancel.is_set():
-                raise InterruptedError("Speech cancelled")
-            if time.monotonic() >= deadline:
-                self._tts_retry_after = time.monotonic() + 60
-                self.tts_fallback_reason = "Neural voice exceeded the response budget; using local platform speech."
-                return False
-        if cancel.is_set():
-            raise InterruptedError("Speech cancelled")
-        if 'error' in result:
-            self.errors['tts'] = f"unavailable ({result['error']})"
-            return False
-        self.tts_fallback_reason = ""
-        self._to_wav(result['pcm'], result['rate'], str(path))
-        return True
+        return self.local_tts.synthesize_wav(message, path, cancel or threading.Event())
 
     def speaker_embedding(self, pcm: bytes, sample_rate: int = 16000) -> Optional[list[float]]:
         """Extract a WavLM x-vector from a voice sample; audio never leaves this device."""

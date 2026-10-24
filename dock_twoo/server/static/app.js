@@ -1030,686 +1030,119 @@ async function initStorageConsole() {
   await loadStorageData();
 }
 
-// Brain Voice Assistant Console Module with Dynamic Providers & Role Routing
+// One cloud model, local voice and persistent desktop controls
 async function initBrainConsole() {
-  const agentStatusBadge = document.getElementById('brainAgentStatusBadge');
-  const voiceInputStatus = document.getElementById('brainVoiceInputStatus');
-  const wakeDiagnosticsEl = document.getElementById('brainWakeDiagnostics');
-  const summonBtn = document.getElementById('brainSummonBtn');
-  const hideBtn = document.getElementById('brainHideBtn');
-  const talkBtn = document.getElementById('brainTalkBtn');
-  const loopAnimBtn = document.getElementById('brainLoopAnimBtn');
-  let lastDisplayedResponseGeneration = 0;
-  document.getElementById('brainRequestForm')?.addEventListener('submit', async (event) => {
+  const byId = id => document.getElementById(id);
+  const headers = {'Content-Type':'application/json','X-Brain-Request':'local'};
+  let generation=0, presets={}, catalog={};
+  const post = async (path,body={}) => {
+    const response=await fetch(path,{method:'POST',headers,body:JSON.stringify(body)});
+    const data=await response.json();
+    if (!response.ok || data.success===false) throw new Error(data.error || 'The request failed.');
+    return data;
+  };
+  const report = error => showToast(error.message,true);
+  document.querySelectorAll('.brain-tab-btn').forEach(button => button.addEventListener('click',()=>{
+    document.querySelectorAll('.brain-tab-btn,.brain-tab-panel').forEach(el=>el.classList.remove('active'));
+    button.classList.add('active');byId(button.dataset.tab)?.classList.add('active');
+  }));
+  async function modelForm() {
+    const data=await (await fetch('/api/brain/model')).json();
+    presets=data.presets;catalog=data.catalog;const config=data.model;
+    byId('brainCloudProvider').value=config.provider || 'gemini';
+    byId('brainCloudProtocol').value=config.protocol || 'openai';
+    byId('brainCloudUrl').value=config.base_url || presets.gemini;
+    byId('brainCloudModel').value=config.model || '';
+    byId('brainCloudStatus').textContent=config.status==='not configured'?'Model is not configured. Enter a model ID and API key.':`${config.name} · ${config.model} · Key saved`;
+  }
+  byId('brainCloudProvider').addEventListener('change',()=>{
+    const provider=byId('brainCloudProvider').value;
+    byId('brainCloudUrl').value=presets[provider] || '';
+    byId('brainCloudProtocol').value=provider==='anthropic'?'anthropic':'openai';
+    byId('brainCloudKey').value='';
+  });
+  byId('brainCloudForm').addEventListener('submit',async event=>{
     event.preventDefault();
-    const input = document.getElementById('brainRequestText');
-    const button = document.getElementById('brainRequestSend');
-    const status = document.getElementById('brainRequestStatus');
-    const text = input.value.trim();
-    if (!text) return;
-    button.disabled = true;
     try {
-      const before = await (await fetch('/api/brain/status', {headers:{'X-Brain-Request':'local'}})).json();
-      const generation = before.last_response?.generation || 0;
-      const response = await fetch('/api/brain/request', {
-        method: 'POST', headers: {'Content-Type':'application/json', 'X-Brain-Request':'local'},
-        body: JSON.stringify({text}),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || 'Brain could not accept this request');
-      status.textContent = 'Brain is processing your request and will respond aloud when voice replies are enabled.';
-      const deadline = Date.now() + 45000;
-      while (Date.now() < deadline) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const current = await (await fetch('/api/brain/status', {headers:{'X-Brain-Request':'local'}})).json();
-        if (current.last_response?.generation > generation) {
-          status.textContent = current.last_response.text;
-          break;
-        }
-      }
-    } catch (error) { status.textContent = error.message; }
-    finally { button.disabled = false; }
+      await post('/api/brain/model',{provider:byId('brainCloudProvider').value,protocol:byId('brainCloudProtocol').value,base_url:byId('brainCloudUrl').value.trim(),model:byId('brainCloudModel').value.trim(),api_key:byId('brainCloudKey').value.trim()});
+      byId('brainCloudKey').value='';await modelForm();showToast('Cloud model saved.');
+    } catch(error){report(error);}
   });
-
-  // Profile management elements
-  const activeProfileSel = document.getElementById('brainActiveProfile');
-  const providerSel = document.getElementById('brainProvider');
-  const profileNameInput = document.getElementById('brainProfileName');
-  const profileStatusBadge = document.getElementById('brainProfileStatusBadge');
-  const newProfileBtn = document.getElementById('brainNewProfileBtn');
-  const deleteProfileBtn = document.getElementById('brainDeleteProfileBtn');
-  const saveProfileBtn = document.getElementById('brainSaveProfileBtn');
-
-  // Custom provider fields
-  const customProviderFields = document.getElementById('customProviderFields');
-  const customProviderName = document.getElementById('customProviderName');
-  const customAuthHeader = document.getElementById('customAuthHeader');
-
-  // Model & Base URL
-  const modelIdInput = document.getElementById('brainModelId');
-  const baseUrlInput = document.getElementById('brainBaseUrl');
-  const baseUrlHint = document.getElementById('baseUrlHint');
-  const popularModelsRow = document.getElementById('popularModelsRow');
-
-  // Modality & Role Routing inputs
-  const routeTextOutput = document.getElementById('routeTextOutput');
-  const routeAudioOutput = document.getElementById('routeAudioOutput');
-  const routeImageInput = document.getElementById('routeImageInput');
-  const routeResearch = document.getElementById('routeResearch');
-  const routeComputerUse = document.getElementById('routeComputerUse');
-  const routeAudioInput = document.getElementById('routeAudioInput');
-
-  // Credentials & toggles
-  const apiKeyInput = document.getElementById('brainApiKey');
-  const saveKeyBtn = document.getElementById('brainSaveKeyBtn');
-  const keyStatusHint = document.getElementById('brainKeyStatusHint');
-  const localOnlyToggle = document.getElementById('brainLocalOnlyToggle');
-
-  // Voice Persona & Motion controls
-  const voiceNameSel = document.getElementById('brainVoiceName');
-  const speechRateSlider = document.getElementById('brainSpeechRate');
-  const speechRateVal = document.getElementById('brainSpeechRateVal');
-  const voiceStyleInput = document.getElementById('brainVoiceStyle');
-  const speakRepliesToggle = document.getElementById('brainSpeakRepliesToggle');
-  const roamingToggle = document.getElementById('brainRoamingToggle');
-  const followCursorToggle = document.getElementById('brainFollowCursorToggle');
-  const mascotPoseSel = document.getElementById('brainMascotPose');
-  const mascotCornerSel = document.getElementById('brainMascotCorner');
-  const reduceMotionToggle = document.getElementById('brainReduceMotionToggle');
-  const wakeWordToggle = document.getElementById('brainWakeWordToggle');
-  const wakeWordInput = document.getElementById('brainWakeWord');
-  const pushToTalkSel = document.getElementById('brainPushToTalkKey');
-  const ownerNameInput = document.getElementById('brainOwnerName');
-  const enrollVoiceBtn = document.getElementById('brainEnrollVoiceBtn');
-  const enrollVoiceStatus = document.getElementById('brainEnrollVoiceStatus');
-  const retentionDaysSel = document.getElementById('brainRetentionDays');
-  const retentionMbSel = document.getElementById('brainRetentionMb');
-
-  let cachedProfiles = [];
-  let cachedCatalog = {};
-  let currentEditingProfile = null;
-
-  // Brain Multi-Tab Switching Logic
-  document.querySelectorAll('.brain-tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.brain-tab-btn').forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('.brain-tab-panel').forEach((p) => p.classList.remove('active'));
-      btn.classList.add('active');
-      const targetPanel = document.getElementById(btn.dataset.tab);
-      if (targetPanel) targetPanel.classList.add('active');
-    });
+  byId('brainCloudTest').addEventListener('click',async()=>{
+    const button=byId('brainCloudTest');button.disabled=true;byId('brainCloudStatus').textContent='Testing the configured model…';
+    try {const result=await post('/api/brain/model/test');byId('brainCloudStatus').textContent=result.message;}catch(error){byId('brainCloudStatus').textContent=error.message;}finally{button.disabled=false;}
   });
-
-  const characterSelect = document.getElementById('brainCharacterAction');
-  const characterRelease = document.getElementById('brainCharacterRelease');
-  try {
-    const response = await fetch('/brain3d/character.json', { cache: 'no-store' });
-    if (!response.ok) throw new Error('Character library is unavailable');
-    const release = await response.json();
-    if (characterRelease) characterRelease.textContent = `Brain ${release.version} · ${release.design} · ${Object.keys(release.actions).length} animations`;
-    if (characterSelect) for (const action of Object.keys(release.actions)) {
-      if (action !== 'idle') characterSelect.add(new Option(action.replaceAll('_', ' '), action));
-    }
-  } catch (error) {
-    if (characterRelease) characterRelease.textContent = error.message;
+  byId('brainRequestForm').addEventListener('submit',async event=>{
+    event.preventDefault();const text=byId('brainRequestText').value.trim();if(!text)return;
+    try{await post('/api/brain/request',{text});byId('brainRequestStatus').textContent='Brain is working on your request…';}catch(error){report(error);}
+  });
+  byId('brainStopAgent').addEventListener('click',()=>post('/api/brain/stop').catch(report));
+  for (const [id,action] of [['brainSummonBtn','summon'],['brainHideBtn','hide'],['brainTalkBtn','talk'],['brainLoopAnimBtn','animation']]) {
+    byId(id)?.addEventListener('click',()=>post('/api/brain/action',{action,name:'loop'}).catch(report));
   }
-  document.getElementById('brainCharacterPlay')?.addEventListener('click', async () => {
-    if (!characterSelect?.value) return;
+  document.querySelectorAll('[data-reader]').forEach(button=>button.addEventListener('click',async()=>{
+    try{const response=await fetch('/api/brain/action',{method:'POST',headers:{...headers,'X-Brain-Reader':'local'},body:JSON.stringify({action:button.dataset.reader})});const data=await response.json();if(!response.ok)throw new Error(data.error);}catch(error){report(error);}
+  }));
+  document.querySelectorAll('[data-anim]').forEach(button=>button.addEventListener('click',()=>post('/api/brain/action',{action:'animation',name:button.dataset.anim}).catch(report)));
+  const release=await (await fetch('/brain3d/character.json')).json();
+  const select=byId('brainCharacterAction');if(select) for(const action of Object.keys(release.actions))if(action!=='idle')select.add(new Option(action.replaceAll('_',' '),action));
+  if(byId('brainCharacterRelease'))byId('brainCharacterRelease').textContent=`Brain ${release.version} · ${release.design} · ${Object.keys(release.actions).length} animations`;
+  byId('brainCharacterPlay')?.addEventListener('click',()=>post('/api/brain/action',{action:'animation',name:select.value}).catch(report));
+  async function save(settings){try{await post('/api/brain/settings',settings);}catch(error){report(error);}}
+  for(const [id,key] of [['brainWakeWordToggle','wake_word_enabled'],['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.checked}));
+  for(const [id,key] of [['brainWakeWord','wake_word'],['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut'],['brainVoiceName','voice_name']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.value}));
+  byId('brainSpeechRate')?.addEventListener('input',event=>{const speed=Number(event.target.value)/100;byId('brainSpeechRateVal').textContent=speed.toFixed(1)+'x';save({speech_rate:speed});});
+  byId('brainVoiceCheckBtn')?.addEventListener('click',()=>fetch('/api/brain/voice-check',{method:'POST',headers:{'X-Brain-Voice-Check':'local'}}).catch(report));
+  byId('brainEnrollVoiceBtn')?.addEventListener('click',()=>post('/api/brain/enroll-owner').catch(report));
+  byId('keepAwakeBtn')?.addEventListener('click',async()=>{
+    try{const result=await post('/api/keep-awake',{enabled:byId('keepAwakeBtn').getAttribute('aria-pressed')!=='true'});awake(result);}catch(error){report(error);}
+  });
+  function awake(value){const button=byId('keepAwakeBtn');if(button){button.setAttribute('aria-pressed',String(value.enabled));button.textContent='Keep Awake · '+(value.enabled?'On':'Off');}}
+  async function refresh(){
+    try{
+      const data=await (await fetch('/api/brain/status',{headers:{'X-Brain-Request':'local'}})).json();
+      const input=data.voice_input||{},diag=input.wake_diagnostics||{},model=data.language_model||{};
+      byId('brainAgentStatusBadge').textContent=`Brain ${data.character?.version||''} · ${data.activity||'idle'}`;
+      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Cloud model: ${model.model}.`)+` Microphone: ${diag.input_device||'preparing'}.`;
+      byId('brainWakeDiagnostics').textContent=`Wake ${input.wake_ready?'ready':'preparing'} · ${diag.recognizer_engine||'local speech'} · ${input.recognizer_ready?'ready':'preparing'} · ${diag.last_decision||''}`;
+      byId('brainLocalSpeechStatus').textContent=`Local speech: ${data.local_speech?.engine||'Kokoro ONNX'} · ${data.local_speech?.state||'preparing'}${data.local_speech?.error?' · '+data.local_speech.error:''}`;
+      byId('brainAgentProgress').textContent=data.agent?.message && data.agent?.step>0?`Step ${data.agent.step||0} · ${data.agent.message}`:'';
+      if(data.last_response?.generation>generation){byId('brainRequestStatus').textContent=data.last_response.text;generation=data.last_response.generation;}
+      const check=diag.voice_check||{};
+      if(check.active || check.heard?.length)byId('brainVoiceCheckStatus').textContent=`${check.active?'Listening '+check.seconds_remaining+'s':'Check finished'} · ${(check.heard||[]).map(entry=>entry.heard).join(' · ')}`;
+      const settings=data.settings||{};
+      for(const [id,key] of [['brainWakeWordToggle','wake_word_enabled'],['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])if(byId(id))byId(id).checked=!!settings[key];
+      for(const [id,key] of [['brainWakeWord','wake_word'],['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut']])if(byId(id)&&document.activeElement!==byId(id))byId(id).value=settings[key]||'';
+      if(document.activeElement!==byId('brainSpeechRate')){byId('brainSpeechRate').value=Math.round((settings.speech_rate||1)*100);byId('brainSpeechRateVal').textContent=(settings.speech_rate||1).toFixed(1)+'x';}
+      if(byId('brainReadingStatus'))byId('brainReadingStatus').textContent=data.reading?.error|| (data.reading?.active?`Reading ${data.reading.window||'text'} · page ${data.reading.pages_read||1}`:'Choose an existing selection or a document window to read.');
+      if(document.activeElement!==byId('brainVoiceName'))byId('brainVoiceName').value=settings.voice_name in {af_heart:1,af_bella:1,am_adam:1,am_michael:1,bf_emma:1,bm_george:1}?settings.voice_name:'af_heart';
+      awake(await (await fetch('/api/keep-awake')).json());
+    }catch(error){console.warn('Brain status:',error.message);}
+  }
+  const dateInput=byId('tasksDay');
+  dateInput.value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+  async function tasks() {
     try {
-      const response = await fetch('/api/brain/action', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'animation', name: characterSelect.value }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || 'Animation could not start');
-    } catch (error) { showToast(error.message, true); }
+      const data=await (await fetch('/api/tasks'+(dateInput.value?'?date='+dateInput.value:''))).json();
+      if(data.error)throw new Error(data.error);
+      const list=byId('tasksList');list.replaceChildren();let previous='';
+      for(const task of data.tasks){
+        if(task.day!==previous){const heading=document.createElement('h3');heading.textContent=task.day;list.append(heading);previous=task.day;}
+        const row=document.createElement('div');row.className='toggle-card-item';
+        const title=document.createElement('span');title.textContent=task.title;row.append(title);
+        const toggle=document.createElement('button');toggle.className='btn btn-secondary';toggle.textContent=task.status==='done'?'Done':'Mark done';
+        toggle.addEventListener('click',async()=>{try{await post('/api/tasks',{id:task.id,status:task.status==='done'?'todo':'done'});await tasks();}catch(error){report(error);}});
+        row.append(toggle);list.append(row);
+      }
+      byId('tasksStatus').textContent=data.tasks.length?`${data.tasks.length} entries${data.next_offset?' · Choose a date to see more':''}`:'No work entries for this date yet.';
+    }catch(error){byId('tasksStatus').textContent=error.message;}
+  }
+  dateInput.addEventListener('change',tasks);byId('tasksAllDays').addEventListener('click',()=>{dateInput.value='';tasks();});
+  byId('tasksForm').addEventListener('submit',async event=>{
+    event.preventDefault();try{await post('/api/tasks',{title:byId('tasksTitle').value.trim(),date:dateInput.value||undefined,status:'done'});byId('tasksTitle').value='';await tasks();}catch(error){report(error);}
   });
-
-  // Robotic Animation Buttons
-  document.querySelectorAll('[data-reader]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      try {
-        const response = await fetch('/api/brain/action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Brain-Reader': 'local' },
-          body: JSON.stringify({ action: button.dataset.reader }),
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.error || 'Reading control failed');
-        await refreshWakeDiagnostics();
-      } catch (error) {
-        showToast(error.message, true);
-      }
-    });
-  });
-  document.querySelectorAll('.brain-anim-trigger').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const animName = btn.dataset.anim;
-      try {
-        await fetch('/api/brain/action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'animation', name: animName }),
-        });
-        showToast(`Playing ${animName.replace('_', ' ')} animation`);
-      } catch (err) {
-        showToast('Animation trigger failed', true);
-      }
-    });
-  });
-
-  // Quick Action Buttons
-  if (summonBtn) {
-    summonBtn.addEventListener('click', async () => {
-      await fetch('/api/brain/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'summon' }),
-      });
-      showToast('Summoned Mini Agent on desktop');
-      loadBrainStatus();
-    });
-  }
-
-  if (hideBtn) {
-    hideBtn.addEventListener('click', async () => {
-      await fetch('/api/brain/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'hide' }),
-      });
-      showToast('Mini Agent hidden');
-      loadBrainStatus();
-    });
-  }
-
-  if (talkBtn) {
-    talkBtn.addEventListener('click', async () => {
-      await fetch('/api/brain/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'talk' }),
-      });
-      showToast('Listening for speech turn…');
-      loadBrainStatus();
-    });
-  }
-
-  if (loopAnimBtn) {
-    loopAnimBtn.addEventListener('click', async () => {
-      await fetch('/api/brain/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'animation', name: 'loop' }),
-      });
-      showToast('Playing animation sequence');
-    });
-  }
-
-  if (speechRateSlider && speechRateVal) {
-    speechRateSlider.addEventListener('input', () => {
-      const val = (speechRateSlider.value / 100).toFixed(1);
-      speechRateVal.textContent = `${val}x`;
-      saveBrainSettings({ speech_rate: parseFloat(val) });
-    });
-  }
-
-  if (saveKeyBtn && apiKeyInput) {
-    saveKeyBtn.addEventListener('click', async () => {
-      const provider = providerSel ? providerSel.value : 'gemini';
-      const keyVal = apiKeyInput.value.trim();
-      if (!keyVal) {
-        showToast('Please enter an API Key', true);
-        return;
-      }
-      try {
-        const res = await fetch('/api/brain/key', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ provider, key: keyVal }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast(`${provider.toUpperCase()} API Key saved`);
-          if (keyStatusHint) keyStatusHint.textContent = `Key configured securely for ${provider}`;
-          apiKeyInput.value = '';
-          await loadBrainStatus();
-        }
-      } catch (err) {
-        showToast('Failed to save API key', true);
-      }
-    });
-  }
-
-  function renderPopularChips(providerKind, activeModel) {
-    if (!popularModelsRow) return;
-    popularModelsRow.innerHTML = '';
-    const provInfo = cachedCatalog[providerKind] || {};
-    const models = provInfo.models || [];
-    models.forEach((mod) => {
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'model-chip' + (mod === activeModel ? ' selected' : '');
-      chip.textContent = mod;
-      chip.dataset.model = mod;
-      chip.addEventListener('click', () => {
-        if (modelIdInput) modelIdInput.value = mod;
-        if (routeTextOutput) routeTextOutput.value = mod;
-        document.querySelectorAll('.model-chip').forEach((c) => c.classList.remove('selected'));
-        chip.classList.add('selected');
-      });
-      popularModelsRow.appendChild(chip);
-    });
-  }
-
-  function handleProviderChange(providerKind, isUserAction = false) {
-    if (customProviderFields) {
-      customProviderFields.style.display = providerKind === 'custom' ? 'block' : 'none';
-    }
-    const provInfo = cachedCatalog[providerKind] || {};
-    if (isUserAction) {
-      if (provInfo.default_base_url && baseUrlInput) {
-        baseUrlInput.value = provInfo.default_base_url;
-      }
-      if (provInfo.default_model && modelIdInput) {
-        modelIdInput.value = provInfo.default_model;
-      }
-      if (routeTextOutput && provInfo.default_model) {
-        routeTextOutput.value = provInfo.default_model;
-      }
-    }
-    if (baseUrlHint) {
-      baseUrlHint.textContent = provInfo.default_base_url
-        ? `Default endpoint: ${provInfo.default_base_url}`
-        : 'Custom private endpoint (OpenAI-compatible)';
-    }
-    renderPopularChips(providerKind, modelIdInput ? modelIdInput.value : '');
-  }
-
-  if (providerSel) {
-    providerSel.addEventListener('change', () => {
-      handleProviderChange(providerSel.value, true);
-    });
-  }
-
-  function populateProfileForm(profile) {
-    if (!profile) return;
-    currentEditingProfile = profile;
-    if (profileNameInput) profileNameInput.value = profile.name || '';
-    if (providerSel) {
-      providerSel.value = profile.provider || 'local';
-      if (providerSel._refreshCustomDropdown) providerSel._refreshCustomDropdown();
-    }
-    if (modelIdInput) modelIdInput.value = profile.model || 'local';
-    if (baseUrlInput) baseUrlInput.value = profile.base_url || '';
-    if (localOnlyToggle) localOnlyToggle.checked = !!profile.local_only;
-
-    if (customProviderName) customProviderName.value = profile.custom_provider_name || '';
-    if (customAuthHeader) customAuthHeader.value = profile.custom_auth_header || '';
-
-    const r = profile.routes || {};
-    if (routeTextOutput) routeTextOutput.value = r.text_output || profile.model || '';
-    if (routeAudioOutput) routeAudioOutput.value = r.audio_output || profile.voice_model || (profile.voice && profile.voice.voice_name) || '';
-    if (routeImageInput) routeImageInput.value = r.image_input || '';
-    if (routeResearch) routeResearch.value = r.research || '';
-    if (routeComputerUse) routeComputerUse.value = r.computer_use || '';
-    if (routeAudioInput) routeAudioInput.value = r.audio_input || '';
-
-    const status = (profile.status || 'active').toLowerCase();
-    if (profileStatusBadge) {
-      if (status === 'active') {
-        profileStatusBadge.textContent = 'Active · Online';
-        profileStatusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
-        profileStatusBadge.style.color = '#34d399';
-      } else if (status === 'offline') {
-        profileStatusBadge.textContent = 'Offline · Unreachable';
-        profileStatusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
-        profileStatusBadge.style.color = '#f87171';
-      } else {
-        profileStatusBadge.textContent = 'Not Configured · Missing Key';
-        profileStatusBadge.style.background = 'rgba(245, 158, 11, 0.2)';
-        profileStatusBadge.style.color = '#fbbf24';
-      }
-    }
-
-    handleProviderChange(profile.provider || 'local', false);
-  }
-
-  if (activeProfileSel) {
-    activeProfileSel.addEventListener('change', async () => {
-      const selectedId = activeProfileSel.value;
-      const targetProf = cachedProfiles.find((p) => p.id === selectedId);
-      if (targetProf) {
-        populateProfileForm(targetProf);
-      }
-      try {
-        const res = await fetch('/api/brain/activate-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile_id: selectedId }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast(`Active profile set to: ${data.active.name}`);
-          loadBrainStatus();
-        }
-      } catch (err) {
-        showToast('Failed to switch profile', true);
-      }
-    });
-  }
-
-  if (newProfileBtn) {
-    newProfileBtn.addEventListener('click', () => {
-      const newProf = {
-        id: 'prof_' + Math.random().toString(36).substring(2, 9),
-        name: 'New Custom Profile',
-        provider: 'custom',
-        model: 'custom-model',
-        base_url: 'http://127.0.0.1:8000/v1',
-        local_only: false,
-        status: 'active',
-        routes: {
-          text_output: 'custom-model',
-          audio_output: 'Aoede',
-          image_input: 'custom-model',
-          research: 'custom-model',
-          computer_use: 'custom-model',
-          audio_input: '',
-        },
-      };
-      populateProfileForm(newProf);
-      showToast('New profile created. Configure inputs and click "Save Profile"');
-    });
-  }
-
-  if (saveProfileBtn) {
-    saveProfileBtn.addEventListener('click', async () => {
-      const pId = currentEditingProfile ? currentEditingProfile.id : ('prof_' + Math.random().toString(36).substring(2, 9));
-      const pName = profileNameInput ? profileNameInput.value.trim() : 'Custom Profile';
-      const pProvider = providerSel ? providerSel.value : 'custom';
-      const pModel = modelIdInput ? modelIdInput.value.trim() : 'local';
-      const pBaseUrl = baseUrlInput ? baseUrlInput.value.trim() : '';
-      const pLocalOnly = localOnlyToggle ? localOnlyToggle.checked : false;
-
-      const profilePayload = {
-        id: pId,
-        name: pName || 'Custom Profile',
-        provider: pProvider,
-        model: pModel,
-        base_url: pBaseUrl,
-        local_only: pLocalOnly,
-        custom_provider_name: customProviderName ? customProviderName.value.trim() : '',
-        custom_auth_header: customAuthHeader ? customAuthHeader.value.trim() : '',
-        routes: {
-          text_output: routeTextOutput ? routeTextOutput.value.trim() : pModel,
-          audio_output: routeAudioOutput ? routeAudioOutput.value.trim() : 'Aoede',
-          image_input: routeImageInput ? routeImageInput.value.trim() : '',
-          research: routeResearch ? routeResearch.value.trim() : '',
-          computer_use: routeComputerUse ? routeComputerUse.value.trim() : '',
-          audio_input: routeAudioInput ? routeAudioInput.value.trim() : '',
-        },
-      };
-
-      try {
-        const res = await fetch('/api/brain/profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(profilePayload),
-        });
-        const data = await res.json();
-        if (data.success) {
-          showToast(`Saved profile: ${profilePayload.name}`);
-          await loadBrainStatus();
-        }
-      } catch (err) {
-        showToast('Failed to save profile', true);
-      }
-    });
-  }
-
-  if (deleteProfileBtn) {
-    deleteProfileBtn.addEventListener('click', async () => {
-      if (!currentEditingProfile) return;
-      if (confirm(`Delete profile "${currentEditingProfile.name}"?`)) {
-        try {
-          const res = await fetch('/api/brain/profile/delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ profile_id: currentEditingProfile.id }),
-          });
-          const data = await res.json();
-          if (data.success) {
-            showToast('Profile deleted');
-            await loadBrainStatus();
-          } else {
-            showToast(data.error || 'Cannot delete profile', true);
-          }
-        } catch (err) {
-          showToast('Failed to delete profile', true);
-        }
-      }
-    });
-  }
-
-  // Auto-save listeners on change
-  [
-    [speakRepliesToggle, 'voice_reply', (el) => el.checked],
-    [roamingToggle, 'roaming', (el) => el.checked],
-    [followCursorToggle, 'follow_cursor', (el) => el.checked],
-    [reduceMotionToggle, 'reduced_motion', (el) => el.checked],
-    [wakeWordToggle, 'wake_word_enabled', (el) => el.checked],
-    [wakeWordInput, 'wake_word', (el) => el.value],
-    [ownerNameInput, 'owner_first_name', (el) => el.value.trim()],
-    [pushToTalkSel, 'push_to_talk_shortcut', (el) => el.value],
-    [voiceNameSel, 'voice_name', (el) => el.value],
-    [voiceStyleInput, 'voice_style', (el) => el.value],
-    [mascotPoseSel, 'mascot_pose', (el) => el.value],
-    [mascotCornerSel, 'mascot_corner', (el) => el.value],
-    [retentionDaysSel, 'retention_days', (el) => parseInt(el.value, 10)],
-    [retentionMbSel, 'retention_max_mb', (el) => parseInt(el.value, 10)],
-  ].forEach(([el, key, getter]) => {
-    if (!el) return;
-    el.addEventListener('change', () => {
-      const update = {};
-      update[key] = getter(el);
-      saveBrainSettings(update);
-    });
-  });
-
-  if (enrollVoiceBtn) {
-    enrollVoiceBtn.addEventListener('click', async () => {
-      enrollVoiceBtn.disabled = true;
-      if (enrollVoiceStatus) enrollVoiceStatus.textContent = 'Recording now: say “My name is …” in your normal voice for five seconds.';
-      try {
-        const response = await fetch('/api/brain/enroll-owner', { method: 'POST' });
-        const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.error || 'Voice enrollment failed.');
-        if (enrollVoiceStatus) enrollVoiceStatus.textContent = 'Your voice is enrolled on this device. Only its speaker vector is stored.';
-        showToast('Voice enrolled locally');
-        await loadBrainStatus();
-      } catch (err) {
-        if (enrollVoiceStatus) enrollVoiceStatus.textContent = err.message;
-        showToast(err.message, true);
-      } finally {
-        enrollVoiceBtn.disabled = false;
-      }
-    });
-  }
-
-  const voiceCheckBtn = document.getElementById('brainVoiceCheckBtn');
-  const voiceCheckStatus = document.getElementById('brainVoiceCheckStatus');
-  if (voiceCheckBtn) voiceCheckBtn.addEventListener('click', async () => {
-    try {
-      const response = await fetch('/api/brain/voice-check', { method: 'POST', headers: { 'X-Brain-Voice-Check': 'local' } });
-      const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || 'Microphone check could not start.');
-      if (voiceCheckStatus) voiceCheckStatus.textContent = 'Listening locally for 30 seconds. Say “Brain” or “Hey Brain” now.';
-    } catch (error) { showToast(error.message, true); }
-  });
-
-  function renderBrainRuntime(data) {
-    if (agentStatusBadge) {
-      const characterLabel = data.character?.version ? `Brain ${data.character.version}` : 'Mini Agent';
-      agentStatusBadge.textContent = data.is_mini_agent_visible ? `${characterLabel} Active (${data.activity})` : `${characterLabel} Docked`;
-      agentStatusBadge.style.background = data.is_mini_agent_visible ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.08)';
-      agentStatusBadge.style.color = data.is_mini_agent_visible ? '#34d399' : '#94a3b8';
-    }
-    const input = data.voice_input || {};
-    const diagnostics = input.wake_diagnostics || {};
-    const wakeModel = diagnostics.wake_model || {};
-    if (voiceInputStatus) {
-      let text;
-      let color = '#34d399';
-      if (!input.enabled) {
-        text = 'Wake-word detection is disabled. Use Talk to Brain or the push-to-talk shortcut.';
-        color = '#94a3b8';
-      } else if (input.error) {
-        text = `Voice input needs attention: ${input.error}`;
-        color = '#f87171';
-      } else if (!input.listening) {
-        text = 'The microphone listener is starting.';
-        color = '#fbbf24';
-      } else if (!input.wake_ready) {
-        text = wakeModel.error ? `Wake detection needs attention: ${wakeModel.error}` : `Preparing local wake detection (${wakeModel.state || 'loading'})…`;
-        color = '#fbbf24';
-      } else {
-        const owner = input.owner_enrolled ? 'Owner voice enrolled.' : 'Enroll your voice below to hear your name in the greeting.';
-        text = `Ready for “Brain”, “Hey Brain”, “Hello Brain”, or “Hey Buddy”. ${owner}`;
-        if (!input.recognizer_ready) text += ' Command recognition is still preparing; the wake greeting is available.';
-        if (diagnostics.input_device) text += ` Microphone: ${diagnostics.input_device}.`;
-      }
-      if (data.voice_output && data.voice_output.error) {
-        text += ` Speech output needs attention: ${data.voice_output.error}`;
-        color = '#f87171';
-      }
-      const language = data.language_model;
-      if (language) text += ` Language model: ${language.model || "preparing"} (${language.state}).`;
-      voiceInputStatus.textContent = text;
-      voiceInputStatus.style.color = color;
-    }
-    const check = diagnostics.voice_check || {};
-    if (voiceCheckStatus && (check.active || (check.heard || []).length)) {
-      const heard = (check.heard || []).map(entry => entry.heard).join(' · ');
-      voiceCheckStatus.textContent = `${check.active ? `Listening (${check.seconds_remaining}s left)` : 'Check finished'} · microphone peak ${check.peak_rms || 0} · ${heard ? `Recognized: ${heard}` : 'No speech recognized yet.'}`;
-    }
-    renderWakeDiagnostics(diagnostics);
-  }
-
-  async function loadBrainStatus() {
-    try {
-      const res = await fetch('/api/brain/status', {headers:{'X-Brain-Request':'local'}});
-      const data = await res.json();
-      if (!data) return;
-
-      if (data.last_response?.generation > lastDisplayedResponseGeneration) {
-        document.getElementById('brainRequestStatus').textContent = data.last_response.text;
-        lastDisplayedResponseGeneration = data.last_response.generation;
-      }
-
-      renderBrainRuntime(data);
-
-      const s = data.settings || {};
-      if (speakRepliesToggle) speakRepliesToggle.checked = s.voice_reply !== false;
-      if (roamingToggle) roamingToggle.checked = !!s.roaming;
-      if (followCursorToggle) followCursorToggle.checked = !!s.follow_cursor;
-      if (reduceMotionToggle) reduceMotionToggle.checked = !!s.reduced_motion;
-      if (wakeWordToggle) wakeWordToggle.checked = s.wake_word_enabled !== false;
-      if (wakeWordInput && s.wake_word) wakeWordInput.value = s.wake_word;
-      if (ownerNameInput && s.owner_first_name) ownerNameInput.value = s.owner_first_name;
-      if (enrollVoiceStatus && s.voice_enrolled) enrollVoiceStatus.textContent = 'Your voice is enrolled on this device. Only its speaker vector is stored.';
-      if (pushToTalkSel && s.push_to_talk_shortcut) pushToTalkSel.value = s.push_to_talk_shortcut;
-      if (voiceNameSel && s.voice_name) voiceNameSel.value = s.voice_name;
-      if (voiceStyleInput && s.voice_style) voiceStyleInput.value = s.voice_style;
-      if (mascotPoseSel && s.mascot_pose) mascotPoseSel.value = s.mascot_pose;
-      if (mascotCornerSel && s.mascot_corner) mascotCornerSel.value = s.mascot_corner;
-      if (retentionDaysSel && s.retention_days !== undefined) retentionDaysSel.value = String(s.retention_days);
-      if (retentionMbSel && s.retention_max_mb !== undefined) retentionMbSel.value = String(s.retention_max_mb);
-
-      if (speechRateSlider && s.speech_rate) {
-        speechRateSlider.value = Math.round(s.speech_rate * 100);
-        if (speechRateVal) speechRateVal.textContent = `${s.speech_rate.toFixed(1)}x`;
-      }
-
-      // Fetch full profiles and provider catalog
-      const profRes = await fetch('/api/brain/profiles');
-      const profData = await profRes.json();
-      if (profData && profData.profiles) {
-        cachedProfiles = profData.profiles;
-        if (profData.catalog && profData.catalog.catalog) {
-          cachedCatalog = profData.catalog.catalog;
-        }
-
-        if (activeProfileSel) {
-          activeProfileSel.innerHTML = '';
-          cachedProfiles.forEach((p) => {
-            const opt = document.createElement('option');
-            opt.value = p.id;
-            const status = (p.status || 'active').toLowerCase();
-            const displayStatus = status === 'not configured' ? 'Not Configured' : (status === 'offline' ? 'Offline' : 'Active');
-            opt.textContent = `${p.name} (${displayStatus})`;
-            opt.dataset.status = status;
-            if (profData.active && p.id === profData.active.id) opt.selected = true;
-            activeProfileSel.appendChild(opt);
-          });
-          if (activeProfileSel._refreshCustomDropdown) {
-            activeProfileSel._refreshCustomDropdown();
-          }
-        }
-
-        const activeProf = profData.active || cachedProfiles[0];
-        populateProfileForm(activeProf);
-      }
-
-      // Refresh custom dropdowns
-      document.querySelectorAll('select.select-input').forEach((sel) => {
-        if (sel._refreshCustomDropdown) sel._refreshCustomDropdown();
-      });
-    } catch (err) {
-      console.warn('Could not load brain status:', err);
-    }
-  }
-
-  async function saveBrainSettings(settingsObj) {
-    try {
-      const res = await fetch('/api/brain/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settingsObj),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Brain setting updated');
-      }
-    } catch (err) {
-      showToast('Error updating Brain setting', true);
-    }
-  }
-
-  function renderWakeDiagnostics(diagnostics) {
-    if (!wakeDiagnosticsEl || !diagnostics) return;
-    const wakeModel = diagnostics.wake_model || {};
-    wakeDiagnosticsEl.textContent = `Wake model ${wakeModel.state || 'loading'} · command model ${diagnostics.recognizer_ready ? 'ready' : 'loading'} · audio frames ${diagnostics.audio_frames} · keyword checks ${diagnostics.wake_checks} · matches ${diagnostics.wake_matches} · stage: ${diagnostics.last_decision} · RMS ${diagnostics.last_rms}`;
-  }
-
-  async function refreshWakeDiagnostics() {
-    try {
-      const response = await fetch('/api/brain/status');
-      const status = await response.json();
-      renderBrainRuntime(status);
-      const reading = status.reading || {};
-      const label = document.getElementById('brainReadingStatus');
-      if (label) label.textContent = reading.error || (reading.active
-        ? `Reading ${reading.window || 'document'} · ${reading.lines_read || 0} lines · ${reading.pages_read || 0} pages`
-        : 'Ready to read the frontmost document.');
-    } catch (_) {
-      // The main status panel reports listener failures when it next refreshes.
-    }
-  }
-
-  await loadBrainStatus();
-  window.setInterval(refreshWakeDiagnostics, 2000);
-  initSearchableDropdowns();
+  await tasks();setInterval(()=>{if(byId('page-tasks').classList.contains('active'))tasks();},2500);
+  await modelForm();await refresh();setInterval(refresh,1500);initSearchableDropdowns();
 }
 
 // Universal Custom Searchable Dropdown for all select.select-input elements

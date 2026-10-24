@@ -37,7 +37,7 @@ view = CharacterView(widget)
 widget.show()
 checks = [('front', 'idle', 0), ('blink_closed', 'idle', 0), ('eyes_reopened', 'idle', 0),
           ('speech', 'idle', 0), ('quarter', 'idle', .55), ('side_walk', 'walk', 1),
-          ('wave', 'wave', 0), ('climb', 'climb', -.65), ('pull', 'pull_scroll', .2), ('magnifier', 'magnifier', 0),
+          ('handshake','handshake',0), ('wave', 'wave', 0), ('climb', 'climb', -.65), ('pull', 'pull_scroll', .2), ('magnifier', 'magnifier', 0),
           ('camera', 'camera', 0), ('read', 'read', 0), ('scan_code', 'scan_code', 0), ('fly', 'fly', .5)]
 release=json.loads((Path(__file__).resolve().parents[1] / 'dock_twoo/server/static/brain3d/character.json').read_text())
 if args.all_actions:
@@ -59,7 +59,7 @@ def inspect_result(raw):
         report['runtime'] = {key:value for key,value in runtime.items() if key != 'poseSignature'}
         report['average_render_fps'] = round(runtime['renderedFrames']/max(.01,time.monotonic()-ready_since),1)
         assert runtime['version'] == release['version'] and runtime['assetHash'] == release['asset_sha256']
-        assert set(release['actions']) == set(runtime['clips'])
+        assert set(release['actions']) | {'handshake'} == set(runtime['clips'])
         assert view.version == release['version']
         assert set(ACTIONS).issubset(runtime['clips'])
         assert runtime['meshes'] >= 60
@@ -152,7 +152,7 @@ def tick():
                 displacement=sum((x-y)**2 for x,y in zip(first['poseSignature'],runtime['poseSignature']))**.5
                 assert displacement > .0001, f'{expected_label}: exported clip remained static'
                 report['animation_probes'].append({'action':expected_action,'pose_change':round(displacement,4)})
-            if expected_action in ('walk','wave','climb','pull_scroll'):
+            if expected_action in ('walk','wave','climb','pull_scroll','handshake'):
 
                 a = sum(first['handPositions'], [])
                 b = sum(runtime['handPositions'], [])

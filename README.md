@@ -172,29 +172,51 @@ prompt. Whisper small.en INT8 transcribes commands locally on CPU. The wake asse
 are about 6 MB; command recognition adds about 380 MB. First launch downloads these
 in background workers and Brain settings reports when each stage is ready.
 
-On Apple Silicon, optional models add MossFormer2-SE noise enhancement, Qwen3-TTS
-0.6B CustomVoice (Ryan), and WavLM speaker verification:
+Brain uses **one external cloud model** for reasoning and iterative tool calls.
+Open **Brain → Cloud Model** in the local settings console and enter the provider,
+HTTPS base URL, exact model ID and API key. OpenAI-compatible APIs (including
+Gemini and OpenRouter) and Anthropic Messages are supported. Choose a model that
+supports tool calling. Until configured, Brain says **“Model is not configured.”**
+There is no local reasoning model, local LLM service, or hidden provider fallback.
+Keys are encrypted in a separate local file and never returned by the console.
 
-```bash
-python -m pip install -e '.[voice]'
-```
+Speech stays local: Whisper small.en INT8 for transcription, Silero for speech
+boundaries, GTCRN ONNX for buffered noise enhancement, and Kokoro 82M INT8 ONNX
+for speech. Six American/British male and female voices and speed controls are
+available. Speech is synthesized in phrases, with the next phrase prepared while
+the current one plays. Models download in background loaders; the audio callback
+never downloads weights. Platform speech is available while the local voice loads.
+Optional WavLM speaker enrollment uses `pip install -e '.[voice]'` and stores only
+a derived voice vector. These models do not reason about user requests.
 
-These models use more disk space and download after the command model. While Qwen
-is unavailable, replies use platform speech. Model downloads never
-run inside the microphone or speech playback path. Audio is processed locally;
-voice enrollment stores only a WavLM speaker vector. Set your first name in Brain
-settings and select **Enroll my voice** for speaker personalization. Wake names
-start listening immediately. Brain waits for the complete statement before replying: a bare “Brain” gets a greeting; “Brain, open Cursor and type hello world” executes as one request. Silero VAD distinguishes speech from continuous background noise and allows natural pauses before ending the turn.
+A bare “Brain” starts a conversation. “Brain, open Cursor and type hello world”
+is captured as one complete request. Silero VAD allows natural pauses before
+ending a turn. The configured cloud model chooses local tools, sees their actual
+results and iterates until it can answer. The console shows progress and provides
+**Stop request**. Local tools cover files, PDF/DOCX text, Notes, Tasks, apps,
+accessibility controls, typing, scrolling and character actions. No generated
+shell or Python code is executed. Image explanation uses local ONNX captioning
+and Apple Vision OCR; only resulting text reaches the cloud model. Audio, image
+bytes and video are never sent to the provider. Requested document contents are
+sent as text to the configured provider for summarization.
 
-Open-ended questions use an installed Ollama model. Brain starts the local Ollama
-service when available, discovers installed models, and prefers `qwen3:4b-instruct`.
-Install Ollama and run `ollama pull qwen3:4b-instruct` once if the language-model
-status in Brain settings says unavailable. No language-model download occurs in a
-voice request. Built-in time, movement, app opening, typing and singing work
-without waiting for a language model. “Sing a song for me” performs a short original
-song using the installed macOS singing voice. Typing into Cursor uses its native document integration to create a new
-scratch document and checks its contents; it never types into an Agent chat
-or submits text. macOS Accessibility permission is required to verify desktop typing. The **Ask Brain** field in the local console runs the same requests and displays the actual response, which helps distinguish microphone recognition from action execution.
+**Tasks** is a persistent work log grouped by date. Say “Today I worked on the
+release notes” or “What did I work on January fifth?” The cloud agent records and
+retrieves dated entries, then summarizes them through local speech. Identical
+entries on the same day are deduplicated. Notes use the existing Notes drawer.
+“Open settings” or “open control” opens Dock settings; “open Mac settings” opens
+System Settings. Windows Settings requires Windows; the desktop CUA and full
+window reader currently support macOS Accessibility apps.
+
+The **Keep Awake** coffee icon above Settings toggles idle system/display sleep
+prevention (`caffeinate -d -i` on macOS). It releases its own assertion when disabled
+or when Dock exits. It does not disable manual locks or managed security policies.
+It is also available in the console and as a cloud-agent tool.
+
+The **Ask Brain** field uses the same agent as speech. Connection failures,
+unsupported app controls and missing OS permissions return explicit errors.
+Local reactions follow the model's emotion/gesture choice and use the artist's
+saved rig, with speech/reading priority and reduced-motion support.
 
 Brain's antenna shows green when online, red when offline or in error, yellow
 while listening, and purple while processing/thinking. Listening emits expanding
@@ -244,23 +266,24 @@ Unrecognized speech receives a repeat/rephrase request.
 
 **Read Desktop** and **Read Active Window** both read the remembered frontmost
 external app from its first line. On macOS, Brain uses Accessibility text with a
-window-only OCR fallback, reads each line in order, and pulls upward while scrolling
+window-only OCR fallback, reads continuous phrases in document order, and pulls upward while scrolling
 to the next page. The underline follows speech playback. Switching to another app,
 window or document stops reading. The window is never moved or resized. Use
-**Stop Reading** to cancel. Accessibility and Screen Recording permissions may be
+**Stop Reading** to cancel. **Read Selected Text** reads an existing selection without changing it. Accessibility and Screen Recording permissions may be
 needed depending on the target app; errors explain what is unavailable. Apps that
 do not expose text or scrollable content cannot be guaranteed to read completely.
 
 The local reader controls send `POST /api/brain/action` with an action of
-`read_desktop`, `read_window`, or `stop_reading` and `X-Brain-Reader: local`.
+`read_desktop`, `read_window`, `read_selected`, or `stop_reading` and `X-Brain-Reader: local`.
 The endpoint rejects foreign browser origins and reports when the desktop manager
 is unavailable.
 
 ```bash
 # Requires the local console server; microphone stays closed.
 .venv/bin/python scripts/verify_brain_3d.py
-.venv/bin/python scripts/verify_desktop_reader.py
 ```
+
+See [the agent design](docs/brain-agent-design.md) and [provider simulations](postman/README.md) for architecture, limits and repeatable verification.
 
 ## 📄 License
 

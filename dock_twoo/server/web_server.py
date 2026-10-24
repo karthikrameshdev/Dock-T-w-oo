@@ -63,8 +63,34 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         self._set_headers(HTTPStatus.NO_CONTENT)
 
+    def _local_control(self, write=False):
+        port=self.server.server_address[1]
+        origin=self.headers.get('Origin')
+        return (not origin or origin in (f'http://127.0.0.1:{port}',f'http://localhost:{port}')) and (not write or self.headers.get('X-Brain-Request')=='local')
+
+    def _json(self, status, value):
+        self._set_headers(status,'application/json')
+        self.wfile.write(json.dumps(value).encode())
+
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
+        if path in ('/api/brain/model','/api/tasks','/api/keep-awake'):
+            if not self._local_control():
+                self._json(HTTPStatus.FORBIDDEN,{'success':False,'error':'Use the local application console.'});return
+            try:
+                if path=='/api/brain/model':
+                    pm=_get_safe_profile_mgr();self._json(200,{'model':pm.get_active_profile(),**pm.get_provider_catalog()})
+                elif path=='/api/tasks':
+                    from urllib.parse import parse_qs,urlsplit
+                    from dock_twoo.tasks import TaskStore
+                    query=parse_qs(urlsplit(self.path).query)
+                    self._json(200,TaskStore(self.config_manager.config.get_storage_path()/'tasks').list(date=query.get('date',[None])[0]))
+                else:
+                    from dock_twoo.keep_awake import get_keep_awake
+                    self._json(200,get_keep_awake().status())
+            except Exception as exc:self._json(400,{'success':False,'error':str(exc)})
+            return
+
 
         if path == "/api/config":
             cfg_dict = self.config_manager.config.to_dict()
@@ -92,6 +118,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 "vault": cfg.get_vault_dir(),
                 "models": cfg.get_models_dir(),
                 "brain": cfg.get_brain_dir(),
+                "tasks": storage_root / "tasks",
             }
             folder_info = {}
             total_files = 0
@@ -205,7 +232,12 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
         # Check in assets/icons
         if path.startswith("/icons/"):
             icon_name = path.replace("/icons/", "")
-            icon_file = static_dir.parent.parent / "assets" / "icons" / icon_name
+            from dock_twoo.icons import get_icons_dir
+            icons_dir = get_icons_dir().resolve()
+            icon_file = (icons_dir / icon_name).resolve()
+            if icon_file.parent != icons_dir:
+                self._json(404, {'error': 'Icon not found.'})
+                return
             if icon_file.exists() and icon_file.is_file():
                 with open(icon_file, "rb") as f:
                     content = f.read()
@@ -218,6 +250,41 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = self.path.split("?")[0]
+        if path in ('/api/brain/settings', '/api/brain/profile', '/api/brain/key', '/api/brain/activate') and not self._local_control(write=True):
+            self._json(403, {'success': False, 'error': 'Use the local application controls.'})
+            return
+        if path in ('/api/brain/model','/api/brain/model/test','/api/brain/stop','/api/tasks','/api/keep-awake'):
+            if not self._local_control(write=True):
+                self._json(403,{'success':False,'error':'Use the local application controls.'});return
+            try:
+                length=int(self.headers.get('Content-Length',0))
+                if length>32000:raise ValueError('Request is too large.')
+                body=json.loads(self.rfile.read(length) or b'{}')
+                if path=='/api/brain/model':
+                    pm=_get_safe_profile_mgr();model=pm.save_profile(body)
+                    self._json(200,{'success':True,'model':model})
+                elif path=='/api/brain/model/test':
+                    from dock_twoo.brain.cloud import CloudClient
+                    from dock_twoo.brain.agent_tools import TOOLS
+                    pm=_get_safe_profile_mgr();config=pm.get_active_profile()
+                    turn=CloudClient(config,pm.get_key(config['provider'])).turn([{'role':'user','content':'Test connection. Use finish with text Ready.'}],[TOOLS[-1]])
+                    self._json(200,{'success':True,'message':'Connection successful. '+('Tool calling verified.' if turn.calls else 'Text response verified; tool calling was not exercised.')})
+                elif path=='/api/brain/stop':
+                    from dock_twoo.brain.manager import BrainManager
+                    if BrainManager._instance:BrainManager._instance.run_on_main_thread(BrainManager._instance.stop_talking)
+                    self._json(200,{'success':True})
+                elif path=='/api/tasks':
+                    from dock_twoo.tasks import TaskStore
+                    store=TaskStore(self.config_manager.config.get_storage_path()/'tasks')
+                    task=store.update(**body) if 'id' in body else store.add(**body)
+                    self._json(200,{'success':True,'task':task})
+                else:
+                    from dock_twoo.keep_awake import get_keep_awake
+                    if type(body.get('enabled'))!=bool:raise ValueError('Supply enabled as true or false.')
+                    self._json(200,{'success':True,**get_keep_awake().set_enabled(body['enabled'])})
+            except Exception as exc:self._json(400,{'success':False,'error':str(exc)})
+            return
+
 
         if path == "/api/brain/request":
             try:
@@ -340,6 +407,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
                 store = _get_safe_brain_store()
+                if any(key in body for key in ('cloud_keys', 'cloud_model', 'profiles', 'active_profile')):
+                    raise ValueError('Use the Cloud Model form to configure the single provider securely.')
                 updated = store.update_settings(body)
                 from dock_twoo.brain.manager import BrainManager
                 if BrainManager._instance is not None:
@@ -380,13 +449,13 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
                 action = body.get("action")
-                if action in ("read_desktop", "read_window", "stop_reading"):
+                if action in ("read_desktop", "read_window", "read_selected", "stop_reading"):
                     port = self.server.server_address[1]
                     origin = self.headers.get("Origin")
                     if self.headers.get("X-Brain-Reader") != "local" or (origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")):
                         raise RuntimeError("Start reading from the local Brain controls.")
                 from dock_twoo.brain.manager import BrainManager
-                if BrainManager._instance is None and action in ("read_desktop", "read_window", "stop_reading"):
+                if BrainManager._instance is None and action in ("read_desktop", "read_window", "read_selected", "stop_reading"):
                     raise RuntimeError("Brain is not running. Start the desktop application first.")
                 if BrainManager._instance is not None:
                     bm = BrainManager._instance
@@ -396,8 +465,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                         bm.hide_mini_agent()
                     elif action == "talk":
                         bm.start_talking()
-                    elif action in ("read_desktop", "read_window"):
-                        bm.start_reading("desktop" if action == "read_desktop" else "window")
+                    elif action in ("read_desktop", "read_window", "read_selected"):
+                        bm.start_reading("selected" if action=="read_selected" else "window")
                     elif action == "stop_reading":
                         bm.stop_reading()
                     elif action in ("move", "corner"):

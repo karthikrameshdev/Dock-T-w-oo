@@ -1,3 +1,4 @@
+import { handshakeClip } from './reactions.js';
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
 import { HeadIndicator } from './indicator.js';
@@ -63,6 +64,7 @@ async function loadCharacter(){
     for(const track of clip.tracks)track.name=track.name.replace('.morphTargetInfluences','.authoredMorphTargetInfluences');
     clips[clip.name]=mixer.clipAction(clip);select.add(new Option(clip.name,clip.name));
   }
+  const handshake=handshakeClip(bones);clips.handshake=mixer.clipAction(handshake);select.add(new Option('handshake','handshake'));
   select.value='idle';window.brainDiagnostics={version:release.version,assetHash:release.asset_sha256,clips:Object.keys(clips),bones:Object.keys(bones),meshes:0,renderedFrames:0,nonFinite:false,translucent:false};
   model.traverse(node=>{if(node.isMesh)window.brainDiagnostics.meshes++;});
   report(`Brain ${release.version} · ${gltf.animations.length} animations ready`);

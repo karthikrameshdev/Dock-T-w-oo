@@ -34,13 +34,16 @@ class SpeechPlayback(QObject):
         self.playing: bool = False
         self.last_error: str = ""
         self.voice_models = None
+        self.store = None
+        self._progress_offset = 0.
+        self._progress_scale = 1.
 
         self._frame.connect(self._schedule_frame)
         self._done.connect(self._finish)
 
     def start(self, text: str) -> None:
         """Start speech synthesis and playback of text."""
-        self._start(text[:1000])
+        self._start(text)
 
     def sing(self, lyrics: str) -> None:
         self._start(lyrics, song=True)
@@ -78,17 +81,33 @@ class SpeechPlayback(QObject):
         try:
             with tempfile.TemporaryDirectory(prefix="dock-twoo-brain-speech-") as folder:
                 wav_path = Path(folder) / "speech.wav"
-                if song:
-                    clip = synthesize_song(text, wav_path, cancel)
-                elif text is None:
-                    clip = whistle_clip()
+                if song or text is None:
+                    clip = synthesize_song(text, wav_path, cancel) if song else whistle_clip()
+                    self._progress_offset,self._progress_scale=0.,1.
+                    self._play_clip(clip, wav_path, token, cancel)
                 else:
-                    clip = synthesize(text, wav_path, cancel, self.voice_models)
+                    from concurrent.futures import ThreadPoolExecutor
+                    from dock_twoo.brain.desktop_reader import speech_chunks
+                    from dock_twoo.brain.local_tts import get_local_tts,VOICES
+                    engine=get_local_tts()
+                    if self.store:
+                        requested=self.store.setting('voice_name','af_heart')
+                        engine.voice=requested if requested in VOICES else 'af_heart'
+                        engine.speed=float(self.store.setting('speech_rate',1))
+                    chunks=speech_chunks(text,limit=320)
+                    total=max(1,sum(len(chunk) for chunk in chunks));offset=0
+                    def render(index):
+                        path=Path(folder)/f'phrase-{index}.wav'
+                        return synthesize(chunks[index],path,cancel,self.voice_models),path
+                    with ThreadPoolExecutor(max_workers=1,thread_name_prefix='brain-phrase-prefetch') as pool:
+                        pending=pool.submit(render,0) if chunks else None
+                        for index,chunk in enumerate(chunks):
+                            if cancel.is_set():raise InterruptedError('Speech cancelled.')
+                            clip,path=pending.result(timeout=35)
+                            if index+1<len(chunks):pending=pool.submit(render,index+1)
+                            self._progress_offset,self._progress_scale=offset/total,len(chunk)/total
+                            self._play_clip(clip,path,token,cancel);offset+=len(chunk)
 
-                if cancel.is_set():
-                    raise InterruptedError("Speech cancelled.")
-
-                self._play_clip(clip, wav_path, token, cancel)
         except InterruptedError:
             pass
         except Exception as exc:
@@ -116,7 +135,7 @@ class SpeechPlayback(QObject):
                 buffer[:] = data + bytes(frames * frame_bytes - len(data))
                 delay = max(0.0, clock.outputBufferDacTime - clock.currentTime)
                 self._frame.emit(token, clip.level_at(cursor), time.monotonic() + delay)
-                self.progress.emit(cursor / max(1, clip.frames))
+                self.progress.emit(self._progress_offset+self._progress_scale*cursor/max(1,clip.frames))
                 cursor = end
                 if cursor >= clip.frames:
                     raise sd.CallbackStop
@@ -152,7 +171,7 @@ class SpeechPlayback(QObject):
                 elapsed = time.monotonic() - start_t
                 curr_frame = int(elapsed * clip.rate)
                 self._frame.emit(token, clip.level_at(curr_frame), time.monotonic() + 0.02)
-                self.progress.emit(min(1, curr_frame / max(1, clip.frames)))
+                self.progress.emit(self._progress_offset+self._progress_scale*min(1,curr_frame/max(1,clip.frames)))
                 time.sleep(0.03)
             if proc.returncode != 0:
                 raise RuntimeError(f"afplay exited with status {proc.returncode}")

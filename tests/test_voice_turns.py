@@ -131,7 +131,7 @@ def test_completed_bare_wake_speaks_a_greeting_then_resumes_listening(tmp_path, 
     spoken = []
     monkeypatch.setattr(manager.speech, 'start', spoken.append)
     manager._do_wake_detected()
-    assert len(spoken) == 1 and 'Buddy' in spoken[0]
+    assert len(spoken) == 1 and 'Model is not configured' in spoken[0]
     assert not manager.session_timer.isActive()
     assert not manager.session_timer.isActive()
     manager._on_speech_finished()
@@ -157,7 +157,7 @@ def test_unintelligible_speech_asks_for_a_repeat_and_then_listens_again(tmp_path
 
 def test_unhandled_request_gets_a_clarification_instead_of_a_fake_success():
     reply = answer_locally('frobnicate the thingamabob')
-    assert 'repeat or rephrase' in reply
+    assert 'Model is not configured' in reply
     assert 'running smoothly' not in reply and 'Understood' not in reply
 
 

@@ -1,10 +1,9 @@
 version: 1
-id: 6ff53264-1cda-47c4-b9ff-664dd738e6da
-name: ollama
-slug: ollama
+name: brain-cloud
+slug: brain-cloud
 protocol: http
 interceptRequests: true
-port: 4500
+port: 4501
 scenarios:
   - name: default
     path: ./default.js

@@ -207,6 +207,17 @@ class DockWindow(QWidget):
         self.attached_window = AttachedWindow(self.config)
         self.attached_window.window_closed.connect(self._on_attached_closed)
         self.brain_manager = get_brain_manager()
+        self.brain_manager.app_open_requested.connect(self._open_voice_app)
+        self.brain_manager.app_data_changed.connect(lambda ident: self.attached_window._apps[ident]._load_notes() if ident=='notes' and ident in self.attached_window._apps and self.attached_window._apps[ident].stack.currentIndex()==0 else None)
+        self.awake_timer=QTimer(self)
+        self.awake_timer.setInterval(1000)
+        def update_awake():
+            from dock_twoo.keep_awake import get_keep_awake
+            button=self._icon_buttons.get('keep_awake')
+            if button:
+                enabled=get_keep_awake().status()['enabled'];button.set_active(enabled)
+                button.item.tooltip='Keep Awake · '+('On' if enabled else 'Off')
+        self.awake_timer.timeout.connect(update_awake);self.awake_timer.start()
         self.brain_manager.visibility_changed.connect(
             lambda visible: self._set_active_icon("brain" if visible else None)
         )
@@ -375,8 +386,26 @@ class DockWindow(QWidget):
             self._icon_buttons[item.id] = btn
             self.bottom_layout.addWidget(btn)
 
+    def _open_voice_app(self, app_id: str) -> None:
+        """An agent's open request is idempotent, unlike a dock click toggle."""
+        if app_id == 'brain':
+            self.brain_manager.show_mini_agent()
+            return
+        if self.attached_window.is_showing_app(app_id):
+            self.attached_window.show()
+            self.attached_window.raise_()
+            return
+        button = self._icon_buttons.get(app_id)
+        center = button.mapToGlobal(button.rect().center()) if button else self.geometry().center()
+        self._handle_icon_click(app_id, center)
+
     def _handle_icon_click(self, app_id: str, icon_center_global: QPoint) -> None:
         """Handle user clicking an icon button."""
+        if app_id == "keep_awake":
+            from dock_twoo.keep_awake import get_keep_awake
+            awake=get_keep_awake();status=awake.set_enabled(not awake.status()['enabled'])
+            self._set_active_icon('keep_awake' if status['enabled'] else None)
+            return
         # Click on Settings opens the browser Web Console directly
         if app_id in ("settings", "console"):
             url = f"http://{self.config.server_host}:{self.config.server_port}"
@@ -415,7 +444,10 @@ class DockWindow(QWidget):
 
     def _set_active_icon(self, active_id: Optional[str]) -> None:
         for app_id, btn in self._icon_buttons.items():
-            btn.set_active(app_id == active_id)
+            if app_id=='keep_awake':
+                from dock_twoo.keep_awake import get_keep_awake
+                btn.set_active(get_keep_awake().status()['enabled'])
+            else:btn.set_active(app_id == active_id)
 
     def _on_attached_closed(self, closed_app_id: str) -> None:
         self._set_active_icon(None)

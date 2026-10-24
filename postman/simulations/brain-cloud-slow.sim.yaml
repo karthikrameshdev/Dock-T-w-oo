@@ -1,8 +1,8 @@
-simulation: brain-local-slow
+simulation: brain-cloud-slow
 routing: path
 mocks:
-  - routeKey: ollama
-    path: ../mocks/ollama/config.yaml
+  - routeKey: cloud
+    path: ../mocks/cloud/config.yaml
     scenarios:
       - overrides:
           conditions:

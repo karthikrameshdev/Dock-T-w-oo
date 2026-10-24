@@ -1,8 +1,8 @@
-simulation: brain-local-error
+simulation: brain-cloud-error
 routing: path
 mocks:
-  - routeKey: ollama
-    path: ../mocks/ollama/config.yaml
+  - routeKey: cloud
+    path: ../mocks/cloud/config.yaml
     scenarios:
       - overrides:
           conditions:

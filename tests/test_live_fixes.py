@@ -8,24 +8,13 @@ from dock_twoo.ui.dock_window import DockWindow
 from dock_twoo.os_integration.screen_manager import MacOSCursorHelper
 
 
-def test_slow_optional_tts_cannot_block_the_voice_response(tmp_path, monkeypatch):
-    monkeypatch.delenv('PYTEST_CURRENT_TEST', raising=False)
+def test_unprepared_onnx_voice_never_blocks_the_audio_caller(tmp_path, monkeypatch):
     models = LocalVoiceModels(tmp_path)
-    release = threading.Event()
-    class SlowVoice:
-        def generate_custom_voice(self, **kwargs):
-            release.wait(2)
-            return iter([])
-    models._tts = SlowVoice()
+    monkeypatch.setattr(models.local_tts,'engine',None)
     start = time.monotonic()
-    assert not models.synthesize_wav('Hello', tmp_path/'speech.wav', budget=.05)
-    assert time.monotonic()-start < .4
-    assert not (tmp_path/'speech.wav').exists()
-    # A still-running optional model must not spawn another blocked request.
-    start = time.monotonic()
-    assert not models.synthesize_wav('Hello again', tmp_path/'second.wav')
+    assert not models.synthesize_wav('Hello',tmp_path/'speech.wav')
     assert time.monotonic()-start < .05
-    release.set()
+    assert not (tmp_path/'speech.wav').exists()
 
 
 def test_dock_does_not_force_an_arrow_when_it_does_not_own_the_cursor(monkeypatch):

@@ -49,21 +49,17 @@ def test_reader_reads_from_the_top_and_scrolls_only_after_finishing_page(tmp_pat
     manager.reader.backend = Backend()
     manager.reader.start()
     qtbot.waitUntil(lambda: manager.reader.pages_read == 1)
-    assert calls == ['top'] and spoken == []
-    manager.companion.arrival()
-    assert spoken == ['line one'] and calls == ['top']
-    manager.reader.speech_finished()
-    assert spoken == ['line one', 'line two'] and calls == ['top']
+    assert calls == ['top'] and spoken == ['line one line two']
+    # Audio starts without waiting for mascot arrival. The page is spoken as
+    # continuous phrases, then the existing pull/scroll sequence advances it.
     manager.reader.speech_finished()
     manager.companion.arrival()
-    qtbot.waitUntil(lambda: len(spoken) == 3)
-    assert spoken == ['line one', 'line two', 'line three']
-    assert calls == ['top', 'scroll']
+    qtbot.waitUntil(lambda: len(spoken) == 2)
+    assert spoken == ['line one line two','line three']
+    assert calls == ['top','scroll']
     manager.reader.speech_finished()
     manager.companion.arrival()
     qtbot.waitUntil(lambda: not manager.reader.active)
-    assert calls == ['top', 'scroll', 'scroll']
-    assert spoken == ['line one', 'line two', 'line three']
     assert manager.listener._wake_armed
     manager.companion.close()
 
@@ -90,3 +86,22 @@ def test_cancelled_reader_discards_late_page_results(tmp_path, qtbot, monkeypatc
     qtbot.wait(50)
     assert spoken == [] and not manager.reader.active
     manager.companion.close()
+
+
+def test_selected_reading_reads_existing_selection_without_page_navigation(tmp_path,qtbot,monkeypatch):
+    from dock_twoo.brain.desktop_driver import DesktopDriver
+    manager=BrainManager(store=BrainStore(tmp_path),start_services=False)
+    spoken=[];calls=[]
+    monkeypatch.setattr(manager.speech,'start',spoken.append)
+    monkeypatch.setattr(DesktopDriver,'selected_text',lambda _self,pid:calls.append(pid) or {'text':'Complete selected sentence.','selection_changed':False})
+    target=ReadingTarget(42,'Selected Document',1,QRect(0,0,800,600))
+    class Backend:
+        def target(self):return target
+        def remember_frontmost(self):pass
+        def first_page(self,*_args):raise AssertionError('Selected text must not navigate or select a page.')
+    manager.reader.backend=Backend();manager.reader.start('selected')
+    qtbot.waitUntil(lambda:bool(spoken))
+    assert spoken==['Complete selected sentence.'] and calls==[42]
+    manager.reader.speech_finished()
+    assert not manager.reader.active
+    manager.shutdown()
