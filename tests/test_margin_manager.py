@@ -78,3 +78,78 @@ def test_margin_manager_window_restoration_on_edge_change(qapp, monkeypatch):
     # Safari must have been restored!
     assert "Safari" in restored_apps
     assert "Safari" not in mgr._adjusted_windows
+
+
+def test_margin_manager_desktop_icon_clamping_and_collision_avoidance(qapp, monkeypatch):
+    cfg = DockConfig(reserve_screen_space=True, edge="right", screen_margin_gap=8)
+    mgr = DesktopMarginManager(cfg)
+
+    # Mock subprocess.run to simulate Finder desktop query and batch move execution
+    mock_calls = []
+
+    def mock_subprocess_run(cmd, capture_output=True, text=True, timeout=1.5):
+        script = cmd[2]
+        mock_calls.append(script)
+        class MockResult:
+            returncode = 0
+            # First call is query: return 2 screenshots in the right dock zone
+            stdout = "Screenshot 1.png|1446|73\nScreenshot 2.png|1446|73\n"
+            stderr = ""
+        return MockResult()
+
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
+
+    dock_rect = QRect(1440, 50, 60, 800)
+    adjusted_events = []
+    mgr.icon_adjusted.connect(lambda name, x, y: adjusted_events.append((name, x, y)))
+
+    mgr._check_and_clamp_desktop_icons(dock_rect, edge="right", gap=8)
+
+    # Both screenshots must have been clamped outside the dock zone (x < 1400)
+    assert len(adjusted_events) == 2
+    name1, x1, y1 = adjusted_events[0]
+    name2, x2, y2 = adjusted_events[1]
+
+    assert name1 == "Screenshot 1.png"
+    assert x1 < 1400
+    assert y1 == 73
+
+    assert name2 == "Screenshot 2.png"
+    assert x2 < 1400
+    # Collision avoidance stepped to the next free column
+    assert x2 != x1
+    assert "Screenshot 1.png" in mgr._adjusted_icons
+    assert "Screenshot 2.png" in mgr._adjusted_icons
+
+
+def test_margin_manager_desktop_icon_restoration_on_edge_vacated(qapp, monkeypatch):
+    cfg = DockConfig(reserve_screen_space=True, edge="right")
+    mgr = DesktopMarginManager(cfg)
+
+    mgr._adjusted_icons["Screenshot.png"] = {
+        "edge": "right",
+        "orig_x": 1446,
+        "orig_y": 73,
+        "clamped_x": 1362,
+        "clamped_y": 73,
+    }
+
+    mock_executed_scripts = []
+    def mock_run(cmd, capture_output=True, timeout=1.5):
+        mock_executed_scripts.append(cmd[2])
+        class MockResult:
+            returncode = 0
+        return MockResult()
+
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", mock_run)
+
+    # When config edge moves to "top" (vacating "right"):
+    new_cfg = DockConfig(reserve_screen_space=True, edge="top")
+    mgr.update_config(new_cfg)
+
+    # Icon was restored and cleared from adjusted icons
+    assert "Screenshot.png" not in mgr._adjusted_icons
+    assert any("set desktop position of item \"Screenshot.png\" of desktop to {1446, 73}" in s for s in mock_executed_scripts)
+
