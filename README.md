@@ -17,6 +17,11 @@
 </p>
 
 <p align="center">
+  🌐 <b>Live Project Showcase & Overview:</b> <a href="https://karthikramesh.dev/projects/dock-twoo/"><b>karthikramesh.dev/projects/dock-twoo/</b></a>
+</p>
+
+<p align="center">
+  <a href="https://karthikramesh.dev/projects/dock-twoo/"><b>Website</b></a> •
   <a href="#features">Features</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#built-in-apps">Built-in Apps</a> •
@@ -31,6 +36,8 @@
 ## 🌟 Overview
 
 **Dock T(w)oo** is an open-source, resident secondary desktop dock panel built entirely in **Python** using **PySide6**. Designed for daily workflow productivity across macOS, Windows, and Ubuntu, Dock T(w)oo provides an always-accessible, edge-pinned capsule dock with attached companion drawers that expand right next to the dock.
+
+Visit the [**Dock T(w)oo Project Showcase**](https://karthikramesh.dev/projects/dock-twoo/) to explore the visual design, interactive features, and live demonstrations.
 
 From quick encrypted credential lookups in **Vault**, fast scratchpad notes in **Notes**, to resident AI voice interaction in **Brain**, Dock T(w)oo brings essential desktop workflows into a unified, distraction-free companion panel.
 
