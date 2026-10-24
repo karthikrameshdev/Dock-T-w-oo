@@ -105,3 +105,16 @@ def test_selected_reading_reads_existing_selection_without_page_navigation(tmp_p
     manager.reader.speech_finished()
     assert not manager.reader.active
     manager.shutdown()
+
+
+def test_local_reading_publishes_start_and_completion_to_the_console(tmp_path,qtbot,monkeypatch):
+    manager=BrainManager(store=BrainStore(tmp_path),start_services=False)
+    spoken=[];monkeypatch.setattr(manager.speech,'start',spoken.append)
+    manager._do_turn_complete('Read aloud: One complete sentence. Another complete sentence.')
+    assert spoken==['One complete sentence. Another complete sentence']
+    started=manager.last_response['generation']
+    assert manager.last_response['text']=='Reading supplied text.'
+    manager.reader.speech_finished()
+    assert manager.last_response['text']=='Finished reading.'
+    assert manager.last_response['generation']>started
+    manager.shutdown()

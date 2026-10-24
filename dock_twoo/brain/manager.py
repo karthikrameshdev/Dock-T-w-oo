@@ -93,6 +93,7 @@ class BrainManager(QObject):
         self._last_wake_reply: str = ""
         self._query_generation = 0
         self.last_response = {'generation':0, 'text':''}
+        self._response_generation = 0
         self._agent_cancel = threading.Event()
 
         self.session_timer = QTimer(self)
@@ -135,7 +136,7 @@ class BrainManager(QObject):
         self.agent = BrainAgent(self.profile_mgr, self)
         self.animation_director = AnimationDirector(self)
         self.reader.failed.connect(self._on_reading_failed)
-        self.reader.finished.connect(lambda: self.status_changed.emit("Finished reading the document."))
+        self.reader.finished.connect(self._on_reading_finished)
         self.speech.progress.connect(self.companion.reading_progress)
         if start_services and self.store.setting("wake_word_enabled", True):
             self.listener.start()
@@ -320,8 +321,10 @@ class BrainManager(QObject):
         self.companion.turn_to_user()
         # This signal is delivered only after the entire wake statement ends.
         # Inline commands go directly to _do_turn_complete without a greeting.
+        reply = NOT_CONFIGURED if self.profile_mgr.get_active_profile()['status']=='not configured' else self.get_wake_greeting(self.listener.last_wake_owner_verified)
+        self._publish_response(reply)
         if self.store.setting("voice_reply", True):
-            self.speech.start(NOT_CONFIGURED if self.profile_mgr.get_active_profile()['status']=='not configured' else self.get_wake_greeting(self.listener.last_wake_owner_verified))
+            self.speech.start(reply)
         else:
             self.listener.start_recording()
             self.companion.set_activity("listening")
@@ -432,6 +435,7 @@ class BrainManager(QObject):
             self.in_conversation_session = False
             self.conversation_history.clear()
             reply = "Goodbye! Standing by on your desktop whenever you need me."
+            self._publish_response(reply)
             if self.store.setting("voice_reply", True):
                 self.speech_start_requested.emit(reply)
             else:
@@ -454,8 +458,7 @@ class BrainManager(QObject):
                 if generation != self._query_generation:
                     return
                 self.conversation_history.append({"role": "assistant", "content": reply})
-                self.last_response = {'generation':generation, 'text':str(reply)}
-                self.reply_received.emit(str(reply))
+                self._publish_response(reply)
                 self.animation_director.respond(reply)
                 if getattr(reply,"reading_started",False):
                     return
@@ -532,7 +535,17 @@ class BrainManager(QObject):
         self.shortcut_listener.stop()
         self.companion.close()
 
+    def _publish_response(self, text: str) -> None:
+        self._response_generation += 1
+        self.last_response = {'generation':self._response_generation, 'text':str(text)}
+        self.reply_received.emit(str(text))
+
     def read_text(self, text: str) -> None:
+        if QThread.currentThread() != self.thread():
+            self.run_on_main_thread(lambda:self.read_text(text))
+            return
+        self._query_generation += 1
+        self._publish_response('Reading supplied text.')
         self.reader.start_text(text)
 
     def start_reading(self, mode: str = "window") -> None:
@@ -540,11 +553,18 @@ class BrainManager(QObject):
             self.run_on_main_thread(lambda: self.start_reading(mode))
             return
         self._query_generation += 1
+        self._publish_response('Reading selected text.' if mode == 'selected' else 'Reading the active window.')
         self.reader.start(mode)
+
+    @Slot()
+    def _on_reading_finished(self) -> None:
+        self._publish_response('Finished reading.')
+        self.status_changed.emit('Finished reading.')
 
     @Slot(str)
     def _on_reading_failed(self, message: str) -> None:
         self.status_changed.emit(message)
+        self._publish_response(message)
         if self.store.setting('voice_reply', True):
             self.speech.start(f"I'm sorry, I couldn't read that window. {message}")
 
@@ -553,6 +573,7 @@ class BrainManager(QObject):
             self.run_on_main_thread(self.stop_reading)
             return
         self.reader.stop()
+        self._publish_response('Reading stopped.')
 
     def show_context_menu(self, global_pos: QPoint) -> None:
         """Render the complete Brain properties and functionality context menu.
