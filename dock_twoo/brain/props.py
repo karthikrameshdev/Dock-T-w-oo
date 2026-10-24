@@ -8,7 +8,7 @@ import random
 import time
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, QThread
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -77,6 +77,10 @@ class DesktopProp(QWidget):
 
     def spawn(self, x: float, y: float, vx: float = 0.0, vy: float = 0.0, prop_type: Optional[str] = None) -> None:
         """Spawn the prop at designated coordinates."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.parent_companion, "manager") and hasattr(self.parent_companion.manager, "run_on_main_thread"):
+                self.parent_companion.manager.run_on_main_thread(lambda: self.spawn(x, y, vx, vy, prop_type))
+            return
         if prop_type:
             self.prop_type = prop_type
         self.pos_x = x
@@ -111,6 +115,10 @@ class DesktopProp(QWidget):
 
     def dismiss(self) -> None:
         """Stow and hide prop."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.parent_companion, "manager") and hasattr(self.parent_companion.manager, "run_on_main_thread"):
+                self.parent_companion.manager.run_on_main_thread(self.dismiss)
+            return
         self.active = False
         self.phys_timer.stop()
         self.hide()

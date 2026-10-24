@@ -37,6 +37,8 @@ class BrainManager(QObject):
     hide_mini_agent_requested = Signal()
     toggle_mini_agent_requested = Signal()
     wake_detected_requested = Signal()
+    turn_complete_requested = Signal(str)
+    main_thread_action_requested = Signal(object)
 
     _instance: Optional[BrainManager] = None
 
@@ -70,6 +72,8 @@ class BrainManager(QObject):
         self.hide_mini_agent_requested.connect(self._do_hide_mini_agent, Qt.ConnectionType.QueuedConnection)
         self.toggle_mini_agent_requested.connect(self._do_toggle_mini_agent, Qt.ConnectionType.QueuedConnection)
         self.wake_detected_requested.connect(self._do_wake_detected, Qt.ConnectionType.QueuedConnection)
+        self.turn_complete_requested.connect(self._do_turn_complete, Qt.ConnectionType.QueuedConnection)
+        self.main_thread_action_requested.connect(self._do_run_main_action, Qt.ConnectionType.QueuedConnection)
 
         self._active_query_thread: Optional[threading.Thread] = None
         self._is_listening: bool = False
@@ -275,9 +279,22 @@ class BrainManager(QObject):
             return
         self.listener.stop_recording()
 
+    @Slot(object)
+    def _do_run_main_action(self, fn: Any) -> None:
+        try:
+            fn()
+        except Exception:
+            pass
+
+    def run_on_main_thread(self, fn: Any) -> None:
+        """Safely execute a function or lambda on the main Qt GUI thread."""
+        if QThread.currentThread() == self.thread():
+            fn()
+        else:
+            self.main_thread_action_requested.emit(fn)
+
     @Slot(str)
-    def _on_turn_complete(self, user_text: str) -> None:
-        """Invoked when user finishes statement (via VAD or explicit shortcut)."""
+    def _do_turn_complete(self, user_text: str) -> None:
         if not user_text:
             if self.in_conversation_session:
                 self.session_timer.start(8000)
@@ -326,6 +343,13 @@ class BrainManager(QObject):
                     self.activity_requested.emit("idle")
 
         threading.Thread(target=run_turn, daemon=True).start()
+
+    def _on_turn_complete(self, user_text: str) -> None:
+        """Invoked when user finishes statement (via VAD or explicit shortcut)."""
+        if QThread.currentThread() == self.thread():
+            self._do_turn_complete(user_text)
+        else:
+            self.turn_complete_requested.emit(user_text)
 
     @Slot()
     def start_talking(self) -> None:

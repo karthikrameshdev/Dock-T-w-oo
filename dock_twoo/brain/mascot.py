@@ -8,7 +8,7 @@ import random
 import time
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer, QThread
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -388,6 +388,10 @@ class Companion(QWidget):
 
     def turn_to_side(self, facing: float = 1.0, on_turned=None) -> None:
         """Smoothly rotate character towards side profile (1.0 = right, -1.0 = left)."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.turn_to_side(facing, on_turned))
+            return
         self.facing = facing
         self.turn_target = 1.0
         self.on_turn_finished = on_turned
@@ -403,6 +407,10 @@ class Companion(QWidget):
 
     def turn_to_user(self, on_turned=None) -> None:
         """Smoothly turn character back to face the user directly (front profile)."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.turn_to_user(on_turned))
+            return
         if not self.isVisible():
             self.show()
         if self.active_prop and self.active_prop.active:
@@ -435,6 +443,10 @@ class Companion(QWidget):
 
     def play_action(self, action: str, destination: Optional[QPoint] = None, duration: Optional[float] = None, *, sequence: bool = False) -> None:
         """Execute a procedural animation action."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.play_action(action, destination, duration, sequence=sequence))
+            return
         if action not in ACTIONS:
             return
         self.stop_motion(clear_sequence=not sequence)
@@ -663,6 +675,10 @@ class Companion(QWidget):
 
     def push_window(self) -> None:
         """Playful naughty interaction: companion walks to active window edge, pushes it to shrink width, then pulls it back!"""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(self.push_window)
+            return
         if self.reduced_motion:
             return
         from dock_twoo.brain.vision import get_primary_surface
@@ -744,6 +760,10 @@ class Companion(QWidget):
 
     def travel_to_corner(self, corner: str, style: str = "walk") -> None:
         """Move companion to designated desktop corner using specified movement style (walk, jump, fly, roll)."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.travel_to_corner(corner, style=style))
+            return
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRectF(0, 0, 1920, 1080)
         
@@ -776,6 +796,10 @@ class Companion(QWidget):
 
     def walk_window_surface(self, target_type: str = "auto") -> None:
         """Walk along the top edge border of an active application window or text box in side profile."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.walk_window_surface(target_type=target_type))
+            return
         if self.reduced_motion:
             return
         from dock_twoo.brain.vision import get_primary_surface, get_text_box_surface
@@ -825,6 +849,10 @@ class Companion(QWidget):
 
     def play_with_prop(self, prop_type: str = "ball", destination: Optional[QPoint] = None) -> None:
         """Spawn and play with an interactive desktop prop (ball, hammer, parachute, balloon)."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.play_with_prop(prop_type=prop_type, destination=destination))
+            return
         if self.reduced_motion:
             return
         from dock_twoo.brain.props import DesktopProp
@@ -924,6 +952,10 @@ class Companion(QWidget):
 
     def put_away_prop(self, on_stowed=None) -> None:
         """Tuck away the active desktop prop/toy into robot storage compartment."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.put_away_prop(on_stowed=on_stowed))
+            return
         if not self.active_prop or not self.active_prop.active:
             if on_stowed:
                 on_stowed()
@@ -947,6 +979,10 @@ class Companion(QWidget):
 
     def carry_prop_to(self, corner: str, prop_type: str = "ball") -> None:
         """Carry a toy to a specific desktop corner and start playing there."""
+        if QThread.currentThread() != self.thread():
+            if hasattr(self.manager, "run_on_main_thread"):
+                self.manager.run_on_main_thread(lambda: self.carry_prop_to(corner, prop_type=prop_type))
+            return
         screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
         c = corner.lower().replace("-", "_").replace(" ", "_")
