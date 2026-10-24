@@ -1350,34 +1350,29 @@ class Companion(QWidget):
         front_width = 98 * math.cos(angle)
         depth = 58 * math.sin(angle)
         left = self.art_width / 2 - (front_width + depth) / 2
-        # One opaque helmet shell, with a shaded side growing as the visor turns.
-        shell = QRectF(left, 35, front_width + depth, 73)
-        shade = QLinearGradient(shell.topLeft(), shell.bottomRight())
-        shade.setColorAt(0, QColor('#b5f5e7'))
-        shade.setColorAt(.5, QColor('#91d9cc'))
-        shade.setColorAt(1, QColor('#5fa7a3'))
+        shell = QRectF(left, 35, front_width + depth, 71)
+        material = QRadialGradient(QPointF(left + shell.width() * .3, 49), shell.width())
+        material.setColorAt(0, QColor('#b7f5e7'))
+        material.setColorAt(.6, QColor('#8bd4c8'))
+        material.setColorAt(1, QColor('#619f9d'))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(shade)
-        painter.drawRoundedRect(shell, 22, 22)
-        # Near earpiece follows the side plane; it never replaces an eye.
-        center = QPointF(left - 7 + depth * .56, 73)
-        radius = 7 + 10 * math.sin(angle)
-        painter.setPen(QPen(QColor('#9d8dbb'), 1))
-        painter.setBrush(QColor('#eee8d7'))
-        painter.drawEllipse(center, radius, 18)
-        light = QRadialGradient(center - QPointF(2, 3), 21)
-        light.setColorAt(0, QColor('#d2bfe9'))
-        light.setColorAt(1, QColor('#8c79ad'))
-        painter.setBrush(light)
-        painter.drawEllipse(center, max(2, radius - 4), 14)
-        painter.setPen(QPen(QColor('#5ffff0'), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        painter.drawLine(center - QPointF(0, 8), center + QPointF(0, 8))
+        painter.setBrush(material)
+        painter.drawRoundedRect(shell, 23, 23)
+        # Reuse the glossy helmet material, curvature and earpiece from the
+        # original profile artwork. Only the side shell is sampled: its baked
+        # face is outside this crop and the live canonical visor covers the join.
+        if depth > .05:
+            ratio = self.art_side.devicePixelRatioF()
+            source = QRectF(40 * ratio, 35 * ratio, 61 * ratio, 72 * ratio)
+            painter.drawPixmap(QRectF(left, 35, depth + 2, 71), self.art_side, source)
+        else:
+            self._draw_part(painter, "head", 0, (.5, .5))
         painter.save()
         painter.translate(left + depth, 0)
         painter.scale(front_width / 98, 1)
         painter.translate(-36, 0)
         # Exclude baked earpieces: two different side views must never overlap.
-        painter.setClipRect(QRectF(36, 34, 98, 74))
+        painter.setClipRect(QRectF(36, 36, 98, 70))
         painter.drawPixmap(0, 0, self.art_front)
         painter.scale(self.art_width, self.art_height)
         self._paint_face(painter)
