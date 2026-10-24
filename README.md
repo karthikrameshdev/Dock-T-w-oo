@@ -10,12 +10,20 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/karthikrameshdev/Dock-T-w-oo/actions/workflows/ci.yml"><img src="https://github.com/karthikrameshdev/Dock-T-w-oo/actions/workflows/ci.yml/badge.svg" alt="CI Status" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-blue?logo=python" alt="Python Versions" /></a>
+  <a href="CODE_OF_CONDUCT.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg" alt="Contributor Covenant" /></a>
+</p>
+
+<p align="center">
   <a href="#features">Features</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#built-in-apps">Built-in Apps</a> •
   <a href="#web-configuration-console">Web Console</a> •
   <a href="#quickstart">Quickstart</a> •
-  <a href="#testing">Testing</a>
+  <a href="#testing">Testing</a> •
+  <a href="#contributing">Contributing</a>
 </p>
 
 ---
@@ -303,6 +311,14 @@ is unavailable.
 
 See [the agent design](docs/brain-agent-design.md) and [provider simulations](postman/README.md) for architecture, limits and repeatable verification.
 
+## 🤝 Contributing
+
+Contributions are welcome! Dock T(w)oo operates under a strictly protected open-source model:
+- Direct pushes and unreviewed merges to `main` are blocked.
+- All contributions must be submitted via a **Fork & Pull Request**.
+- For detailed instructions on running tests and coding guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+- Please adhere to our [Code of Conduct](CODE_OF_CONDUCT.md) and report any security concerns privately via [SECURITY.md](SECURITY.md).
+
 ## 📄 License
 
-Apache 2.0 License. See [LICENSE](LICENSE) for details.
+Apache 2.0 License. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
