@@ -50,6 +50,17 @@ def get_robot_image_path() -> Path:
     return Path(__file__).resolve().parent.parent / "assets" / "mascot" / "robot-base.png"
 
 
+def get_robot_side_path() -> Path:
+    """Resolve path to robot-side.png artwork."""
+    return Path(__file__).resolve().parent.parent / "assets" / "mascot" / "robot-side.png"
+
+
+def get_robot_turn_path() -> Path:
+    """Resolve path to robot-turn.png artwork."""
+    return Path(__file__).resolve().parent.parent / "assets" / "mascot" / "robot-turn.png"
+
+
+
 def mac_window(widget):
     """Qt's Cocoa winId is an NSView; resolve its owning NSWindow on the GUI thread."""
     try:
@@ -177,6 +188,9 @@ class Companion(QWidget):
         self.motion_started: float = 0.0
         self.motion_duration: float = 1.0
         self.facing: float = 1.0  # 1.0 = right, -1.0 = left
+        self.turn_progress: float = 0.0  # 0.0 = front, 0.5 = 3/4 turn, 1.0 = side profile
+        self.turn_target: float = 0.0
+        self.on_turn_finished = None
         self.desktop_ball = None
 
         # Dimension specifications matching the original artwork scale
@@ -186,23 +200,12 @@ class Companion(QWidget):
         # Tight container window size without bottom toolbar
         self.resize(264, 268)
 
-        # Load transparent artwork
-        img_path = get_robot_image_path()
-        image = QPixmap()
-        if img_path.exists():
-            image.load(str(img_path))
-        if image.isNull() or not image.hasAlphaChannel():
-            # Create procedural silhouette fallback if asset missing
-            image = QPixmap(self.art_width, self.art_height)
-            image.fill(Qt.GlobalColor.transparent)
-
+        # Load transparent artwork for front, 3/4 turn, and side profile
         ratio = self.devicePixelRatioF()
-        self.art = image.scaled(
-            QSize(round(self.art_width * ratio), round(self.art_height * ratio)),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.art.setDevicePixelRatio(ratio)
+        self.art_front = self._load_scaled_pixmap(get_robot_image_path(), ratio)
+        self.art = self.art_front
+        self.art_turn = self._load_scaled_pixmap(get_robot_turn_path(), ratio)
+        self.art_side = self._load_scaled_pixmap(get_robot_side_path(), ratio)
 
         # Slice articulated parts
         self.parts = self._build_body_parts()
@@ -264,6 +267,21 @@ class Companion(QWidget):
             self.move(default_x, default_y)
         self.home = self.pos()
         pin_native(self)
+
+    def _load_scaled_pixmap(self, img_path: Path, ratio: float) -> QPixmap:
+        image = QPixmap()
+        if img_path.exists():
+            image.load(str(img_path))
+        if image.isNull() or not image.hasAlphaChannel():
+            image = QPixmap(self.art_width, self.art_height)
+            image.fill(Qt.GlobalColor.transparent)
+        scaled = image.scaled(
+            QSize(round(self.art_width * ratio), round(self.art_height * ratio)),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        scaled.setDevicePixelRatio(ratio)
+        return scaled
 
     def _build_body_parts(self) -> Dict[str, QPainterPath]:
         def polygon(points):
@@ -355,15 +373,48 @@ class Companion(QWidget):
         if self.isVisible():
             self.update()
 
+    def turn_to_side(self, facing: float = 1.0, on_turned=None) -> None:
+        """Smoothly rotate character towards side profile (1.0 = right, -1.0 = left)."""
+        self.facing = facing
+        self.turn_target = 1.0
+        self.on_turn_finished = on_turned
+        if abs(self.turn_progress - 1.0) < 0.05:
+            self.turn_progress = 1.0
+            if on_turned:
+                self.on_turn_finished = None
+                on_turned()
+            return
+        if not self.motion_timer.isActive():
+            self.motion_timer.start()
+        self.update()
+
     def turn_to_user(self, on_turned=None) -> None:
-        """Turn around to face the user and prepare to respond."""
+        """Smoothly turn character back to face the user directly (front profile)."""
         if not self.isVisible():
             self.show()
         self.stop_motion()
         self.gaze = None  # Direct eye contact with user
+        self.turn_target = 0.0
+        self.on_turn_finished = on_turned
         self.play_action("turn_around", duration=0.85)
         if on_turned:
             self.arrival = on_turned
+
+    def _step_turn_progress(self) -> None:
+        """Interpolate turn_progress smoothly towards turn_target."""
+        if abs(self.turn_progress - self.turn_target) > 0.01:
+            step = 0.18
+            if self.turn_progress < self.turn_target:
+                self.turn_progress = min(self.turn_target, self.turn_progress + step)
+            else:
+                self.turn_progress = max(self.turn_target, self.turn_progress - step)
+            self.update()
+            if abs(self.turn_progress - self.turn_target) <= 0.01:
+                self.turn_progress = self.turn_target
+                cb = self.on_turn_finished
+                self.on_turn_finished = None
+                if cb:
+                    cb()
 
     def play_action(self, action: str, destination: Optional[QPoint] = None, duration: Optional[float] = None, *, sequence: bool = False) -> None:
         """Execute a procedural animation action."""
@@ -381,6 +432,12 @@ class Companion(QWidget):
                 self.facing = 1.0
             elif destination.x() < self.x() - 8:
                 self.facing = -1.0
+
+        if action in ("walk", "walk_window", "chase_ball"):
+            self.turn_target = 1.0
+        else:
+            self.turn_target = 0.0
+
         self.motion_start = self.pos()
         self.motion_started = time.monotonic()
         self.motion_duration = duration or ACTIONS[action][1]
@@ -394,10 +451,12 @@ class Companion(QWidget):
         self.arrival = None
         self.motion_generation += 1
         self.roam_action = False
-        self.motion_timer.stop()
         self.action = None
         self.destination = None
         self.pose = Pose()
+        self.turn_target = 0.0
+        if self.turn_progress < 0.01:
+            self.motion_timer.stop()
         self.update()
 
     def start_animation_loop(self) -> None:
@@ -411,11 +470,13 @@ class Companion(QWidget):
         self.play_action(PLAYLIST[0], sequence=True)
 
     def _advance_motion(self) -> None:
+        self._step_turn_progress()
         if self.reduced_motion or not self.isVisible() or (self.animation_loop and self.activity != "idle"):
             self.stop_motion()
             return
         if not self.action:
-            self.motion_timer.stop()
+            if abs(self.turn_progress - self.turn_target) < 0.01:
+                self.motion_timer.stop()
             return
 
         seconds = time.monotonic() - self.motion_started
@@ -434,6 +495,8 @@ class Companion(QWidget):
             arrived = self.arrival
             looping = self.animation_loop
             self.stop_motion(clear_sequence=False)
+            if self.turn_target != 0.0:
+                self.turn_to_user()
             if arrived:
                 arrived()
             if looping and self.animation_loop and self.activity == "idle":
@@ -443,6 +506,7 @@ class Companion(QWidget):
                 self.play_action(PLAYLIST[self.animation_index], sequence=True)
 
     def _animate_activity(self) -> None:
+        self._step_turn_progress()
         self.phase = (self.phase + 1) % 24
         if self.isVisible() and self.gaze is None:
             self.gaze = QCursor.pos()
@@ -630,20 +694,23 @@ class Companion(QWidget):
         self.facing = 1.0
 
         def start_side_walk():
-            self.facing = 1.0
             walk_dist = abs(end_x - start_x)
             duration = max(2.0, min(4.5, walk_dist / 140.0))
             self.play_action("walk_window", destination=QPoint(end_x, end_y), duration=duration)
 
             def on_reach_end():
-                self.facing = -1.0
-                self.play_action("inspect_window", duration=2.2)
-                self.arrival = lambda: self.turn_to_user()
+                def inspect_then_return():
+                    self.play_action("inspect_window", duration=2.2)
+                    self.arrival = lambda: self.turn_to_user()
+                self.turn_to_side(facing=-1.0, on_turned=inspect_then_return)
 
             self.arrival = on_reach_end
 
+        def on_landed():
+            self.turn_to_side(facing=1.0, on_turned=start_side_walk)
+
         self.play_action("jump", destination=QPoint(start_x, start_y), duration=1.0)
-        self.arrival = start_side_walk
+        self.arrival = on_landed
 
     def play_ball(self) -> None:
         """Spawn the interactive desktop energy ball and playfully chase/kick it across the screen."""
@@ -848,200 +915,69 @@ class Companion(QWidget):
         painter.setBrush(QColor("#ffffff"))
         painter.drawEllipse(QRectF(center_pt.x() - 0.024, center_pt.y() - 0.022, 0.014, 0.012))
 
-    def _paint_robot_side_profile(self, painter: QPainter) -> None:
-        """Render robot in side profile view when walking across windows or desktop."""
+    def _paint_robot_side_view(self, painter: QPainter, pixmap: QPixmap, is_three_quarters: bool = False) -> None:
+        """Render robot using high-fidelity 3D artwork for side profile or 3/4 turn view."""
         painter.save()
-        painter.translate(self.art_width / 2, self.art_height / 2)
+        painter.translate(self.art_width / 2.0, self.art_height / 2.0)
         if self.facing < 0:
             painter.scale(-1.0, 1.0)
-        painter.rotate(self.pose.tilt)
-        painter.scale(1.0, self.pose.squash)
-        painter.translate(-self.art_width / 2, -self.art_height / 2 + self.pose.bob)
 
+        # Bipedal stride bob and forward lean when walking
+        ratio = pixmap.devicePixelRatio() or 1.0
+        offset_x = (self.art_width - pixmap.width() / ratio) / 2.0
+        seconds = time.monotonic() - self.motion_started if self.action else time.monotonic()
+        is_walking = self.action in ("walk", "walk_window", "chase_ball")
+        stride_bob = -4.5 * abs(math.sin(seconds * 6.5)) if is_walking else self.pose.bob
+        walk_lean = (2.5 if is_walking else 0.0) + self.pose.tilt
+
+        painter.rotate(walk_lean)
+        painter.translate(-self.art_width / 2.0, -self.art_height / 2.0 + stride_bob)
+
+        # Draw 3D rendered character
+        painter.drawPixmap(QPointF(offset_x, 0), pixmap)
+
+        # Headlight status indicator centered on antenna tip
+        painter.save()
         painter.scale(self.art_width, self.art_height)
+        self._paint_headlight(painter, QPointF(0.500, 0.062))
 
-        body_white = QColor("#f1f5f9")
-        body_shade = QColor("#cbd5e1")
-        dark_chassis = QColor("#1e293b")
-        dark_joint = QColor("#0f172a")
-        visor_glow = QColor("#22d3ee")
-        accent_blue = QColor("#3b82f6")
-
-        # 1. Background limbs (far side)
-        painter.save()
-        painter.translate(0.50, 0.76)
-        painter.rotate(self.pose.left_leg)
-        painter.translate(-0.50, -0.76)
-        far_leg = QPainterPath()
-        far_leg.addRoundedRect(QRectF(0.46, 0.76, 0.08, 0.19), 0.04, 0.04)
-        painter.setPen(QPen(QColor(15, 23, 42, 180), 0.005))
-        painter.setBrush(body_shade.darker(130))
-        painter.drawPath(far_leg)
-        far_foot = QPainterPath()
-        far_foot.addRoundedRect(QRectF(0.44, 0.92, 0.12, 0.05), 0.02, 0.02)
-        painter.drawPath(far_foot)
-        painter.restore()
-
-        painter.save()
-        painter.translate(0.50, 0.58)
-        painter.rotate(self.pose.left_arm)
-        painter.translate(-0.50, -0.58)
-        far_arm = QPainterPath()
-        far_arm.addRoundedRect(QRectF(0.46, 0.58, 0.075, 0.18), 0.035, 0.035)
-        painter.setPen(QPen(QColor(15, 23, 42, 180), 0.005))
-        painter.setBrush(body_shade.darker(125))
-        painter.drawPath(far_arm)
-        painter.restore()
-
-        # 2. Profile Torso
-        torso_path = QPainterPath()
-        torso_path.moveTo(0.43, 0.53)
-        torso_path.lineTo(0.57, 0.53)
-        torso_path.lineTo(0.59, 0.68)
-        torso_path.lineTo(0.53, 0.77)
-        torso_path.lineTo(0.45, 0.77)
-        torso_path.lineTo(0.41, 0.64)
-        torso_path.closeSubpath()
-
-        torso_grad = QRadialGradient(QPointF(0.52, 0.60), 0.20)
-        torso_grad.setColorAt(0, body_white)
-        torso_grad.setColorAt(0.7, body_shade)
-        torso_grad.setColorAt(1.0, dark_chassis)
-
-        painter.setPen(QPen(QColor(30, 41, 59, 200), 0.005))
-        painter.setBrush(torso_grad)
-        painter.drawPath(torso_path)
-
-        painter.setPen(QPen(accent_blue, 0.004))
-        painter.drawLine(QPointF(0.47, 0.58), QPointF(0.54, 0.58))
-        painter.setPen(QPen(QColor("#94a3b8"), 0.003))
-        painter.drawLine(QPointF(0.46, 0.64), QPointF(0.55, 0.64))
-
-        # 3. Foreground Leg
-        painter.save()
-        painter.translate(0.50, 0.76)
-        painter.rotate(self.pose.right_leg)
-        painter.translate(-0.50, -0.76)
-
-        near_leg = QPainterPath()
-        near_leg.addRoundedRect(QRectF(0.46, 0.76, 0.085, 0.20), 0.04, 0.04)
-        leg_grad = QRadialGradient(QPointF(0.50, 0.82), 0.12)
-        leg_grad.setColorAt(0, body_white)
-        leg_grad.setColorAt(0.85, body_shade)
-        painter.setPen(QPen(QColor(15, 23, 42, 220), 0.005))
-        painter.setBrush(leg_grad)
-        painter.drawPath(near_leg)
-
-        painter.setPen(QPen(dark_joint, 0.003))
-        painter.setBrush(dark_chassis)
-        painter.drawEllipse(QRectF(0.475, 0.84, 0.05, 0.05))
-
-        near_foot = QPainterPath()
-        near_foot.addRoundedRect(QRectF(0.44, 0.93, 0.13, 0.052), 0.02, 0.02)
-        painter.setBrush(body_shade)
-        painter.drawPath(near_foot)
-        painter.restore()
-
-        # 4. Foreground Arm
-        painter.save()
-        painter.translate(0.50, 0.58)
-        painter.rotate(self.pose.right_arm)
-        painter.translate(-0.50, -0.58)
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(dark_chassis)
-        painter.drawEllipse(QRectF(0.465, 0.55, 0.065, 0.065))
-
-        near_arm = QPainterPath()
-        near_arm.addRoundedRect(QRectF(0.465, 0.58, 0.08, 0.19), 0.04, 0.04)
-        arm_grad = QRadialGradient(QPointF(0.50, 0.65), 0.12)
-        arm_grad.setColorAt(0, body_white)
-        arm_grad.setColorAt(0.9, body_shade)
-        painter.setPen(QPen(QColor(15, 23, 42, 220), 0.005))
-        painter.setBrush(arm_grad)
-        painter.drawPath(near_arm)
-
-        painter.setPen(QPen(dark_joint, 0.004))
-        painter.setBrush(dark_chassis)
-        painter.drawEllipse(QRectF(0.48, 0.74, 0.05, 0.05))
-        painter.restore()
-
-        # 5. Profile Head
-        painter.save()
-        painter.translate(0.50, 0.50)
-        painter.rotate(self.pose.head)
-        painter.translate(-0.50, -0.50)
-
-        head_path = QPainterPath()
-        head_path.moveTo(0.42, 0.52)
-        head_path.lineTo(0.58, 0.52)
-        head_path.cubicTo(0.66, 0.49, 0.66, 0.26, 0.57, 0.22)
-        head_path.cubicTo(0.48, 0.20, 0.36, 0.26, 0.36, 0.40)
-        head_path.cubicTo(0.36, 0.48, 0.38, 0.52, 0.42, 0.52)
-        head_path.closeSubpath()
-
-        head_grad = QRadialGradient(QPointF(0.54, 0.32), 0.22)
-        head_grad.setColorAt(0, body_white)
-        head_grad.setColorAt(0.8, body_shade)
-        head_grad.setColorAt(1.0, dark_chassis)
-
-        painter.setPen(QPen(QColor(15, 23, 42, 220), 0.005))
-        painter.setBrush(head_grad)
-        painter.drawPath(head_path)
-
-        # Ear hub
-        painter.setPen(QPen(dark_joint, 0.004))
-        painter.setBrush(dark_chassis)
-        painter.drawEllipse(QRectF(0.43, 0.34, 0.09, 0.09))
-        painter.setPen(QPen(visor_glow, 0.003))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(QRectF(0.45, 0.36, 0.05, 0.05))
-
-        # Visor forward strip
-        visor_path = QPainterPath()
-        visor_path.moveTo(0.50, 0.31)
-        visor_path.lineTo(0.64, 0.31)
-        visor_path.cubicTo(0.66, 0.35, 0.66, 0.39, 0.64, 0.42)
-        visor_path.lineTo(0.50, 0.42)
-        visor_path.cubicTo(0.48, 0.39, 0.48, 0.34, 0.50, 0.31)
-        visor_path.closeSubpath()
-
-        painter.setPen(QPen(QColor(15, 23, 42, 240), 0.004))
-        painter.setBrush(QColor("#0a1120"))
-        painter.drawPath(visor_path)
-
-        visor_inner = QPainterPath()
-        visor_inner.addRoundedRect(QRectF(0.52, 0.335, 0.12, 0.06), 0.02, 0.02)
-        v_grad = QRadialGradient(QPointF(0.62, 0.365), 0.08)
-        v_grad.setColorAt(0, QColor("#e0f2fe"))
-        v_grad.setColorAt(0.5, visor_glow)
-        v_grad.setColorAt(1, QColor("#0891b2"))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(v_grad)
-        painter.drawPath(visor_inner)
-
-        painter.setBrush(QColor("#ffffff"))
-        painter.drawEllipse(QRectF(0.60, 0.35, 0.022, 0.016))
-
-        # Antenna
-        ant_path = QPainterPath()
-        ant_path.moveTo(0.48, 0.22)
-        ant_path.lineTo(0.44, 0.09)
-        painter.setPen(QPen(QColor(15, 23, 42, 200), 0.005))
-        painter.drawPath(ant_path)
-
-        # Headlight
-        self._paint_headlight(painter, QPointF(0.44, 0.08))
+        # Laser beam during inspect_window or sensor_scan in side profile
+        if self.pose.scan_beam > 0.05:
+            alpha = int(140 * self.pose.scan_beam)
+            eye_pt = QPointF(0.550 if is_three_quarters else 0.587, 0.370)
+            beam_grad = QRadialGradient(eye_pt, 0.7)
+            beam_grad.setColorAt(0, QColor(34, 211, 238, alpha))
+            beam_grad.setColorAt(0.6, QColor(59, 130, 246, int(alpha * 0.4)))
+            beam_grad.setColorAt(1, QColor(99, 102, 241, 0))
+            beam_path = QPainterPath()
+            beam_path.moveTo(eye_pt.x() - 0.02, eye_pt.y())
+            beam_path.lineTo(eye_pt.x() + 0.02, eye_pt.y())
+            beam_path.lineTo(eye_pt.x() + 0.45, eye_pt.y() + 0.55)
+            beam_path.lineTo(eye_pt.x() + 0.15, eye_pt.y() + 0.55)
+            beam_path.closeSubpath()
+            painter.setPen(QPen(QColor(34, 211, 238, int(alpha * 0.8)), 0.003))
+            painter.setBrush(beam_grad)
+            painter.drawPath(beam_path)
 
         painter.restore()
         painter.restore()
+
+    def _paint_robot_side_profile(self, painter: QPainter) -> None:
+        """Compatibility wrapper for side profile painting."""
+        self._paint_robot_side_view(painter, self.art_side, is_three_quarters=False)
 
     def _paint_robot(self, painter: QPainter) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        if self.action in ("walk", "walk_window", "chase_ball") and not self.reduced_motion:
-            self._paint_robot_side_profile(painter)
+        # 1. 3D Side profile view (turn_progress >= 0.72)
+        if self.turn_progress >= 0.72 and not self.reduced_motion:
+            self._paint_robot_side_view(painter, self.art_side, is_three_quarters=False)
+            return
+
+        # 2. 3D 3/4 Perspective turn view (0.28 <= turn_progress < 0.72)
+        if self.turn_progress >= 0.28 and not self.reduced_motion:
+            self._paint_robot_side_view(painter, self.art_turn, is_three_quarters=True)
             return
 
         painter.save()
