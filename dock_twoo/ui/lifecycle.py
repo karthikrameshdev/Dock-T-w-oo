@@ -19,7 +19,15 @@ class GuiGarbageCollector(QObject):
 
     def collect(self):
         if QThread.currentThread()!=self.thread():return
-        if gc.get_count()[0]>=gc.get_threshold()[0]:gc.collect()
+        counts, thresholds = gc.get_count(), gc.get_threshold()
+        if counts[0] < thresholds[0]:
+            return
+        # Keep finalizers on the GUI thread without scanning every resident
+        # model and UI object every five seconds. Respect generational cadence.
+        generation = 0
+        if counts[1] >= thresholds[1]:
+            generation = 2 if counts[2] >= thresholds[2] else 1
+        gc.collect(generation)
 
     def stop(self,restore=True):
         self.timer.stop()

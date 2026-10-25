@@ -95,7 +95,7 @@ def test_margin_manager_desktop_icon_clamping_and_collision_avoidance(qapp, monk
     # Mock subprocess.run to simulate Finder desktop query and batch move execution
     mock_calls = []
 
-    def mock_subprocess_run(cmd, capture_output=True, text=True, timeout=1.5):
+    def mock_subprocess_run(cmd, capture_output=True, text=True, timeout=1.5, **kwargs):
         import re
         script = cmd[2]
         mock_calls.append(script)
@@ -146,7 +146,7 @@ def test_margin_manager_desktop_icon_restoration_on_edge_vacated(qapp, monkeypat
     }
 
     mock_executed_scripts = []
-    def mock_run(cmd, capture_output=True, timeout=1.5):
+    def mock_run(cmd, capture_output=True, timeout=1.5, **kwargs):
         mock_executed_scripts.append(cmd[2])
         class MockResult:
             returncode = 0

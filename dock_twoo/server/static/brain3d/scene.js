@@ -4,6 +4,7 @@ import { HeadIndicator } from './indicator.js';
 import { FaceOverlay, SpeechOverlay } from './face.js';
 import { RoomEnvironment } from './vendor/environments/RoomEnvironment.js';
 import { InputShape } from './input-shape.js';
+import { ActionPlayer } from './action-player.js';
 
 const params = new URLSearchParams(location.search);
 const embedded = params.has('embedded');
@@ -11,7 +12,7 @@ const characterId = params.get('character') || 'default';
 document.querySelector('#controls').hidden = embedded;
 if (embedded) document.querySelector('#controls').style.display = 'none';
 else document.body.classList.add('preview');
-let bridge, model, mixer, current, clips = {}, bones = {}, mouth, mouthIndex, bulb, face, speech, flash, release, indicator;
+let bridge, model, mixer, player, current, clips = {}, bones = {}, mouth, mouthIndex, bulb, face, speech, flash, release, indicator;
 const mouthMeshes=[];
 let state = {online:embedded?null:true, listeningAuraAllowed:false, action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
 const scene = new THREE.Scene();
@@ -33,14 +34,18 @@ function resize(){const aspect=innerWidth/innerHeight;camera.left=-3.3*aspect;ca
 addEventListener('resize',resize); resize();
 function report(message,error=false){document.querySelector('#status').textContent=message;document.body.dataset.ready=error?'error':'true'; if(bridge) error?bridge.failed(message):bridge.ready(release.version,release.asset_sha256);}
 if(window.qt && window.QWebChannel) new QWebChannel(qt.webChannelTransport, channel=>{bridge=channel.objects.brain;if(model)bridge.ready(release.version,release.asset_sha256);});
-window.setBrainState = payload => {state={...state,...payload};};
+window.setBrainState = payload => {
+  state={...state,...payload};
+  const ratio=Math.min(devicePixelRatio,state.pixelRatio||2);
+  if(renderer.getPixelRatio()!==ratio){renderer.setPixelRatio(ratio);resize();}
+};
 const select=document.querySelector('#action');
 select.addEventListener('change',()=>{state.action=select.value;previewTime=0;});
 document.querySelector('#yaw').addEventListener('input',event=>state.yaw=Number(event.target.value));
 document.querySelector('#indicatorPreview').addEventListener('change',event=>{
   const mode=event.target.value;state.online=mode!=='offline';state.activity=mode==='online'?'idle':mode;
 });
-let previewTime=0,lastRender=-Infinity;
+let previewTime=0,lastRender=-Infinity,lastDiagnostics=-Infinity;
 const clock=new THREE.Timer();
 async function loadCharacter(){
   const catalogResponse=await fetch('./catalog.json',{cache:'no-store'});
@@ -88,8 +93,9 @@ async function loadCharacter(){
   face = new FaceOverlay(bones); speech = new SpeechOverlay(mouthMeshes);
   for(const clip of gltf.animations){
     for(const track of clip.tracks)track.name=track.name.replace('.morphTargetInfluences','.authoredMorphTargetInfluences');
-    clips[clip.name]=mixer.clipAction(clip);select.add(new Option(clip.name,clip.name));
+    clips[clip.name]=clip;select.add(new Option(clip.name,clip.name));
   }
+  player=new ActionPlayer(mixer,gltf.animations);
   const requestedAction=params.get('action');
   state.action=gltf.animations.some(clip=>clip.name===requestedAction)?requestedAction:'idle';
   select.value=state.action;window.brainDiagnostics={characterId,version:release.version,assetHash:release.asset_sha256,clips:Object.keys(clips),bones:Object.keys(bones),meshes:0,renderedFrames:0,nonFinite:false,translucent:false};
@@ -101,15 +107,16 @@ loadCharacter().catch(error=>report(error.message,true));
 
 function frame(){
   requestAnimationFrame(frame);
+  if(state.visible===false)return;
   const now=performance.now();if(now-lastRender<1000/(state.maxFps||60))return;lastRender=now;
   clock.update();const dt=Math.min(clock.getDelta(),.05);previewTime+=dt;
   if(!model)return;
   const activityClip={speaking:'talk',listening:'listen',thinking:'ponder',processing:'ponder',error:'sad'}[state.activity];
   const automatic=['idle','listen'].includes(state.action) && clips[activityClip];
-  const name=automatic?activityClip:(clips[state.action]?state.action:'idle'), action=clips[name];
-  if(current!==action){action.reset().play();if(current){action.crossFadeFrom(current,.16,false);}current=action;}
+  const name=automatic?activityClip:(clips[state.action]?state.action:'idle'), action=player.select(name);
+  current=action;
   face.beforeMixer();speech.beforeMixer();
-  mixer.update(state.reducedMotion?0:dt);
+  player.update(state.reducedMotion?0:dt);
   if(state.reducedMotion){action.time=0;mixer.update(0);}
   // Drive locomotion by distance travelled rather than the cursor's speed.
   if(embedded && name!=='idle' && !automatic && !state.reducedMotion){
@@ -132,6 +139,8 @@ function frame(){
   window.brainDiagnostics.indicator=indicator?.update(state,previewTime);
   window.brainDiagnostics.listeningAura=false;
   window.brainDiagnostics.renderedFrames++;
+  window.brainDiagnostics.activeActions=mixer.stats.actions.inUse;
+  window.brainDiagnostics.cachedActions=mixer.stats.actions.total;
   window.brainDiagnostics.eyeScales = face.scales();
   window.brainDiagnostics.action = name;
   window.brainDiagnostics.mouth = mouth?.morphTargetInfluences[mouthIndex] || 0;
@@ -140,10 +149,15 @@ function frame(){
   window.brainDiagnostics.triangles=renderer.info.render.triangles;
   window.brainDiagnostics.drawCalls=renderer.info.render.calls;
   window.brainDiagnostics.propScales=Object.fromEntries(['propmagnifier','propcamera','proptablet','propscan','jetL','jetR','propball','prophammer','propanvil','proptether','propballoon','propparachute'].map(key=>[key,bones[key]?.scale.x ?? 0]));
+  // Full pose snapshots are useful in the inspector, not on every frame of
+  // thirty resident characters. Avoid thousands of temporary arrays per tick.
+  if(!embedded || now-lastDiagnostics>=1000){
+  lastDiagnostics=now;
   window.brainDiagnostics.poseSignature=Object.values(bones).flatMap(bone=>[...bone.position.toArray(),...bone.quaternion.toArray(),...bone.scale.toArray()]);
   window.brainDiagnostics.handPositions = ['handL','handR'].map(name=>bones[name]?.getWorldPosition(new THREE.Vector3()).toArray());
   window.brainDiagnostics.armPoseSignature = Object.values(bones).filter(bone=>/^(upper_arm|forearm|hand|digit|thumb)/.test(bone.name)).flatMap(bone=>[...bone.position.toArray(),...bone.quaternion.toArray(),...bone.scale.toArray()]);
   model.traverse(node=>{if(node.isMesh && !node.userData.statusEffect){if(node.material.opacity<1 || node.material.transparent)window.brainDiagnostics.translucent=true;}if(node.isBone && ![...node.position.toArray(),...node.quaternion.toArray(),...node.scale.toArray()].every(Number.isFinite))window.brainDiagnostics.nonFinite=true;});
+  }
   renderer.render(scene,camera);
   if(bridge?.silhouette) {
     const shape=inputShape.sample(scene,camera,model,innerWidth,innerHeight,previewTime,state.shapeFps||30);

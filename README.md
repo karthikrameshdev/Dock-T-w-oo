@@ -170,6 +170,8 @@ The test suite covers:
 - Attached companion window stacking and switching.
 - Web Console REST API endpoints (`GET /api/config`, `POST /api/config`, `GET /api/status`).
 
+For long-running character/input checks, see the [resident rendering verification](docs/agent-ecosystem.md#resident-rendering-and-input-priority).
+
 ---
 
 ## Local Brain voice

@@ -84,3 +84,32 @@ workspaces/processes are distinct per task; generated outputs are copied to dura
 storage before cleanup. Stop propagates cancellation to child work and process
 cleanup. Prompt reuse caches immutable templates only, across API/network/CLI
 transports; provider-reported native cache usage remains separate.
+
+## Resident rendering and input priority
+
+Character collision regions retain the full rendered silhouette. Their native hit
+regions exclude visible Dock2 controls and drawers on every platform. This matters
+because a character's invisible input window can be reordered above a drawer while
+its separate visual window remains behind it. Control show/hide/move/resize events
+refresh these masks; closing a panel restores the character's exposed hit area.
+
+Animation actions are created lazily and retired after the short transition. A
+mixer retains at most the current and outgoing actions, rather than every clip
+played during a long roaming session. Hidden character pages freeze, their update
+timers stop, and only one native-to-renderer state update may be outstanding per
+view. Crowds use a lower rendering/readback budget; nearby or active characters
+retain the interactive budget. A stalled/crashed renderer clears its hit area and
+gets a bounded restart, without restarting the application. Lost mouse capture is
+cleared, and Cocoa click-through flags are periodically verified. Native tracking
+areas are installed once per view, including repeatedly opened drawers.
+
+Run `node scripts/verify_animation_lifecycle.mjs` for the real Three.js retention
+regression. With the normal application stopped, run
+`python scripts/verify_resident_stability.py --seconds 600 --interval 10` for the
+native crowd stress check. It uses isolated data, 30 production renderers, real OS
+mouse events on macOS (Qt events elsewhere), repeated dock/listening toggles,
+deliberate overlap behind the close button, hide/resume and renderer termination
+(termination is exercised on POSIX hosts).
+It opens no microphone and makes no provider calls; it does not establish speech
+recognition quality. Results use `dock-resident-stability.json` in the OS temporary
+directory; use `--output` to select another path.

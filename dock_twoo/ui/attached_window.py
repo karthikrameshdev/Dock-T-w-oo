@@ -33,6 +33,8 @@ class AttachedWindow(QWidget):
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        from dock_twoo.brain.control_surfaces import protect_controls
+        protect_controls(self)
         self.config = config
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 

@@ -7,7 +7,7 @@ import random
 import time
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, QThread, Slot
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, QThread, Slot, QEvent
 from PySide6.QtGui import (
     QColor,
     QCursor,
@@ -247,6 +247,8 @@ class Companion(QWidget):
         self.input_region = QRegion()
         self.has_input_shape = False
         self.setMask(native_mask(self.input_region))
+        from dock_twoo.brain.control_surfaces import register_character
+        register_character(self)
         self.setMouseTracking(True)
 
         # Timers
@@ -302,19 +304,19 @@ class Companion(QWidget):
         width, height = max(1, int(264 * scale)), max(1, int(268 * scale))
         if self.width() == width and self.height() == height:
             return
+        self.cancel_pointer_capture()
         old_width, old_height = self.width(), self.height()
         self.resize(width, height)
         self.input_region = (QRegion(QTransform().scale(width / old_width, height / old_height).map(self.input_region))
                              if not self.input_region.isEmpty() else QRegion())
-        from dock_twoo.brain.input_shape import native_mask
-        self.setMask(native_mask(self.input_region))
+        self.apply_input_mask()
         if self.model_view:
             self.model_view.sync_geometry()
         self.renderer_status.setGeometry(self.rect())
 
     @Slot(str)
     def set_input_shape(self, payload):
-        from dock_twoo.brain.input_shape import decode_shape, native_mask
+        from dock_twoo.brain.input_shape import decode_shape
         try:
             region = decode_shape(payload, self.size())
         except (ValueError, KeyError, TypeError):
@@ -322,10 +324,30 @@ class Companion(QWidget):
         self.has_input_shape = True
         if region != self.input_region:
             self.input_region = region
-            self.setMask(native_mask(region))
+            # Changing the native shape mid-press can remove the pressed pixel
+            # and lose the matching release. Keep capture stable until release.
+            if self.origin is None:
+                self.apply_input_mask()
             self.update()
         if hasattr(self.manager, 'input_router'):
             self.manager.input_router.sync()
+
+    def input_hit_region(self):
+        from dock_twoo.brain.control_surfaces import input_region
+        return input_region(self)
+
+    def apply_input_mask(self):
+        if self.origin is not None:
+            return
+        from dock_twoo.brain.input_shape import native_mask
+        mask = native_mask(self.input_hit_region())
+        if self.mask() != mask:
+            self.setMask(mask)
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        if hasattr(self, 'input_region'):
+            self.apply_input_mask()
 
     def body_region(self):
         from dock_twoo.brain.input_shape import provisional_body
@@ -344,13 +366,15 @@ class Companion(QWidget):
         if error and hasattr(self.manager, 'status_changed'):
             self.manager.status_changed.emit(message)
         if error:
-            from dock_twoo.brain.input_shape import native_mask
+            self.cancel_pointer_capture()
             self.input_region = QRegion()
-            self.setMask(native_mask(self.input_region))
+            self.apply_input_mask()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         pin_native(self)
+        if not self.reduced_motion:
+            self.activity_timer.start()
         self._apply_follow_input_mode()
         if self.follow_cursor_enabled:
             self._follow_position = QPointF(self.pos())
@@ -359,6 +383,8 @@ class Companion(QWidget):
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
+        self.cancel_pointer_capture()
+        self.activity_timer.stop()
         self.follow_timer.stop()
         self.reading_guide.hide()
 
@@ -692,6 +718,8 @@ class Companion(QWidget):
                 self.play_action(self.playlist[self.animation_index], sequence=True)
 
     def _animate_activity(self) -> None:
+        if not self.isVisible():
+            return
         self._step_turn_progress()
         self.phase = (self.phase + 1) % 24
         self._update_gaze(time.monotonic(), QCursor.pos())
@@ -1215,17 +1243,33 @@ class Companion(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            if not self.moved and self.press_point is not None:
+            clicked = not self.moved and self.press_point is not None
+            moved = self.moved
+            # Release ownership before listening/turning can change visibility,
+            # shape, or raise an exception in another subsystem.
+            self.cancel_pointer_capture()
+            if clicked:
                 self.manager.toggle_talking(getattr(self, 'actor_id', self.screen_id))
-            elif self.moved:
+            elif moved:
                 # Save new desktop placement
                 positions = dict(self.store.setting("companion_positions", {}))
                 positions[getattr(self, 'actor_id', self.screen_id)] = [self.pos().x(), self.pos().y()]
                 self.store.set_setting("companion_positions", positions)
                 self.home = self.pos()
-            self.origin = None
-            self.press_point = None
-            self.moved = False
+
+    def cancel_pointer_capture(self):
+        self.origin = None
+        self.press_point = None
+        self.moved = False
+        if QWidget.mouseGrabber() is self:
+            self.releaseMouse()
+        if hasattr(self, 'input_region'):
+            self.apply_input_mask()
+
+    def event(self, event):
+        if event.type() == QEvent.Type.UngrabMouse and getattr(self, 'origin', None) is not None:
+            self.cancel_pointer_capture()
+        return super().event(event)
 
     def contextMenuEvent(self, event) -> None:
         # Mini Agent should not have any right-click context menu

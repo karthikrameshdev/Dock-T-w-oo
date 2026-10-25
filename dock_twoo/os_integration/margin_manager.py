@@ -9,6 +9,7 @@ sitting neatly between the default OS dock and Dock T(w)oo.
 from __future__ import annotations
 
 import platform
+import os
 import subprocess
 import threading
 import time
@@ -19,6 +20,14 @@ from PySide6.QtCore import QFileSystemWatcher, QObject, QPoint, QRect, QTimer, S
 from PySide6.QtGui import QGuiApplication
 
 from dock_twoo.config import DockConfig
+
+
+def run_applescript(script, *, timeout=1.5, text=True):
+    # An absolute executable and close_fds=False let CPython use posix_spawn on
+    # macOS. Its normal descriptors are CLOEXEC; avoid forking the entire resident
+    # Qt/ONNX/gRPC process for every desktop check.
+    return subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True,
+                          text=text, timeout=timeout, close_fds=False)
 
 
 def desktop_icon_targets(items: dict[str, tuple[int, int]], dock: QRect, edge: str, gap: int,
@@ -224,7 +233,7 @@ class DesktopMarginManager(QObject):
         end tell
         '''
         try:
-            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=1.2)
+            run_applescript(script, timeout=1.2)
         except Exception:
             pass
 
@@ -261,7 +270,7 @@ class DesktopMarginManager(QObject):
                     cur_mtime = 0.0
 
                 is_mtime_change = (cur_mtime != self._last_desktop_mtime)
-                if is_mtime_change or (now - self._last_icon_check_time) > 1.2:
+                if is_mtime_change or (now - self._last_icon_check_time) > 8:
                     self._last_desktop_mtime = cur_mtime
                     self._last_icon_check_time = now
                     if is_mtime_change:
@@ -270,7 +279,7 @@ class DesktopMarginManager(QObject):
             except Exception:
                 pass
 
-            time.sleep(0.4)
+            time.sleep(1.0)
 
     def _check_and_clamp_frontmost(
         self,
@@ -288,6 +297,7 @@ class DesktopMarginManager(QObject):
         script = f'''
         tell application "System Events"
             set frontApp to first application process whose frontmost is true
+            if unix id of frontApp is {os.getpid()} then return "none"
             set appName to name of frontApp
             if appName is not "Dock T(w)oo" and appName is not "Dock" and appName is not "System Events" and appName is not "loginwindow" and appName is not "ScreenSaverEngine" then
                 tell frontApp
@@ -348,12 +358,7 @@ class DesktopMarginManager(QObject):
         end tell
         '''
 
-        res = subprocess.run(
-            ["osascript", "-e", script],
-            capture_output=True,
-            text=True,
-            timeout=1.5,
-        )
+        res = run_applescript(script)
         out = res.stdout.strip()
         if out.startswith("adjusted:"):
             parts = out.split(":")
@@ -430,7 +435,7 @@ class DesktopMarginManager(QObject):
         end tell
         """
         try:
-            subprocess.run(["osascript", "-e", script], capture_output=True, timeout=1.5)
+            run_applescript(script)
         except Exception:
             pass
 
@@ -461,7 +466,7 @@ class DesktopMarginManager(QObject):
                 return output
             end tell
             """
-            response = subprocess.run(["osascript", "-e", query_script], capture_output=True, text=True, timeout=3.0)
+            response = run_applescript(query_script, timeout=3.0)
             if response.returncode:
                 self.last_error = response.stderr.strip() or "Finder desktop access failed."
                 return
@@ -496,7 +501,7 @@ class DesktopMarginManager(QObject):
                     set output to output & "{escaped}|" & (item 1 of p) & "|" & (item 2 of p) & linefeed
                 end try""")
             script = 'tell application "Finder"\nset output to ""\n' + "\n".join(commands) + '\nreturn output\nend tell'
-            applied = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=3.0)
+            applied = run_applescript(script, timeout=3.0)
             if applied.returncode:
                 self.last_error = applied.stderr.strip() or "Finder could not reposition desktop items."
                 return
