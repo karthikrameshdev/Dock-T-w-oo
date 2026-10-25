@@ -322,6 +322,7 @@ See [the agent design](docs/brain-agent-design.md) and [provider simulations](po
 
 Contributions are welcome! Dock T(w)oo operates under a strictly protected open-source model:
 - Direct pushes and unreviewed merges to `main` are blocked.
+- Primary code owner: **@karthikrameshdev**. Secondary code owner and backup reviewer: **@jobphone24**. One approval from either listed code owner is required.
 - All contributions must be submitted via a **Fork & Pull Request**.
 - For detailed instructions on running tests and coding guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Please adhere to our [Code of Conduct](CODE_OF_CONDUCT.md) and report any security concerns privately via [SECURITY.md](SECURITY.md).

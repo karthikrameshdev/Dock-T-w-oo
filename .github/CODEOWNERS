@@ -1,4 +1,6 @@
 # Code Owners for Dock T(w)oo
-# Any Pull Request must be reviewed and approved by @karthikrameshdev before merging.
+# Primary code owner and repository maintainer: @karthikrameshdev
+# Secondary code owner and backup reviewer: @jobphone24
+# Pull requests require one code-owner approval. Either listed owner can approve.
 
-* @karthikrameshdev
+* @karthikrameshdev @jobphone24
