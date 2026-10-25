@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import time
-from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal, Slot, QFile, QIODevice
+from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal, Slot, QFile, QIODevice, QPoint, QRect, QEvent
 from PySide6.QtGui import QColor
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -11,8 +11,11 @@ from PySide6.QtWebEngineCore import QWebEngineScript
 
 
 def listening_aura_allowed(companion):
-    """An aura identifies the listener only among visible peers on its display."""
+    """Only voice wake needs an aura to identify one listener among nearby peers."""
     manager = getattr(companion, 'manager', None)
+    if (getattr(manager, '_listening_source', None) != 'voice' or
+            getattr(manager, '_listening_actor_id', None) != getattr(companion, 'actor_id', None)):
+        return False
     actors = getattr(manager, 'companions', {})
     display = getattr(companion, 'screen_id', None)
     return sum(actor.isVisible() and getattr(actor, 'screen_id', None) == display
@@ -22,6 +25,11 @@ def listening_aura_allowed(companion):
 class ModelBridge(QObject):
     loaded = Signal(str, str)
     error = Signal(str)
+    shape = Signal(str)
+
+    @Slot(str)
+    def silhouette(self, payload):
+        self.shape.emit(payload)
 
     @Slot(str, str)
     def ready(self, version, asset_hash):
@@ -43,7 +51,16 @@ class CharacterView(QWebEngineView):
         self.version = ''
         self.asset_hash = ''
         self.attempts = 0
-        self.setGeometry(companion.rect())
+        self.detached = hasattr(companion, 'set_input_shape')
+        if self.detached:
+            # The complete visual layer (including glow and props) passes all
+            # input through. Its owner is an invisible silhouette-shaped window.
+            self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
+                                Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowDoesNotAcceptFocus |
+                                Qt.WindowType.WindowTransparentForInput)
+            self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+            companion.installEventFilter(self)
+        self.sync_geometry()
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -63,13 +80,44 @@ class CharacterView(QWebEngineView):
         self.page().scripts().insert(script)
         self.bridge.loaded.connect(self._ready)
         self.bridge.error.connect(self._error)
+        if self.detached:
+            self.bridge.shape.connect(companion.set_input_shape)
         self.loadFinished.connect(self._loaded)
-        QTimer.singleShot(12000, self._check_ready)
+        QTimer.singleShot(12000, self, self._check_ready)
         self.timer = QTimer(self)
         self.timer.setInterval(33)
         self.timer.timeout.connect(self._sync)
         self.hide()
-        QTimer.singleShot(800, self._load)
+        QTimer.singleShot(800, self, self._load)
+
+    def sync_geometry(self):
+        c = self.companion
+        self.setGeometry(QRect(c.mapToGlobal(QPoint()), c.size()) if self.detached else c.rect())
+
+    def show_visual(self):
+        self.sync_geometry()
+        self.show()
+        if self.detached:
+            from dock_twoo.brain.mascot import pin_native, mac_window
+            pin_native(self)
+            # Cocoa's native WebEngine surface can keep accepting input despite
+            # the Qt flag. Match the existing click-through reading guide there.
+            import platform
+            if platform.system() == 'Darwin':
+                import ctypes
+                window, message = mac_window(self)
+                if window and message:
+                    message(None, window, 'setIgnoresMouseEvents:', (ctypes.c_bool, True))
+
+    def eventFilter(self, watched, event):
+        if watched is self.companion:
+            if event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
+                self.sync_geometry()
+            elif event.type() == QEvent.Type.Hide:
+                self.hide()
+            elif event.type() == QEvent.Type.Show:
+                self.show_visual()
+        return super().eventFilter(watched, event)
 
     def _load(self):
         from dock_twoo.config import ConfigManager
@@ -79,7 +127,7 @@ class CharacterView(QWebEngineView):
 
     def _loaded(self, ok):
         if not ok and self.attempts < 5:
-            QTimer.singleShot(1500, self._load)
+            QTimer.singleShot(1500, self, self._load)
 
     def _check_ready(self):
         if not self.ready:
@@ -91,7 +139,8 @@ class CharacterView(QWebEngineView):
         self.companion.setToolTip(f"Brain {version} · Glossy Blue")
         self.ready = True
         self.error = ''
-        self.show()
+        if self.companion.isVisible():
+            self.show_visual()
         self.timer.start()
         if hasattr(self.companion, 'set_renderer_status'):
             self.companion.set_renderer_status('')
@@ -100,7 +149,10 @@ class CharacterView(QWebEngineView):
     def _error(self, message):
         self.ready = False
         self.error = message
-        self.hide()
+        if not self.detached:
+            self.hide()
+        elif self.companion.isVisible():
+            self.show_visual()
         self.timer.stop()
         if hasattr(self.companion, 'set_renderer_status'):
             self.companion.set_renderer_status('Brain 3D could not load.\nRestart Dock to retry.', error=True)

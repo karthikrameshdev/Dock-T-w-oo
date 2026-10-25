@@ -6,6 +6,7 @@ import random
 import time
 
 from PySide6.QtCore import QObject, QPoint, QRect, QTimer
+from PySide6.QtGui import QRegion
 
 
 GROUP_ACTIVITIES = {
@@ -43,6 +44,36 @@ def free_position(area, size, occupied, preferred):
     return None
 
 
+def free_body_position(area, shape, occupied, preferred):
+    """Place visible pixels, allowing transparent render canvases to overlap."""
+    bounds = shape.boundingRect()
+    if bounds.isEmpty():
+        return preferred
+    def clamp(point):
+        return QPoint(max(area.left()-bounds.left(), min(point.x(), area.right()-bounds.right())),
+                      max(area.top()-bounds.top(), min(point.y(), area.bottom()-bounds.bottom())))
+    def clear(point):
+        region = shape.translated(point)
+        return not any(region.intersects(other) for other in occupied)
+    preferred = clamp(preferred)
+    if clear(preferred):
+        return preferred
+    # A moving hand must not send a neighbour jumping an entire canvas width.
+    for radius in (2, 4, 8, 16, 32, 64):
+        for dx, dy in ((-radius,0),(radius,0),(0,-radius),(0,radius),
+                       (-radius,-radius),(radius,-radius),(-radius,radius),(radius,radius)):
+            point = clamp(preferred+QPoint(dx,dy))
+            if clear(point):
+                return point
+    points = [clamp(QPoint(x-bounds.left(), y-bounds.top()))
+              for y in range(area.top(), area.bottom()+1, max(1,bounds.height()))
+              for x in range(area.left(), area.right()+1, max(1,bounds.width()))]
+    for point in sorted(points, key=lambda p:(p-preferred).manhattanLength()):
+        if clear(point):
+            return point
+    return None
+
+
 class Playground(QObject):
     def __init__(self, manager):
         super().__init__(manager)
@@ -60,32 +91,40 @@ class Playground(QObject):
         for display_id, entry in self.manager._all_display_entries.items():
             actors = [c for c in self.manager.companions.values() if c.screen_id == display_id]
             area = entry['screen'].availableGeometry()
-            scale = fit_scale(area, len(actors))
+            scale = fit_scale(area, len(actors), size=(132,225))
             occupied = []
             # Keep the microphone owner stationary if another character approaches.
             actors.sort(key=lambda c: c.activity == 'idle')
             for actor in actors:
                 actor.set_character_scale(scale)
-                point = free_position(area, (actor.width(), actor.height()), occupied, actor.pos())
+                point = free_body_position(area, self.local_region(actor), occupied, actor.pos())
                 if point is not None:
                     actor.move(point)
-                occupied.append(actor.geometry())
+                occupied.append(self.region(actor))
                 self._last_positions[actor.actor_id] = actor.pos()
 
     @staticmethod
-    def bounds(actor, position=None):
-        point = position or actor.pos()
+    def local_region(actor):
+        region = actor.body_region()
         if getattr(actor, 'social_kind', '') == 'handshake':
-            # Side-on helmets and bodies are narrower than the transparent view.
+            # Hands can make deliberate contact; helmets and torsos stay apart.
             width = max(1, round(actor.width() * .26))
-            return QRect(point.x() + (actor.width()-width)//2, point.y(), width, actor.height())
-        return QRect(point.x(), point.y(), actor.width(), actor.height())
+            region = region.intersected(QRegion((actor.width()-width)//2,0,width,actor.height()))
+        return region
+
+    @classmethod
+    def region(cls, actor, position=None):
+        return cls.local_region(actor).translated(position if position is not None else actor.pos())
+
+    @classmethod
+    def bounds(cls, actor, position=None):
+        return cls.region(actor,position).boundingRect()
 
     def constrain_step(self, actor, point):
         """Steer around another body rather than teleporting through it."""
-        peers = [self.bounds(c) for c in self.manager.companions.values() if c != actor and c.isVisible()]
+        peers = [self.region(c) for c in self.manager.companions.values() if c != actor and c.isVisible()]
         def clear(p):
-            box = self.bounds(actor, p)
+            box = self.region(actor, p)
             return not any(box.intersects(rect) for rect in peers)
         if clear(point):
             return point
@@ -94,7 +133,7 @@ class Playground(QObject):
         candidates = [old + QPoint(dx, dy) for dx, dy in ((step, 0), (-step, 0), (0, step), (0, -step))]
         if actor.assigned_screen:
             area = actor.assigned_screen.availableGeometry()
-            candidates = [p for p in candidates if area.contains(QRect(p.x(), p.y(), actor.width(), actor.height()))]
+            candidates = [p for p in candidates if area.contains(self.bounds(actor,p))]
         for candidate in sorted(candidates, key=lambda p: (p - point).manhattanLength()):
             if clear(candidate):
                 return candidate
@@ -124,15 +163,15 @@ class Playground(QObject):
             if screen is None:
                 continue
             area = screen.availableGeometry()
-            if any(self.bounds(actor).intersects(rect) for rect in occupied):
+            if any(self.region(actor).intersects(rect) for rect in occupied):
                 preferred = self._last_positions.get(actor.actor_id, actor.pos())
-                point = free_position(area, (actor.width(), actor.height()), occupied, preferred)
+                point = free_body_position(area, self.local_region(actor), occupied, preferred)
                 if point is None:
                     self.arrange()
                     return
                 actor.move(point)
                 actor.stop_motion()
-            occupied.append(self.bounds(actor))
+            occupied.append(self.region(actor))
             self._last_positions[actor.actor_id] = actor.pos()
         free = [c for c in actors if c.activity == 'idle' and not c.reduced_motion
                 and not c.origin and now > getattr(c, 'social_until', 0)]
@@ -169,7 +208,7 @@ class Playground(QObject):
             actor.stop_motion()
         area = first.assigned_screen.availableGeometry()
         midpoint = (first.pos() + second.pos()) / 2
-        spacing = round(first.height()*.34) if kind == 'handshake' else first.width()
+        spacing = round(first.height()*.34) if kind == 'handshake' else max(self.bounds(first).width(),self.bounds(second).width())+12
         left = QPoint(max(area.left(), min(midpoint.x()-spacing//2, area.right()-first.width()-spacing)),
                       max(area.top(), min(midpoint.y(), area.bottom()-max(first.height(), second.height())+1)))
         right = left + QPoint(spacing, 0)

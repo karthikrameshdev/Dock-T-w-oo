@@ -7,13 +7,14 @@ import random
 import time
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, QThread
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, QThread, Slot
 from PySide6.QtGui import (
     QColor,
     QCursor,
     QPainter,
     QPen,
     QRegion,
+    QTransform,
 )
 import ctypes
 import platform
@@ -224,6 +225,7 @@ class Companion(QWidget):
         self._blink_started = 0.0
         self.follow_cursor_enabled = bool(self.store.setting("follow_cursor", False))
         self._following_motion = False
+        self._parachute_prepared = False
         self._follow_position = QPointF()
         self._follow_last_tick = time.monotonic()
         self.last_user_interaction: float = time.monotonic()
@@ -234,9 +236,11 @@ class Companion(QWidget):
         self.reading_guide = ReadingGuide(self)
         self._reading_bounds = None
 
-        # Window mask covering the robot body
-        self.input_region = QRegion(0, 0, self.width(), 266)
-        self.setMask(self.input_region)
+        # No invisible rectangle receives input while the renderer is loading.
+        from dock_twoo.brain.input_shape import native_mask
+        self.input_region = QRegion()
+        self.has_input_shape = False
+        self.setMask(native_mask(self.input_region))
         self.setMouseTracking(True)
 
         # Timers
@@ -273,6 +277,8 @@ class Companion(QWidget):
         if QApplication.platformName() != "offscreen":
             from dock_twoo.brain.model_view import CharacterView
             self.model_view = CharacterView(self)
+            self.renderer_status.setParent(self.model_view)
+            self.renderer_status.show()
 
         # Restore saved desktop placement
         self._restore_placement()
@@ -290,11 +296,33 @@ class Companion(QWidget):
         width, height = max(1, int(264 * scale)), max(1, int(268 * scale))
         if self.width() == width and self.height() == height:
             return
+        old_width, old_height = self.width(), self.height()
         self.resize(width, height)
-        self.setMask(QRegion(self.rect()))
+        self.input_region = QTransform().scale(width / old_width, height / old_height).map(self.input_region)
+        from dock_twoo.brain.input_shape import native_mask
+        self.setMask(native_mask(self.input_region))
         if self.model_view:
-            self.model_view.setGeometry(self.rect())
+            self.model_view.sync_geometry()
         self.renderer_status.setGeometry(self.rect())
+
+    @Slot(str)
+    def set_input_shape(self, payload):
+        from dock_twoo.brain.input_shape import decode_shape, native_mask
+        try:
+            region = decode_shape(payload, self.size())
+        except (ValueError, KeyError, TypeError):
+            return
+        self.has_input_shape = True
+        if region != self.input_region:
+            self.input_region = region
+            self.setMask(native_mask(region))
+            self.update()
+        if hasattr(self.manager, 'input_router'):
+            self.manager.input_router.sync(force=True)
+
+    def body_region(self):
+        from dock_twoo.brain.input_shape import provisional_body
+        return self.input_region if self.has_input_shape else provisional_body(self.size())
 
     def dispose(self):
         for timer in self.findChildren(QTimer):
@@ -308,6 +336,10 @@ class Companion(QWidget):
         self.renderer_status.raise_()
         if error and hasattr(self.manager, 'status_changed'):
             self.manager.status_changed.emit(message)
+        if error:
+            from dock_twoo.brain.input_shape import native_mask
+            self.input_region = QRegion()
+            self.setMask(native_mask(self.input_region))
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -468,6 +500,9 @@ class Companion(QWidget):
             return
         if action not in ACTIONS:
             return
+        if action == 'parachute' and not self._parachute_prepared:
+            self._prepare_parachute(destination, duration, sequence)
+            return
         front_gestures = {'wave', 'wink', 'nod', 'point', 'fold_arms', 'camera', 'search', 'stretch', 'dance', 'celebrate'}
         if action in front_gestures and not keep_orientation and self.turn_progress > .01:
             self.stop_motion(clear_sequence=not sequence)
@@ -515,6 +550,48 @@ class Companion(QWidget):
         self.gait_distance = self.gait_blend = 0.0
         self.motion_timer.start()
         self.update()
+
+    def _prepare_parachute(self, destination, duration, sequence):
+        """Fly to altitude, then descend on the authored canopy's action clock."""
+        if self.reduced_motion:
+            return
+        screen = self.assigned_screen or self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        bounds = self.body_region().boundingRect()
+        x = max(area.left()+12, min(self.x(), area.right()-self.width()-12))
+        launch = QPoint(x, area.top()+12)
+        ground_y = area.bottom()-bounds.bottom()-8
+        if ground_y-launch.y() < 24:
+            self.play_action('land', sequence=sequence)
+            return
+        drift = 40 if x < area.center().x() else -40
+        target_x = destination.x() if destination is not None else x+drift
+        target_x = max(area.left()+12, min(target_x, area.right()-self.width()-12))
+        landing = QPoint(target_x, ground_y)
+        playground = getattr(self.manager, 'playground', None)
+        if playground:
+            from dock_twoo.brain.playground import free_body_position
+            peers = [playground.region(actor) for actor in self.manager.companions.values()
+                     if actor is not self and actor.isVisible()]
+            landing = free_body_position(area, playground.local_region(self), peers, landing)
+            if landing is None or landing.y()-launch.y() < 24:
+                return  # Do not open a stationary canopy in an occupied lane.
+        def deploy():
+            self._parachute_prepared = True
+            try:
+                self.play_action('parachute', destination=landing,
+                                 duration=max(duration or ACTIONS['parachute'][1], (ground_y-launch.y())/120),
+                                 sequence=sequence)
+            finally:
+                self._parachute_prepared = False
+            self.arrival = lambda: self.play_action('land', duration=1.0, sequence=sequence)
+        if (self.pos()-launch).manhattanLength() > 12:
+            self.play_action('fly', destination=launch, duration=max(1.6, abs(self.y()-launch.y())/320), sequence=sequence)
+            self.arrival = deploy
+        else:
+            deploy()
 
     def stop_motion(self, *, clear_sequence: bool = True) -> None:
         """Stop current animation and restore resting pose."""
@@ -610,8 +687,9 @@ class Companion(QWidget):
         if self.store.setting('brain_roam_all_screens', False):
             for entry in getattr(self.manager, '_all_display_entries', {}).values():
                 area = area.united(entry['screen'].availableGeometry())
-        point = QPoint(max(area.left(), min(position.x(), area.right() - self.width() + 1)),
-                       max(area.top(), min(position.y(), area.bottom() - self.height() + 1)))
+        bounds = self.body_region().boundingRect()
+        point = QPoint(max(area.left() - bounds.left(), min(position.x(), area.right() - bounds.right())),
+                       max(area.top() - bounds.top(), min(position.y(), area.bottom() - bounds.bottom())))
         playground = getattr(self.manager, 'playground', None)
         return playground.constrain_step(self, point) if playground and self.isVisible() else point
 
@@ -653,12 +731,15 @@ class Companion(QWidget):
             self.follow_timer.stop()
 
     def _apply_follow_input_mode(self) -> None:
-        # Cursor following must never steal a click intended for the app underneath.
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, self.follow_cursor_enabled)
+        # Following must remain clickable: a click explicitly selects this listener.
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        if hasattr(self.manager, 'input_router'):
+            self.manager.input_router.sync()
+            return
         if platform.system() == "Darwin" and self.isVisible() and QApplication.platformName() != "offscreen":
             window, message = mac_window(self)
             if window and message:
-                message(None, window, "setIgnoresMouseEvents:", (ctypes.c_bool, self.follow_cursor_enabled))
+                message(None, window, "setIgnoresMouseEvents:", (ctypes.c_bool, False))
 
     def _follow_cursor_step(self, cursor: Optional[QPoint] = None, elapsed: Optional[float] = None) -> None:
         now = time.monotonic()
@@ -1098,6 +1179,10 @@ class Companion(QWidget):
         painter = QPainter(self)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         painter.fillRect(self.rect(), Qt.GlobalColor.transparent)
+        # A non-zero alpha proxy permits native hit testing on layered windows.
+        # It sits behind the opaque character in the separate visual window.
+        painter.setClipRegion(self.input_region)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
         # Remain transparent during loading/errors; never resurrect old artwork.
         painter.end()
@@ -1124,7 +1209,7 @@ class Companion(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            if not self.moved and self.press_point:
+            if not self.moved and self.press_point is not None:
                 self.manager.toggle_talking(getattr(self, 'actor_id', self.screen_id))
             elif self.moved:
                 # Save new desktop placement

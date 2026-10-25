@@ -187,8 +187,11 @@ class BrainManager(QObject, BrainSessions):
     @Slot()
     def _do_show_mini_agent(self) -> None:
         self.store.set_setting("companion_visible", True)
-        self.companion.show()
-        self.companion.raise_()
+        for actor in self.companions.values():
+            actor.show()
+            actor.raise_()
+        if hasattr(self, 'playground'):
+            self.playground.arrange()
         self.visibility_changed.emit(True)
 
     def show_mini_agent(self) -> None:
@@ -216,7 +219,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _do_toggle_mini_agent(self) -> None:
-        if self.companion.isVisible():
+        if self.is_mini_agent_visible():
             self._do_hide_mini_agent()
         else:
             self._do_show_mini_agent()
@@ -269,6 +272,7 @@ class BrainManager(QObject, BrainSessions):
         if self._listening_actor_id is None:
             self._listening_actor_id = self._choose_voice_actor()
         self._session_actor_id = self._listening_actor_id
+        self._listening_source = self._session_source = 'voice'
         self.in_conversation_session = True
         self.session_timer.stop()
         actor = self.actor_for(self._listening_actor_id)
@@ -363,7 +367,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_shortcut_press(self):
-        self.run_on_main_thread(lambda: self.start_talking(self._choose_voice_actor()))
+        self.run_on_main_thread(lambda: self.start_talking(self._choose_voice_actor(), source='shortcut'))
 
     @Slot()
     def _on_shortcut_release(self) -> None:
@@ -546,7 +550,9 @@ class BrainManager(QObject, BrainSessions):
         if self._listening_actor_id == actor.actor_id:
             if self.listener.is_recording:
                 self.listener.stop_recording()
-            return  # Rapid clicks cannot reset an in-flight decoder.
+                return
+            if self.listener._decode_token is not None:
+                return  # Rapid clicks cannot reset an in-flight decoder.
         self.start_talking(actor.actor_id)
 
     @Slot(str)
@@ -559,14 +565,15 @@ class BrainManager(QObject, BrainSessions):
         run = self.activity.start(command, 'voice')
         self.activity.finish(run, 'complete', 'Stopped locally.')
 
-    def start_talking(self, target=None):
+    def start_talking(self, target=None, source='click'):
         if QThread.currentThread() != self.thread():
-            self.run_on_main_thread(lambda: self.start_talking(target))
+            self.run_on_main_thread(lambda: self.start_talking(target, source))
             return
         actor = self.actor_for(target)
         if self.listener.is_recording or self.listener._decode_token is not None:
             if actor.actor_id != self._listening_actor_id:
                 self._pending_listener = actor.actor_id
+                self._pending_listener_source = source
                 self.listener.stop_recording()
             return
         # The user can barge into an answer without cancelling a running agent.
@@ -575,7 +582,7 @@ class BrainManager(QObject, BrainSessions):
         self.speech.stop()
         self._awaiting_reply = False
         self._histories.setdefault(actor.actor_id, [])
-        self._start_capture(actor.actor_id)
+        self._start_capture(actor.actor_id, source)
         if self._active_turn and not self._worker_running and not self._deferred_reply:
             self._finish_turn()
 
@@ -592,7 +599,10 @@ class BrainManager(QObject, BrainSessions):
         if self._active_turn:
             self.activity.finish(self._active_turn.run_id, 'stopped', reason='Stopped by the user.')
         self._pending_listener = None
+        self._pending_listener_source = None
         self._listening_actor_id = None
+        self._listening_source = None
+        self._session_source = None
         self._deferred_reply = None
         self._awaiting_reply = False
         self._agent_cancel.set()
@@ -613,6 +623,7 @@ class BrainManager(QObject, BrainSessions):
 
     def shutdown(self):
         self.stop_talking()
+        self.input_router.close()
         self._stopping = True
         self.reader.remember_timer.stop()
         self.activity_cleanup.stop()
@@ -785,6 +796,10 @@ class BrainManager(QObject, BrainSessions):
                 characters.addAction(f'Remove Brain {number}', lambda checked=False, key=other.actor_id: self.remove_brain(key))
         if actor.actor_id.startswith('extra-'):
             menu.addAction("Remove this Brain", lambda: self.remove_brain(actor.actor_id))
+        remove_extras = menu.addAction("Remove all secondary Brains", self.remove_all_secondary_brains)
+        remove_extras.setEnabled(any(key.startswith('extra-') for key in self.companions) or
+                                 any(isinstance(item, dict) and str(item.get('id', '')).startswith('extra-')
+                                     for item in self.store.setting('brain_instances', [])))
         together = menu.addMenu("Play together")
         from dock_twoo.brain.playground import GROUP_ACTIVITIES
         for key, label in GROUP_ACTIVITIES.items():
@@ -809,12 +824,11 @@ class BrainManager(QObject, BrainSessions):
         menu.addAction("⚙️ Brain Settings & Models…", self.open_console_settings)
 
         # 8. Close / Hide Mini Agent Option
-        if self.companion.isVisible():
-            menu.addSeparator()
-            menu.addAction("✕ Hide all Brains and stop requests", self.hide_mini_agent)
-        else:
-            menu.addSeparator()
-            menu.addAction("👁️ Show Mini Agent", self.show_mini_agent)
+        menu.addSeparator()
+        show_all = menu.addAction("Show all Brains", self.show_mini_agent)
+        show_all.setEnabled(any(not c.isVisible() for c in self.companions.values()))
+        hide_all = menu.addAction("✕ Hide all Brains and stop requests", self.hide_mini_agent)
+        hide_all.setEnabled(self.is_mini_agent_visible())
 
         return menu
 
@@ -851,7 +865,7 @@ class BrainManager(QObject, BrainSessions):
             "characters": [{'id': actor.actor_id, 'screen_id': actor.screen_id,
                             'visible': actor.isVisible(), 'activity': actor.activity}
                            for actor in self.companions.values()],
-            "is_mini_agent_visible": self.companion.isVisible(),
+            "is_mini_agent_visible": self.is_mini_agent_visible(),
             "activity": self.companion.activity,
             "voice_input": {
                 "enabled": bool(self.store.setting("wake_word_enabled", True)),

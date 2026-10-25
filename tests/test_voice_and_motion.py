@@ -239,8 +239,36 @@ def test_climb_has_vertical_travel_and_stays_on_screen(companion):
     companion.play_action('climb_dock')
     assert companion.destination.y() < 200
     companion.play_action('walk', QPoint(-10000, -10000))
-    assert companion.destination.x() >= companion.screen().availableGeometry().left()
-    assert companion.destination.y() >= companion.screen().availableGeometry().top()
+    visible = companion.body_region().boundingRect().translated(companion.destination)
+    assert companion.screen().availableGeometry().contains(visible)
+
+
+def test_parachute_reaches_altitude_descends_then_lands_before_stowing(companion):
+    companion.show();companion.move(250,450)
+    companion.play_action('parachute')
+    assert companion.action=='fly' and companion.destination.y()<companion.y()
+    companion.motion_started=time.monotonic()-companion.motion_duration-.01
+    companion._advance_motion()
+    assert companion.action=='parachute'
+    launch=QPoint(companion.motion_start);landing=QPoint(companion.destination)
+    assert landing.y()>launch.y()+100
+    def phase(p):
+        companion.motion_started=time.monotonic()-p*companion.motion_duration
+        companion._advance_motion()
+    phase(.05);assert abs(companion.y()-launch.y())<=1
+    phase(.5);assert launch.y()<companion.y()<landing.y()
+    phase(.87);assert companion.pos()==landing
+    phase(.96);assert companion.pos()==landing and companion.action=='parachute'
+    phase(1.01);assert companion.pos()==landing and companion.action=='land'
+
+
+def test_parachute_curve_only_descends_after_canopy_opens():
+    from dock_twoo.brain.animation import travel_point
+    start,end=(100,30),(140,600)
+    points=[travel_point(start,end,p/100,'parachute') for p in range(101)]
+    assert all(point==start for point in points[:13])
+    assert all(point==end for point in points[86:])
+    assert all(a[1]<=b[1] for a,b in zip(points,points[1:]))
 
 
 def test_follow_cursor_retargets_immediately_at_a_calm_speed(companion):
@@ -257,7 +285,7 @@ def test_follow_cursor_retargets_immediately_at_a_calm_speed(companion):
     assert companion.x() < first.x()
     assert companion.gait_distance > phase
     assert companion.destination.x() == companion.screen().availableGeometry().left()
-    assert companion.testAttribute(__import__('PySide6.QtCore', fromlist=['Qt']).Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    assert not companion.testAttribute(__import__('PySide6.QtCore', fromlist=['Qt']).Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     companion.set_follow_cursor(False)
     assert companion.action is None
 

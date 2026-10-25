@@ -75,6 +75,16 @@ PLAYLIST += tuple(action for action in ACTIONS if action not in PLAYLIST)
 
 def travel_point(start: tuple[int, int], destination: tuple[int, int], progress: float, action: str) -> tuple[int, int]:
     p = max(0.0, min(1.0, progress))
+    if action == 'parachute':
+        # The Blender canopy deploys during 0-.10 and retracts during .90-1.
+        # Leave altitude before deploying; reach the ground before retracting.
+        descent = max(0.0, min(1.0, (p-.12)/.74))
+        descent = descent*descent*(3-2*descent)
+        drift = min(18.0, abs(destination[1]-start[1])*.025)
+        x = start[0]+(destination[0]-start[0])*descent
+        x += math.sin(descent*math.tau)*math.sin(descent*math.pi)*drift
+        y = start[1]+(destination[1]-start[1])*descent
+        return round(x), round(y)
     eased = p * p * (3.0 - 2.0 * p)
     x = start[0] + (destination[0] - start[0]) * eased
     y = start[1] + (destination[1] - start[1]) * eased

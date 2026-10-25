@@ -58,13 +58,15 @@ def step():
   manager.playground._groups.clear();manager.playground.arrange()
   name=checks[phase]
   if name in ('listening','queued','responding'):
+   manager._listening_actor_id=first.actor_id if name=='listening' else None
+   manager._listening_source='voice' if name=='listening' else None
    first.set_activity({'responding':'speaking'}.get(name,name));second.set_activity('idle')
   else:manager.playground.play(name,first.actor_id)
   phase_started=now;phase_captured=False
  if now-phase_started>3.2 and not phase_captured:
   capture(checks[phase]);phase_captured=True
  samples+=1
- if manager.playground.bounds(first).intersects(manager.playground.bounds(second)):
+ if manager.playground.region(first).intersects(manager.playground.region(second)):
   overlaps+=1
   errors.append('Body footprints overlap during '+checks[phase])
   finish()
