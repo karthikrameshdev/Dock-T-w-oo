@@ -74,7 +74,7 @@ class CharacterView(QWebEngineView):
 
     def _check_ready(self):
         if not self.ready:
-            self._error(self.error or "The 3D renderer did not become ready; using the artwork fallback.")
+            self._error(self.error or "The 3D renderer did not become ready; restart Dock to retry.")
 
     def _ready(self, version, asset_hash):
         self.version = version
@@ -84,6 +84,8 @@ class CharacterView(QWebEngineView):
         self.error = ''
         self.show()
         self.timer.start()
+        if hasattr(self.companion, 'set_renderer_status'):
+            self.companion.set_renderer_status('')
         self.companion.update()
 
     def _error(self, message):
@@ -91,6 +93,9 @@ class CharacterView(QWebEngineView):
         self.error = message
         self.hide()
         self.timer.stop()
+        if hasattr(self.companion, 'set_renderer_status'):
+            self.companion.set_renderer_status('Brain 3D could not load.\nRestart Dock to retry.', error=True)
+            self.companion.setToolTip(message)
         self.companion.update()
 
     def _sync(self):

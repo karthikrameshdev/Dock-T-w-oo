@@ -285,7 +285,7 @@ plus an MP4 preview when `ffmpeg` is installed.
 
 ## Blender character and document reading
 
-The editable rig lives in [`character/MiniAssistant.blend`](character/MiniAssistant.blend).
+The editable rig lives in [`character/Brain.blend`](character/Brain.blend).
 Brain uses its exported GLB through a transparent local Qt/WebGL renderer. The same
 opaque meshes, white eyes, pupils, smile, gloves and boots appear at every angle.
 See [`character/README.md`](character/README.md) for rebuilding and animation validation.
@@ -329,3 +329,15 @@ Contributions are welcome! Dock T(w)oo operates under a strictly protected open-
 ## 📄 License
 
 Apache 2.0 License. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
+
+Brain audio follows the **system default microphone and speaker** through Qt
+Multimedia on Windows, macOS and Linux. Device changes reopen only the affected
+route; microphone capture retains the statement and speech resumes from the last
+played frame. Bluetooth/native sample rates are converted to 16 kHz for local
+recognition and to the output device's supported format for speech.
+
+Click Brain once to listen, then again to finish and process the recorded statement.
+During speech, thinking and reading, the local keyword model listens for **Stop**
+or **Brain Stop**. These controls cancel the agent and speech without a cloud
+request. A playback-reference echo suppressor reduces self-triggering; difficult
+room acoustics and overlapping voices still require real-device validation.

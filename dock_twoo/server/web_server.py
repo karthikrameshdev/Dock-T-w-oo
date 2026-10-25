@@ -502,7 +502,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     elif action == "hide":
                         bm.hide_mini_agent()
                     elif action == "talk":
-                        bm.start_talking()
+                        bm.toggle_talking()
                     elif action in ("read_desktop", "read_window", "read_selected"):
                         bm.start_reading("selected" if action=="read_selected" else "window")
                     elif action == "stop_reading":

@@ -10,6 +10,18 @@ from PySide6.QtGui import QColor, QFont
 from dock_twoo.config import DockConfig
 
 
+def paint_color(value: str) -> QColor:
+    """QColor does not parse CSS rgba() strings used by console theme settings."""
+    import re
+    match = re.fullmatch(r'rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)', value.strip(), re.I)
+    if match:
+        red, green, blue, alpha = match.groups()
+        return QColor(*(max(0, min(255, round(float(channel)))) for channel in (red, green, blue)),
+                      round(max(0, min(1, float(alpha) if alpha is not None else 1))*255))
+    color = QColor(value)
+    return color if color.isValid() else QColor(0, 0, 0, 0)
+
+
 @dataclass
 class ThemeTokens:
     font_family: str

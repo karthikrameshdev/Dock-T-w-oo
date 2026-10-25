@@ -113,6 +113,7 @@ class AudioListener(QObject):
     turn_timed_out = Signal()
     audio_level = Signal(float)
     error_occurred = Signal(str)
+    stop_requested = Signal(str)
 
     def __init__(
         self,
@@ -123,8 +124,14 @@ class AudioListener(QObject):
         *,
         store=None,
         model_dir=None,
+        audio_devices=None,
     ):
         super().__init__(parent)
+        from dock_twoo.brain.audio_devices import DefaultAudioDevices
+        self.audio_devices = audio_devices or DefaultAudioDevices(self)
+        self.audio_devices.input_frame.connect(self._enqueue_audio)
+        self.audio_devices.input_state.connect(self._input_state)
+        self.audio_devices.error.connect(self.error_occurred)
         self._capture_lock = threading.RLock()
         self.wake_word = wake_word.lower().strip()
         self.is_running = False
@@ -162,6 +169,12 @@ class AudioListener(QObject):
         self.models = LocalVoiceModels(model_dir or self.store.data_dir / "models")
         from dock_twoo.brain.wake import WakeDetector
         self.wake_detector = WakeDetector(self.models.model_dir, self.wake_word)
+        self.stop_detector = WakeDetector(self.models.model_dir, keywords=('STOP', 'BRAIN STOP'))
+        from dock_twoo.brain.echo import PlaybackEchoGuard
+        self.echo_guard = PlaybackEchoGuard()
+        self._passive_stop = False
+        self._stop_latched = False
+        self.stop_matches = 0
         from dock_twoo.brain.endpoint_vad import NeuralEndpointVad
         self.endpoint_vad = NeuralEndpointVad(self.models.model_dir)
         self._wake_preroll = deque(maxlen=20)
@@ -235,24 +248,20 @@ class AudioListener(QObject):
             except queue.Empty:
                 break
         self.wake_detector.start()
+        self.stop_detector.start()
         self.endpoint_vad.start()
         self.models.start_model_downloads()
         self.is_running = True
         self.stop_event.clear()
         self.worker_thread = threading.Thread(target=self._run_loop, daemon=True, name="brain-audio-listener")
         self.worker_thread.start()
+        self.audio_devices.start_input()
 
     def stop(self) -> None:
         """Stop background audio capture."""
         self.is_running = False
         self.stop_event.set()
-        if self.stream:
-            try:
-                self.stream.stop()
-                self.stream.close()
-            except Exception:
-                pass
-            self.stream = None
+        self.audio_devices.stop_input()
         if self.worker_thread and self.worker_thread is not threading.current_thread():
             self.worker_thread.join(timeout=1.0)
         self.cancel_recording()
@@ -264,6 +273,8 @@ class AudioListener(QObject):
         self._capture_revision = 0
         self._decode_token = None
         self._capture_forced = False
+        self._passive_stop = False
+        self._stop_latched = False
         self._wake_capture = False
         self._endpoint = TurnEndpoint()
         self.speech_frames = []
@@ -288,6 +299,10 @@ class AudioListener(QObject):
         """Finish explicitly on push-to-talk release; automatic capture uses VAD."""
         if self.is_recording:
             self._capture_forced = True
+            self.is_recording = False
+            self._passive_stop = True
+            self.speech_ended.emit()
+            self.processing_started.emit()
             self._dispatch_capture()
 
     def _dispatch_capture(self) -> None:
@@ -315,12 +330,17 @@ class AudioListener(QObject):
             self._decode_token = None
             if revision != self._capture_revision:
                 self.last_wake_decision = "speech-resumed-before-reply"
+                if self._capture_forced:
+                    self._dispatch_capture()
                 return False
+            was_recording = self.is_recording
             self.is_recording = False
+            self._passive_stop = True
             self.speech_frames = []
             self._wake_capture = False
-            self.speech_ended.emit()
-            self.processing_started.emit()
+            if was_recording:
+                self.speech_ended.emit()
+                self.processing_started.emit()
         return True
 
     @capture_locked
@@ -337,6 +357,8 @@ class AudioListener(QObject):
     @capture_locked
     def arm_wake(self) -> None:
         self.cancel_recording()
+        self._passive_stop = False
+        self._stop_latched = False
         self._wake_armed = self.wake_detection_enabled
         self._wake_preroll.clear()
         self._backup_ring.clear()
@@ -353,12 +375,18 @@ class AudioListener(QObject):
         """Suspend capture during an explicit document-reading session."""
         self.cancel_recording()
         self._wake_armed = False
+        self._passive_stop = True
 
     @capture_locked
     def set_output_active(self, active: bool) -> None:
-        """Suppress playback echo so the assistant cannot wake itself with 'Hey Buddy'."""
+        """Use playback time for stop-only monitoring, never ambient wake routing."""
         was_active = self._output_active
         self._output_active = active
+        if active:
+            self._passive_stop = True
+            if not was_active:
+                self._stop_latched = False
+                self.stop_detector.reset()
         if active or was_active:
             self._ignore_audio_until = time.monotonic() + 0.3
             self._wake_preroll.clear()
@@ -390,53 +418,37 @@ class AudioListener(QObject):
             raise RuntimeError("No voice sample was captured. Please try again.")
         return self._enrollment_result
 
-    def _run_loop(self) -> None:
-        """Audio streaming capture loop via sounddevice."""
-        try:
-            import sounddevice as sd
-        except ImportError:
-            self.last_error = "sounddevice package not available for microphone listening."
-            self.is_running = False
-            self.error_occurred.emit(self.last_error)
+    def _input_state(self, active: bool, name: str) -> None:
+        self.stream_active = active
+        self.input_device = name
+        if active:
+            self.last_error = ''
+
+    def _enqueue_audio(self, pcm: bytes, captured_at: float) -> None:
+        if not self.is_running:
             return
-
-        def audio_callback(indata, frames, time_info, status):
-            if status and not self.stop_event.is_set():
-                self.input_overflows += 1
-            try:
-                self.audio_queue.put_nowait(bytes(indata))
-            except queue.Full:
-                self.dropped_frames += 1
-
         try:
-            self.input_device = str(sd.query_devices(kind="input").get("name", "Default input"))
-            with sd.RawInputStream(
-                samplerate=16000,
-                channels=1,
-                dtype="int16",
-                blocksize=1600,  # 100ms chunks at 16kHz
-                callback=audio_callback,
-            ) as stream:
-                self.stream = stream
-                self.stream_active = True
-                while not self.stop_event.is_set():
-                    try:
-                        pcm_chunk = self.audio_queue.get(timeout=0.2)
-                    except queue.Empty:
-                        continue
+            self.audio_queue.put_nowait((pcm, captured_at))
+        except queue.Full:
+            self.dropped_frames += 1
 
-                    self._handle_pcm_frame(pcm_chunk)
+    def _run_loop(self) -> None:
+        """Analyze normalized audio independently of the native audio device."""
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    pcm, captured_at = self.audio_queue.get(timeout=.2)
+                except queue.Empty:
+                    continue
+                self._handle_pcm_frame(pcm, captured_at=captured_at)
         except Exception as exc:
-            if not self.stop_event.is_set():
-                self.last_error = f"Microphone stream error: {exc}"
-                self.error_occurred.emit(self.last_error)
+            self.last_error = f'Microphone processing error: {exc}'
+            self.error_occurred.emit(self.last_error)
         finally:
-            self.stream_active = False
-            self.stream = None
             self.is_running = False
 
     @capture_locked
-    def _handle_pcm_frame(self, pcm: bytes) -> None:
+    def _handle_pcm_frame(self, pcm: bytes, *, captured_at=None) -> None:
         """Analyze RMS energy for VAD and wake word monitoring."""
         samples = array.array("h")
         samples.frombytes(pcm)
@@ -444,7 +456,19 @@ class AudioListener(QObject):
             return
         self.audio_frames_seen += 1
 
-        if self._output_active or time.monotonic() < self._ignore_audio_until:
+        if self._output_active or (self._passive_stop and not self.is_recording):
+            self.last_wake_decision = "monitoring-spoken-stop"
+            if not self._stop_latched and self.stop_detector.ready:
+                clean = self.echo_guard.filter(pcm, captured_at)
+                keyword = self.stop_detector.feed(clean)
+                if keyword in ('STOP', 'BRAIN_STOP'):
+                    self._stop_latched = True
+                    self.stop_matches += 1
+                    self.cancel_recording()
+                    self.last_wake_decision = 'spoken-stop'
+                    self.stop_requested.emit(keyword.replace('_', ' ').title())
+            return
+        if time.monotonic() < self._ignore_audio_until:
             self.last_wake_decision = "suppressing-playback-echo"
             return
 
@@ -569,10 +593,15 @@ class AudioListener(QObject):
             "recognizer_engine": "Whisper small.en INT8",
             "recognizer_ready": self.models.recognizer.ready,
             "input_device": self.input_device,
+            "audio_devices": self.audio_devices.status(),
             "input_overflows": self.input_overflows,
             "dropped_frames": self.dropped_frames,
             "wake_armed": self._wake_armed,
             "output_active": self._output_active,
+            "passive_stop": self._passive_stop,
+            "stop_model": self.stop_detector.status(),
+            "stop_matches": self.stop_matches,
+            "playback_echo": self.echo_guard.status(),
             "recording": self.is_recording,
             "capture_kind": "wake statement" if self._wake_capture else "command",
             "capture_seconds": round(self._endpoint.elapsed, 2),

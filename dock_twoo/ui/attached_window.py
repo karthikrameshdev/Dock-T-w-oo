@@ -23,7 +23,7 @@ from dock_twoo.ui.apps import (
     DashboardAppWidget,
     VaultAppWidget,
 )
-from dock_twoo.ui.theme import get_theme_tokens
+from dock_twoo.ui.theme import get_theme_tokens, paint_color
 
 
 class AttachedWindow(QWidget):
@@ -177,7 +177,7 @@ class AttachedWindow(QWidget):
         path.addRoundedRect(card_rect, radius, radius)
 
         # 2. Background acrylic fill
-        bg_col = QColor(tokens.card_bg)
+        bg_col = paint_color(tokens.card_bg)
         bg_col.setAlphaF(self.config.attached_opacity)
         painter.setBrush(QBrush(bg_col))
         painter.setPen(Qt.PenStyle.NoPen)

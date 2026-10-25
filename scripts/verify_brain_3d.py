@@ -141,7 +141,7 @@ def tick():
                 assert max(runtime['eyeScales']) < .04
             if expected_label == 'speech':
                 assert runtime['mouth'] > .6, 'Speaking mouth morph did not reach renderer'
-            expected_prop={'magnifier':'propmagnifier','camera':'propcamera','read':'proptablet','scan_code':'propscan','fly':'jetL'}.get(expected_label)
+            expected_prop={'magnifier':'propmagnifier','camera':'propcamera','read':'proptablet','scan_code':'propscan','fly':'jetL','library_kick_ball':'propball','library_hammer':'prophammer','library_balloon':'proptether','library_parachute':'propparachute'}.get(expected_label)
             if expected_prop:
                 assert runtime['propScales'][expected_prop] > .2, f'{expected_label}: prop did not deploy'
             if expected_label in ('front','eyes_reopened'):

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QWidget
 from dock_twoo.config import DockAppItem, DockConfig
 from dock_twoo.icons import IconManager
 from dock_twoo.ui.tooltip import DockTooltip
+from dock_twoo.ui.theme import paint_color
 
 
 class DockIconButton(QWidget):
@@ -94,12 +95,12 @@ class DockIconButton(QWidget):
         # Draw active or hover pill/circle background
         if self._is_active:
             # Active circular ring or subtle filled pill
-            active_bg = QColor(self.config.get_effective_active_bg())
+            active_bg = paint_color(self.config.get_effective_active_bg())
             painter.setBrush(QBrush(active_bg))
-            painter.setPen(QPen(QColor(255, 255, 255, 60), 1))
+            painter.setPen(QPen(QColor(255, 255, 255, 105) if self.config.get_effective_theme() == 'dark' else QColor(0, 0, 0, 45), 1))
             painter.drawEllipse(rect)
         elif self._is_hover:
-            hover_bg = QColor(self.config.get_effective_hover_bg())
+            hover_bg = paint_color(self.config.get_effective_hover_bg())
             painter.setBrush(QBrush(hover_bg))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(rect)
@@ -109,13 +110,16 @@ class DockIconButton(QWidget):
         icon_name = self.item.icon or self.item.id
         color = self.config.get_effective_icon_color()
         opacity = self.config.icon_opacity
+        if self._is_active:
+            color = '#FFFFFF' if self.config.get_effective_theme() == 'dark' else '#171717'
+            opacity = 1.0
 
         pixmap = icon_mgr.render_pixmap(
             name=icon_name,
             size=self.config.icon_size,
             color=color,
             opacity=opacity,
-            is_active=self._is_active,
+            is_active=False,
         )
 
         # Center the standardized pixmap inside the button

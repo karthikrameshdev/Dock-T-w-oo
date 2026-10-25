@@ -109,7 +109,7 @@ function frame(){
   window.brainDiagnostics.speechMeshes=mouthMeshes.length;
   window.brainDiagnostics.triangles=renderer.info.render.triangles;
   window.brainDiagnostics.drawCalls=renderer.info.render.calls;
-  window.brainDiagnostics.propScales=Object.fromEntries(['propmagnifier','propcamera','proptablet','propscan','jetL','jetR'].map(key=>[key,bones[key]?.scale.x ?? 0]));
+  window.brainDiagnostics.propScales=Object.fromEntries(['propmagnifier','propcamera','proptablet','propscan','jetL','jetR','propball','prophammer','propanvil','proptether','propballoon','propparachute'].map(key=>[key,bones[key]?.scale.x ?? 0]));
   window.brainDiagnostics.poseSignature=Object.values(bones).flatMap(bone=>[...bone.position.toArray(),...bone.quaternion.toArray(),...bone.scale.toArray()]);
   window.brainDiagnostics.handPositions = ['handL','handR'].map(name=>bones[name]?.getWorldPosition(new THREE.Vector3()).toArray());
   model.traverse(node=>{if(node.isMesh && !node.userData.statusEffect){if(node.material.opacity<1 || node.material.transparent)window.brainDiagnostics.translucent=true;}if(node.isBone && ![...node.position.toArray(),...node.quaternion.toArray(),...node.scale.toArray()].every(Number.isFinite))window.brainDiagnostics.nonFinite=true;});

@@ -1,14 +1,18 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "name": "Brain",
   "design": "Glossy Blue",
-  "source": "character/MiniAssistant.blend",
-  "source_sha256": "4fa3518b0b9c348934793baeb355f271d46679f25b6b7c99235ab7a20d7e20e0",
+  "source": "character/Brain.blend",
+  "source_sha256": "ee145c6cdf9b1e3ede3469a4f756c1a1d59484ac5a65d6c82e4019484bf50754",
   "asset": "brain.glb",
-  "asset_sha256": "fd1bd74dc1cd0b623838790601e609947d2e0df9e312dda36535ac2a06093a56",
-  "bones": 52,
-  "meshes": 222,
+  "asset_sha256": "d16eb2986b36d44dfa9444e8a79cf9ecf9ba86222564bee91c51912ed5625386",
+  "bones": 58,
+  "meshes": 248,
   "actions": {
+    "balloon": {
+      "duration": 5.0,
+      "loop": false
+    },
     "camera": {
       "duration": 1.4,
       "loop": false
@@ -53,6 +57,10 @@
       "duration": 2.0,
       "loop": false
     },
+    "hammer": {
+      "duration": 4.4,
+      "loop": false
+    },
     "happy": {
       "duration": 2.0,
       "loop": false
@@ -78,7 +86,7 @@
       "loop": false
     },
     "kick_ball": {
-      "duration": 1.1,
+      "duration": 4.0,
       "loop": false
     },
     "land": {
@@ -95,6 +103,10 @@
     },
     "nod": {
       "duration": 0.8,
+      "loop": false
+    },
+    "parachute": {
+      "duration": 5.0,
       "loop": false
     },
     "peek": {

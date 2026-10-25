@@ -1,6 +1,6 @@
 """Audit the saved rig at every frame and during idle/action blends.
 
-Run Blender --background character/MiniAssistant.blend --python this_file.
+Run Blender --background character/Brain.blend --python this_file.
 Uses the same conservative helmet/ear/arm envelopes as the builder. This catches
 intersections between animation keys, not just the authored key poses.
 """
@@ -14,7 +14,7 @@ import bpy
 REPO = Path(__file__).resolve().parents[2]
 rig = bpy.data.objects['Brain_Rig']
 armature = rig.data
-source = ast.parse((REPO / 'scripts/blender/build_brain.py').read_text())
+source = ast.parse((REPO / 'scripts/blender/rig_helpers.py').read_text())
 function = next(node for node in source.body if isinstance(node, ast.FunctionDef) and node.name == 'limb_collisions')
 exec(compile(ast.Module(body=[function], type_ignores=[]), '<clearance>', 'exec'))
 HEAD_RISE = next(ast.literal_eval(node.value) for node in source.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'HEAD_RISE' for target in node.targets))

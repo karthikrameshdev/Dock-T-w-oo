@@ -236,7 +236,9 @@ dock_twoo/vault/touch_id_auth
 character/*.blend[0-9]*
 character/*.pre-codex.blend
 
-character/*.before-fluffy.blend
+character/*.before-*.blend
 character/previews/reel-frames/
 
-character/*.before-glossy.blend
+
+
+character/previews/prop-reel/

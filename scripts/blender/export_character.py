@@ -1,6 +1,6 @@
 """Export the saved artist-authored project without rebuilding or saving over it.
 
-Blender --background character/MiniAssistant.blend --python this_file -- --version 3.0.0
+Blender --background character/Brain.blend --python this_file -- --version 3.0.0
 """
 import argparse
 import hashlib
@@ -57,7 +57,14 @@ release = {
 }
 (folder / 'character.json').write_text(json.dumps(release, indent=2) + '\n')
 report = json.loads((ROOT / 'character/character-build.json').read_text())
-report.update(version=args.version, source_sha256=source_hash, glb_sha256=release['asset_sha256'])
+triangles = 0
+for obj in meshes:
+    evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = evaluated.to_mesh(); mesh.calc_loop_triangles()
+    triangles += len(mesh.loop_triangles); evaluated.to_mesh_clear()
+report.update(version=args.version, source='character/Brain.blend', triangles=triangles, source_sha256=source_hash,
+              glb_sha256=release['asset_sha256'], bones=release['bones'], meshes=release['meshes'],
+              actions=list(release['actions']))
 (ROOT / 'character/character-build.json').write_text(json.dumps(report, indent=2) + '\n')
 assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash, 'The artist source was modified'
 print('BRAIN_RELEASE', json.dumps(release))

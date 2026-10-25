@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from dock_twoo.brain import get_brain_manager
+from dock_twoo.ui.theme import paint_color
 from dock_twoo.config import ConfigManager, DockAppItem, DockConfig
 from dock_twoo.icons import IconManager
 from dock_twoo.os_integration.margin_manager import DesktopMarginManager
@@ -126,7 +127,7 @@ class DockLogoWidget(QWidget):
 
         rect = QRectF(2, 2, self.width() - 4, self.height() - 4)
         if self._is_hover:
-            hover_bg = QColor(self.config.get_effective_hover_bg())
+            hover_bg = paint_color(self.config.get_effective_hover_bg())
             painter.setBrush(QBrush(hover_bg))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(rect)
@@ -422,7 +423,7 @@ class DockWindow(QWidget):
         # Click on Brain summons or activates the desktop robot mini agent directly
         if app_id in ("brain",):
             self.attached_window.hide_window()
-            self.brain_manager.toggle_mini_agent()
+            self.brain_manager.toggle_talking()
             self._set_active_icon("brain" if self.brain_manager.is_mini_agent_visible() else None)
             return
 
@@ -778,7 +779,7 @@ class DockWindow(QWidget):
         path.addRoundedRect(capsule_rect, radius, radius)
 
         # 2. Main Capsule Fill
-        bg_col = QColor(self.config.get_effective_dock_bg())
+        bg_col = paint_color(self.config.get_effective_dock_bg())
         bg_col.setAlphaF(self.config.dock_opacity)
         painter.setBrush(QBrush(bg_col))
         painter.setPen(Qt.PenStyle.NoPen)

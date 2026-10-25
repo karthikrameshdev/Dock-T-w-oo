@@ -1107,7 +1107,10 @@ async function initBrainConsole() {
       const data=await (await fetch('/api/brain/status',{headers:{'X-Brain-Request':'local'}})).json();
       const input=data.voice_input||{},diag=input.wake_diagnostics||{},model=data.language_model||{};
       byId('brainAgentStatusBadge').textContent=`Brain ${data.character?.version||''} · ${data.activity||'idle'}`;
-      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Cloud model: ${model.model}.`)+` Microphone: ${diag.input_device||'preparing'}.`;
+      byId('brainTalkBtn').textContent=diag.recording?'✓ Finish speaking':(diag.decoding?'Processing speech…':'🎤 Talk to Brain');
+      byId('brainTalkBtn').disabled=Boolean(diag.decoding);
+      const devices=diag.audio_devices||{};
+      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Cloud model: ${model.model}.`)+` System defaults · Microphone: ${devices.input||diag.input_device||'unavailable'} · Speaker: ${devices.output||'unavailable'}.`;
       byId('brainWakeDiagnostics').textContent=`Wake ${input.wake_ready?'ready':'preparing'} · ${diag.recognizer_engine||'local speech'} · ${input.recognizer_ready?'ready':'preparing'} · ${diag.last_decision||''}`;
       byId('brainLocalSpeechStatus').textContent=`Local speech: ${data.local_speech?.engine||'Kokoro ONNX'} · ${data.local_speech?.state||'preparing'}${data.local_speech?.error?' · '+data.local_speech.error:''}`;
       byId('brainAgentProgress').textContent=data.agent?.message && data.agent?.step>0?`Step ${data.agent.step||0} · ${data.agent.message}`:'';

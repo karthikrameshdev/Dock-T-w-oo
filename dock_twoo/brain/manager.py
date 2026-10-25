@@ -75,7 +75,9 @@ class BrainManager(QObject):
         self.activity_cleanup.setInterval(60*60*1000)
         self.activity_cleanup.timeout.connect(self.activity.prune)
         if start_services:self.activity_cleanup.start()
-        self.speech = SpeechPlayback(self)
+        from dock_twoo.brain.audio_devices import DefaultAudioDevices
+        self.audio_devices = DefaultAudioDevices(self)
+        self.speech = SpeechPlayback(self, audio_devices=self.audio_devices)
         self.speech.store = self.store
 
         self.companion = Companion(self)
@@ -119,8 +121,11 @@ class BrainManager(QObject):
             parent=self,
             store=self.store,
             model_dir=voice_model_dir,
+            audio_devices=self.audio_devices,
         )
         self.speech.voice_models = self.listener.models
+        self.speech.echo_guard = self.listener.echo_guard
+        self.listener.stop_requested.connect(self._on_voice_stop)
         self.audio_listener_error = ""
         self.listener.error_occurred.connect(self._on_audio_listener_error)
         self.listener.speech_started.connect(self._on_speech_started)
@@ -393,6 +398,9 @@ class BrainManager(QObject):
 
     @Slot(str)
     def _do_turn_complete(self, user_text: str, source='voice') -> None:
+        if re.fullmatch(r'\s*(?:(?:hey|okay|ok)[,\s]+)?(?:(?:brain|buddy)[,\s]+)?(?:please\s+)?stop(?:\s+(?:please|talking|speaking|reading))?[.!?\s]*',user_text,re.I):
+            self._on_voice_stop(user_text)
+            return
         if user_text and not self.companion.isVisible():
             # Ambient wake-prefixed commands arrive here without a separate wake event.
             self._do_show_mini_agent()
@@ -525,12 +533,37 @@ class BrainManager(QObject):
             self.turn_complete_requested.emit(user_text)
 
     @Slot()
+    def toggle_talking(self) -> None:
+        """Second click finishes the recorded statement exactly once."""
+        if QThread.currentThread() != self.thread():
+            self.run_on_main_thread(self.toggle_talking)
+            return
+        if self.listener.is_recording:
+            self.listener.stop_recording()
+        elif self.listener._decode_token is None:
+            self.start_talking()
+
+    @Slot(str)
+    def _on_voice_stop(self, command='Stop') -> None:
+        """Stop speech, reading, and pending cloud actions locally and silently."""
+        self.stop_talking()
+        self.companion.stop_motion()
+        self._publish_response('Stopped.')
+        self.status_changed.emit('Stopped.')
+        run = self.activity.start(command, 'voice')
+        self.activity.finish(run, 'complete', 'Stopped locally.')
+
+    @Slot()
     def start_talking(self) -> None:
         """Activate voice listening state for the robot."""
         if QThread.currentThread() != self.thread():
             QMetaObject.invokeMethod(self, "start_talking", Qt.ConnectionType.QueuedConnection)
             return
         self.reader.stop()
+        self._agent_cancel.set()
+        self.agent.stop()
+        self._query_generation += 1
+        self.speech.stop()
         self.in_conversation_session = True
         self.listener.start()
         self.conversation_history.clear()
@@ -566,6 +599,7 @@ class BrainManager(QObject):
         self.reader.remember_timer.stop()
         self.activity_cleanup.stop()
         self.listener.stop()
+        self.audio_devices.close()
         self.shortcut_listener.stop()
         self.companion.close()
 
@@ -642,7 +676,8 @@ class BrainManager(QObject):
         """)
 
         # 1. Talk Action
-        act_talk = menu.addAction("🎤 Talk to Brain", self.start_talking)
+        talk_label = "Finish speaking" if self.listener.is_recording else "🎤 Talk to Brain"
+        act_talk = menu.addAction(talk_label, self.toggle_talking)
         act_talk.setEnabled(True)
         menu.addAction("Read Desktop", lambda: self.start_reading("desktop"))
         menu.addAction("Read Active Window", lambda: self.start_reading("window"))
@@ -768,7 +803,7 @@ class BrainManager(QObject):
             "character": {
                 "version": self.companion.model_view.version if self.companion.model_view else "",
                 "asset_hash": self.companion.model_view.asset_hash if self.companion.model_view else "",
-                "renderer": "3d" if self.companion.model_view and self.companion.model_view.ready else "artwork",
+                "renderer": "3d" if self.companion.model_view and self.companion.model_view.ready else "loading" if not self.companion.model_view or not self.companion.model_view.error else "unavailable",
                 "error": self.companion.model_view.error if self.companion.model_view else "",
             },
             "active_profile": self.profile_mgr.get_active_profile(),

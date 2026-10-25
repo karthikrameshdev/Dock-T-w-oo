@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication, QPushButton
 
-from dock_twoo.brain.animation import ACTIONS, PLAYLIST, Pose, pose_at, travel_point
+from dock_twoo.brain.animation import ACTIONS, PLAYLIST, travel_point
 from dock_twoo.brain.audio import SpeechClip, whistle_clip
 from dock_twoo.brain.manager import BrainManager
 from dock_twoo.brain.mascot import Companion
@@ -26,7 +26,7 @@ def qapp():
 
 
 def test_animation_poses_and_interpolation():
-    """Verify procedural poses, pose_at interpolation, and travel curves."""
+    """Verify the action registry and travel curves."""
     assert "wave" in ACTIONS
     assert "nod" in ACTIONS
     assert "jump" in ACTIONS
@@ -42,31 +42,6 @@ def test_animation_poses_and_interpolation():
     # Stool sitting must not exist
     assert "sit" not in ACTIONS
     assert len(PLAYLIST) >= 20
-
-    # New robotic actions return valid Pose
-    pose_climb = pose_at("climb_dock", 0.5)
-    assert isinstance(pose_climb, Pose)
-
-    pose_scan = pose_at("inspect_window", 0.5)
-    assert isinstance(pose_scan, Pose)
-    assert pose_scan.scan_beam > 0
-
-    pose_text = pose_at("replace_text", 0.5)
-    assert isinstance(pose_text, Pose)
-    assert pose_text.text_sparkle > 0
-
-    pose_wave = pose_at("wave", 0.5)
-    assert isinstance(pose_wave, Pose)
-    assert isinstance(pose_wave.right_arm, (int, float))
-    assert 0.0 <= pose_wave.squash <= 2.0
-
-    pose_turn = pose_at("turn_around", 0.4)
-    assert isinstance(pose_turn, Pose)
-    assert pose_turn.surprise == 0
-    assert pose_turn.squash == 1
-
-    pose_nod = pose_at("nod", 0.2)
-    assert isinstance(pose_nod, Pose)
 
     # Travel curve smoothing
     start = (100, 100)
@@ -230,7 +205,7 @@ def test_brain_manager_lifecycle(qtbot, qapp, tmp_path):
 
 
 def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeypatch):
-    """Verify clicking Brain on the dock toggles mini agent (no chat drawer) and right-click opens menu."""
+    """Verify Brain clicks start/finish capture without opening a drawer."""
     config_file = tmp_path / "config.json"
     mgr = ConfigManager(config_path=config_file)
     mgr.config.auto_hide = False
@@ -256,9 +231,10 @@ def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeyp
     # The Mini Agent robot companion MUST open!
     assert brain_mgr.is_mini_agent_visible() is True
 
-    # 2. Left-click Brain icon again -> Mini Agent disappears (on/off toggle)
+    # 2. Second click finishes capture and leaves Brain visible.
     qtbot.mouseClick(brain_btn, Qt.MouseButton.LeftButton)
-    assert brain_mgr.is_mini_agent_visible() is False
+    assert brain_mgr.is_mini_agent_visible() is True
+    assert not brain_mgr.listener.is_recording
 
     # 3. Left-click again -> Mini Agent appears again
     qtbot.mouseClick(brain_btn, Qt.MouseButton.LeftButton)
@@ -545,25 +521,15 @@ def test_profile_walking_and_window_surface(tmp_path):
 
 
 def test_interactive_energy_ball(tmp_path):
-    """Verify DesktopBall creation, physics kick, and companion play."""
+    """Ball and foot share the Blender clock; no detached physics widget."""
     mgr = BrainManager.get_instance()
     mgr.store = BrainStore(data_dir=tmp_path)
     companion = mgr.companion
-
     companion.play_ball()
-    assert companion.desktop_ball is not None
-    assert companion.desktop_ball.active is True
-
-    # Test kick physics
-    initial_vx = companion.desktop_ball.vel_x
-    companion.desktop_ball.kick(450.0, -350.0)
-    assert companion.desktop_ball.vel_x == 450.0
-    assert companion.desktop_ball.vel_y == -350.0
-
-    ball = companion.desktop_ball
+    assert companion.action == 'kick_ball'
+    assert companion.motion_duration == 4.0
     companion.stop_ball()
-    assert ball.active is False
-    assert companion.desktop_ball is None
+    assert companion.action in (None, 'turn_around')
 
 
 def test_dynamic_wake_greeting(tmp_path):
@@ -626,8 +592,7 @@ def test_props_voice_commands_lifecycle(tmp_path):
     rep_hammer = handle_voice_command("Brain, play with hammer", mgr)
     assert rep_hammer is not None
     assert "hammer" in rep_hammer.lower()
-    assert companion.active_prop is not None
-    assert companion.active_prop.prop_type == "hammer"
+    assert companion.action == "hammer"
 
     # 2. Keep the ball/prop inside
     rep_stow = handle_voice_command("keep the ball inside", mgr)
@@ -638,7 +603,7 @@ def test_props_voice_commands_lifecycle(tmp_path):
     rep_parachute = handle_voice_command("Brain, deploy parachute", mgr)
     assert rep_parachute is not None
     assert "parachute" in rep_parachute.lower()
-    assert companion.active_prop.prop_type == "parachute"
+    assert companion.action == "parachute"
 
     # 4. Stop playing
     rep_stop = handle_voice_command("stop playing", mgr)
@@ -648,7 +613,7 @@ def test_props_voice_commands_lifecycle(tmp_path):
     rep_balloon = handle_voice_command("play with balloon", mgr)
     assert rep_balloon is not None
     assert "balloon" in rep_balloon.lower()
-    assert companion.active_prop.prop_type == "balloon"
+    assert companion.action == "balloon"
 
 
 def test_carry_prop_and_window_push(tmp_path):
