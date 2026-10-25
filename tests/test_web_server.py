@@ -318,3 +318,93 @@ def test_tasks_api_search_status_ranges_and_full_counts(test_server):
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(f'http://127.0.0.1:{port}/api/tasks?'+query,timeout=3)
         assert error.value.code==400
+
+
+def test_cloud_profile_crud_switch_and_foreign_origin_protection(test_server,tmp_path,monkeypatch):
+    from dock_twoo.brain.profiles import ProfileManager
+    from dock_twoo.brain.storage import BrainStore
+    from dock_twoo.server import web_server as module
+    _,port,_=test_server;manager=ProfileManager(BrainStore(tmp_path/'profiles'))
+    monkeypatch.setattr(module,'_get_safe_profile_mgr',lambda:manager)
+    root=f'http://127.0.0.1:{port}'
+    def request(path,body=None,origin=None):
+        headers={'X-Brain-Request':'local','Content-Type':'application/json'}
+        if origin:headers['Origin']=origin
+        req=urllib.request.Request(root+path,data=json.dumps(body).encode() if body is not None else None,headers=headers)
+        with urllib.request.urlopen(req,timeout=3) as response:return json.load(response)
+    first=request('/api/brain/model',{'name':'Everyday','provider':'custom','model':'same','base_url':'https://models.example/v1','api_key':'first-secret'})['model']
+    second=request('/api/brain/profiles',{'name':'Research','provider':'custom','model':'same','base_url':'https://models.example/v1','api_key':'second-secret'})['profile']
+    data=request('/api/brain/profiles')
+    assert len(data['profiles'])==2 and data['active']['id']==first['id']
+    assert 'secret' not in json.dumps(data)
+    request('/api/brain/activate-profile',{'profile_id':second['id']})
+    assert request('/api/brain/model')['model']['id']==second['id']
+    assert manager.get_key('custom')=='second-secret'
+    for path,body in (('/api/brain/profiles',{}),('/api/brain/activate-profile',{'profile_id':first['id']}),('/api/brain/profile/delete',{'profile_id':second['id']})):
+        with pytest.raises(urllib.error.HTTPError) as error:request(path,body,'https://example.com')
+        assert error.value.code==403
+    request('/api/brain/profile/delete',{'profile_id':second['id']})
+    assert request('/api/brain/model')['model']['id']==first['id']
+    with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/activate-profile',{'profile_id':'unknown'})
+    assert error.value.code==400
+
+
+def test_usage_api_filters_profiles_and_keeps_deleted_history(test_server,tmp_path,monkeypatch):
+    from dock_twoo.brain.activity import ActivityStore
+    from dock_twoo.brain.profiles import ProfileManager
+    from dock_twoo.brain.storage import BrainStore
+    from dock_twoo.server import web_server as module
+    _,port,settings=test_server;manager=ProfileManager(BrainStore(tmp_path/'profiles'))
+    monkeypatch.setattr(module,'_get_safe_profile_mgr',lambda:manager)
+    profile=manager.save_profile({'name':'Everyday','provider':'custom','model':'same','base_url':'https://models.example/v1'})
+    tracker=ActivityStore(settings.config.get_brain_dir()/'activity')
+    for config,count in ((profile,10),({**profile,'id':'other','name':'Other profile'},30)):
+        run=tracker.start('Synthetic');call=tracker.begin_call(run,config,{})
+        tracker.end_call(call,{'usage':{'prompt_tokens':count,'completion_tokens':2,'total_tokens':count+2}},'openai');tracker.finish(run,'complete')
+    def get(query=''):
+        request=urllib.request.Request(f'http://127.0.0.1:{port}/api/usage'+query,headers={'X-Brain-Request':'local'})
+        with urllib.request.urlopen(request,timeout=3) as response:return json.load(response)
+    assert get()['summary']['total_tokens']==44
+    assert get('?profile='+profile['id'])['summary']['total_tokens']==12
+    manager.delete_profile(profile['id'])
+    data=get('?profile='+profile['id']);assert data['summary']['total_tokens']==12
+    assert next(p for p in data['profile_options'] if p['id']==profile['id'])['historical']
+
+
+def test_displays_api_and_selected_subset_are_local_and_persistent(test_server):
+    _,port,config=test_server
+    config.display_snapshot={'mode':'single','display_ids':['first'],'fallback':False,'displays':[
+        {'id':str(i),'number':i,'name':f'Screen {i}','geometry':[i*1200,0,1200,800],'primary':i==1,'selected':i==1}
+        for i in range(1,5)]}
+    url=f'http://127.0.0.1:{port}'
+    with pytest.raises(urllib.error.HTTPError):urllib.request.urlopen(url+'/api/displays',timeout=3)
+    with urllib.request.urlopen(urllib.request.Request(url+'/api/displays',headers={'X-Brain-Request':'local'}),timeout=3) as response:
+        assert len(json.load(response)['displays'])==4
+    for payload,valid in [({'display_mode':'selected','display_ids':['1','4']},True),
+                          ({'display_mode':'selected','display_ids':[]},False),
+                          ({'display_mode':'single','display_ids':['1','4']},False)]:
+        request=urllib.request.Request(url+'/api/config',data=json.dumps(payload).encode(),headers={'X-Brain-Request':'local'})
+        if valid:
+            with urllib.request.urlopen(request,timeout=3) as response:assert json.load(response)['success']
+        else:
+            with pytest.raises(urllib.error.HTTPError):urllib.request.urlopen(request,timeout=3)
+    assert config.config.display_ids==['1','4']
+    request=urllib.request.Request(url+'/api/config',data=b'{"display_mode":"all"}',headers={'X-Brain-Request':'local','Origin':'https://foreign.example'})
+    with pytest.raises(urllib.error.HTTPError) as error:urllib.request.urlopen(request,timeout=3)
+    assert error.value.code==403 and config.config.display_mode=='selected'
+
+
+def test_request_validates_target_display_before_dispatch(test_server,monkeypatch):
+    from types import SimpleNamespace
+    from dock_twoo.brain.manager import BrainManager
+    _,port,config=test_server;calls=[]
+    config.display_snapshot={'displays':[{'id':'screen-1','selected':True},{'id':'screen-2','selected':False}]}
+    monkeypatch.setattr(BrainManager,'_instance',SimpleNamespace(submit_request=lambda *args:calls.append(args)))
+    url=f'http://127.0.0.1:{port}/api/brain/request'
+    for screen,valid in [('screen-1',True),('screen-2',False),('absent',False),(3,False)]:
+        request=urllib.request.Request(url,data=json.dumps({'text':'test turn','screen_id':screen}).encode(),headers={'X-Brain-Request':'local'})
+        if valid:
+            with urllib.request.urlopen(request,timeout=3) as response:assert response.status==202
+        else:
+            with pytest.raises(urllib.error.HTTPError):urllib.request.urlopen(request,timeout=3)
+    assert calls==[('test turn','console','screen-1')]

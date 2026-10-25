@@ -187,8 +187,8 @@ prompt. Whisper small.en INT8 transcribes commands locally on CPU. The wake asse
 are about 6 MB; command recognition adds about 380 MB. First launch downloads these
 in background workers and Brain settings reports when each stage is ready.
 
-Brain uses **one external cloud model** for reasoning and iterative tool calls.
-Open **Brain → Cloud Model** in the local settings console and enter the provider,
+Brain uses **one cloud profile per request** for reasoning and iterative tool calls.
+Save any number of named profiles under **Brain → Cloud Profiles**, each with its own provider,
 HTTPS base URL, exact model ID and API key. OpenAI-compatible APIs (including
 Gemini and OpenRouter) and Anthropic Messages are supported. Choose a model that
 supports tool calling. Until configured, Brain says **“Model is not configured.”**
@@ -350,3 +350,33 @@ sudo apt-get install libpulse0 libasound2-dev
 ```
 
 Windows and macOS use Qt's native audio backend from the installed PySide6 wheels.
+
+### Displays and multiple Brains
+
+Use **Placement & Sizing → Show Dock on** to choose one display, all displays, or
+specific screens such as 1 and 4. Hardware identities retain the selection when
+screens are rearranged. Disconnected selections are remembered; if none are
+connected, Dock temporarily appears on the primary screen. All-screens mode also
+includes newly attached monitors. Mirrored displays follow the logical screens
+reported by the operating system.
+
+Right-click the dock's Brain icon for **Add another Brain**, **Brains on this
+screen**, **Roam across all screens**, and **Play together**. Extra characters work
+on a single screen too. They roam and animate independently, avoid one another,
+and scale to fit a crowded display. Only one Brain owns the microphone; clicking
+another finishes the current capture before handing over listening. The yellow
+body glow marks that owner. A wake word selects the visible Brain nearest the
+pointer, without making every character listen or speak.
+
+All characters share one FIFO agent and speech lane. A second request waits until
+the current request and spoken answer finish. Each turn retains its original cloud
+profile and credential even if the active profile changes while it is queued.
+**Stop** cancels current work and removes pending requests. Every request still has
+the same progress, call, token and time limits. Local playground animation creates
+no cloud calls. Profiles have isolated saved credentials; overall and per-profile
+usage dashboards retain counts even after a profile is deleted.
+
+Head lights: **green** online/idle, **yellow** listening, **purple** processing,
+**cyan** responding, **orange** queued, **red** offline. Head effects respect reduced
+motion. Multi-screen behavior uses Qt on macOS, Windows and Linux; native window
+reading/automation availability still depends on the platform integration.

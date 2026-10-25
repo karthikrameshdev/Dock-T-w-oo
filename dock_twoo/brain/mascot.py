@@ -35,7 +35,8 @@ LABELS = {
     "listening": "Listening",
     "thinking": "Thinking",
     "processing": "Processing",
-    "speaking": "Speaking",
+    "speaking": "Responding",
+    "queued": "Request queued",
     "offline": "Offline",
     "error": "Needs attention",
 }
@@ -169,6 +170,8 @@ class Companion(QWidget):
         super().__init__(parent)
         self.manager = manager
         self.store = manager.store
+        self.screen_id = "default"
+        self.assigned_screen = None
 
         self.setWindowFlags(
             Qt.WindowType.Tool
@@ -274,6 +277,31 @@ class Companion(QWidget):
         # Restore saved desktop placement
         self._restore_placement()
 
+    def assign_display(self, screen_id, screen):
+        changed = self.screen_id != screen_id or self.assigned_screen != screen
+        self.screen_id, self.assigned_screen = screen_id, screen
+        if changed:
+            self.stop_motion()
+            self._restore_placement()
+        else:
+            self.move(self._safe_position(self.pos()))
+
+    def set_character_scale(self, scale):
+        width, height = max(1, int(264 * scale)), max(1, int(268 * scale))
+        if self.width() == width and self.height() == height:
+            return
+        self.resize(width, height)
+        self.setMask(QRegion(self.rect()))
+        if self.model_view:
+            self.model_view.setGeometry(self.rect())
+        self.renderer_status.setGeometry(self.rect())
+
+    def dispose(self):
+        for timer in self.findChildren(QTimer):
+            timer.stop()
+        self.close()
+        self.deleteLater()
+
     def set_renderer_status(self, message: str, *, error=False) -> None:
         self.renderer_status.setText(message)
         self.renderer_status.setVisible(bool(message))
@@ -296,9 +324,11 @@ class Companion(QWidget):
         self.reading_guide.hide()
 
     def _restore_placement(self) -> None:
-        screen = QApplication.primaryScreen()
+        screen = self.assigned_screen or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRectF(0, 0, 1920, 1080)
-        pos = self.store.setting("companion_position")
+        pos = self.store.setting("companion_positions", {}).get(getattr(self, 'actor_id', self.screen_id))
+        if pos is None and self.screen_id == "default":
+            pos = self.store.setting("companion_position")
         if (
             isinstance(pos, (list, tuple))
             and len(pos) == 2
@@ -340,6 +370,8 @@ class Companion(QWidget):
         self.activity = state
         if state != prev:
             self.processing_started = time.monotonic()
+            if state in ('listening', 'thinking', 'processing') and prev in ('idle', 'queued'):
+                self.stop_motion()
 
         if state in ("listening", "thinking", "processing", "speaking") and self.action in ("kick_ball", "hammer", "balloon", "parachute"):
             self.stop_motion()
@@ -448,7 +480,7 @@ class Companion(QWidget):
         if destination is not None:
             destination = self._safe_position(destination)
         self.destination = destination
-        if destination is not None:
+        if destination is not None and not keep_orientation:
             if destination.x() > self.x() + 8:
                 self.facing = 1.0
             elif destination.x() < self.x() - 8:
@@ -456,7 +488,7 @@ class Companion(QWidget):
 
         if keep_orientation:
             self.turn_target = previous_turn_target
-        elif action in ("walk", "run", "walk_window", "chase_ball"):
+        elif action in ("walk", "run", "dash", "walk_window", "chase_ball"):
             self.turn_target = 1.0
         elif action in ("climb", "climb_dock"):
             self.turn_target = 0.6
@@ -471,9 +503,9 @@ class Companion(QWidget):
         self.motion_started = time.monotonic()
         self._last_turn_update = self.motion_started
         self.motion_duration = duration or ACTIONS[action][1]
-        if destination is not None and action in ("walk", "run", "walk_window", "chase_ball"):
+        if destination is not None and action in ("walk", "run", "dash", "walk_window", "chase_ball"):
             distance = math.hypot(destination.x() - self.x(), destination.y() - self.y())
-            self.motion_duration = max(self.motion_duration, distance / (230 if action in ("run", "chase_ball") else 160))
+            self.motion_duration = max(self.motion_duration, distance / (230 if action in ("run", "dash", "chase_ball") else 160))
         self.gait_distance = self.gait_blend = 0.0
         self.motion_timer.start()
         self.update()
@@ -557,12 +589,25 @@ class Companion(QWidget):
         self.update()
 
     def _safe_position(self, position: QPoint) -> QPoint:
-        screen = QApplication.screenAt(position + QPoint(self.width() // 2, self.height() // 2)) or self.screen() or QApplication.primaryScreen()
+        screen = self.assigned_screen
+        if self.store.setting('brain_roam_all_screens', False):
+            candidate = QApplication.screenAt(position + QPoint(self.width() // 2, self.height() // 2))
+            entries = getattr(self.manager, '_all_display_entries', {})
+            entry = next((e for e in entries.values() if e['screen'] == candidate), None)
+            if entry:
+                screen = self.assigned_screen = candidate
+                self.screen_id = entry['id']
+        screen = screen or QApplication.screenAt(position + QPoint(self.width() // 2, self.height() // 2)) or self.screen() or QApplication.primaryScreen()
         if screen is None:
             return position
         area = screen.availableGeometry()
-        return QPoint(max(area.left(), min(position.x(), area.right() - self.width() + 1)),
-                      max(area.top(), min(position.y(), area.bottom() - self.height() + 1)))
+        if self.store.setting('brain_roam_all_screens', False):
+            for entry in getattr(self.manager, '_all_display_entries', {}).values():
+                area = area.united(entry['screen'].availableGeometry())
+        point = QPoint(max(area.left(), min(position.x(), area.right() - self.width() + 1)),
+                       max(area.top(), min(position.y(), area.bottom() - self.height() + 1)))
+        playground = getattr(self.manager, 'playground', None)
+        return playground.constrain_step(self, point) if playground and self.isVisible() else point
 
     def _update_gaze(self, now: float, cursor: QPoint) -> None:
         if (cursor - self._cursor_seen).manhattanLength() > 5:
@@ -622,6 +667,10 @@ class Companion(QWidget):
         if self.action and not self._following_motion:
             return
         cursor = cursor if cursor is not None else QCursor.pos()
+        if self.assigned_screen and not self.store.setting('brain_roam_all_screens', False) and not self.assigned_screen.geometry().contains(cursor):
+            if self._following_motion:
+                self.stop_motion()
+            return
         target = self._safe_position(cursor - QPoint(self.width() // 2, 224))
         if not self._following_motion:
             self._follow_position = QPointF(self.pos())
@@ -666,6 +715,8 @@ class Companion(QWidget):
             self.blink_timer.start(random.randint(2800, 5600))
 
     def _roam(self) -> None:
+        if time.monotonic() < getattr(self, 'social_until', 0):
+            return
         if self.follow_cursor_enabled:
             return
         if not self.store.setting("roaming", True):
@@ -687,7 +738,7 @@ class Companion(QWidget):
             self.call_out_idle_user()
             return
 
-        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        screen = self.assigned_screen or QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry()
 
         choice = random.random()
@@ -739,18 +790,13 @@ class Companion(QWidget):
 
     def call_out_idle_user(self) -> None:
         """Call out playfully to user if idle for an extended period (> 15 minutes)."""
-        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        screen = self.assigned_screen or QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
         target = QPoint(int(area.center().x()) - self.width() // 2, int(area.center().y()) - self.height() // 2)
 
         def on_arrive():
             self.play_action("wave", duration=2.0)
-            idle_phrases = [
-                "Hey, where are you? You have not been here for a long time. Can we connect, or do you need anything done?",
-                "Hey Karthik, I haven't seen you around for a while! Let me know if you need anything.",
-                "Hey! Just checking in since you've been away. Ready whenever you are!",
-            ]
-            self.manager.speech.start(random.choice(idle_phrases))
+
 
         self.play_action("walk", destination=target, duration=2.0)
         self.arrival = on_arrive
@@ -863,7 +909,7 @@ class Companion(QWidget):
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.travel_to_corner(corner, style=style))
             return
-        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        screen = self.assigned_screen or QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRectF(0, 0, 1920, 1080)
         
         c = corner.lower().replace("-", "_").replace(" ", "_")
@@ -916,7 +962,7 @@ class Companion(QWidget):
         start_y = surface.surface_y - feet_offset
         start_x = surface.left_x + 15
 
-        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        screen = self.assigned_screen or QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
         start_x = max(int(area.left()) + 10, min(start_x, int(area.right()) - self.width() - 10))
         start_y = max(int(area.top()) + 10, min(start_y, int(area.bottom()) - self.height() - 10))
@@ -984,7 +1030,7 @@ class Companion(QWidget):
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.carry_prop_to(corner, prop_type=prop_type))
             return
-        screen = QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
+        screen = self.assigned_screen or QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry() if screen else QRect(0, 0, 1920, 1080)
         c = corner.lower().replace("-", "_").replace(" ", "_")
         margin = 60
@@ -1029,6 +1075,8 @@ class Companion(QWidget):
         self.set_activity('idle')
 
     def _idle_gesture(self) -> None:
+        if time.monotonic() < getattr(self, 'social_until', 0):
+            return
         if (
             self.reduced_motion
             or not self.isVisible()
@@ -1066,15 +1114,17 @@ class Companion(QWidget):
             curr_pos = event.globalPosition().toPoint()
             if (curr_pos - self.press_point).manhattanLength() >= QApplication.startDragDistance():
                 self.moved = True
-            self.move(curr_pos - self.origin)
+            self.move(self._safe_position(curr_pos - self.origin))
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             if not self.moved and self.press_point:
-                self.manager.toggle_talking()
+                self.manager.toggle_talking(getattr(self, 'actor_id', self.screen_id))
             elif self.moved:
                 # Save new desktop placement
-                self.store.set_setting("companion_position", [self.pos().x(), self.pos().y()])
+                positions = dict(self.store.setting("companion_positions", {}))
+                positions[getattr(self, 'actor_id', self.screen_id)] = [self.pos().x(), self.pos().y()]
+                self.store.set_setting("companion_positions", positions)
                 self.home = self.pos()
             self.origin = None
             self.press_point = None

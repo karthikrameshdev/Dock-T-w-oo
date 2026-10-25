@@ -3,6 +3,8 @@ import * as THREE from './vendor/three.module.js';
 export function indicatorState({online=null,activity='idle'}) {
   if(activity==='error' || activity==='offline' || online===false)return {name:'offline',color:0xef4444,effect:'pulse'};
   if(activity==='listening')return {name:'listening',color:0xfacc15,effect:'waves'};
+  if(activity==='speaking' || activity==='responding')return {name:'responding',color:0x22d3ee,effect:'voice'};
+  if(activity==='queued')return {name:'queued',color:0xfb923c,effect:'queue'};
   if(activity==='thinking' || activity==='processing')return {name:'thinking',color:0xa855f7,effect:'spin'};
   if(online===null)return {name:'unknown',color:0x94a3b8,effect:'steady'};
   return {name:'online',color:0x22c55e,effect:'glow'};
@@ -41,10 +43,16 @@ export class HeadIndicator {
     this.halo.scale.setScalar(.7+.08*pulse);
     this.rings.forEach((ring,index)=>{
       ring.material.color.setHex(status.color);
-      ring.visible=!reduced && ['waves','spin'].includes(status.effect);
+      ring.visible=!reduced && ['waves','spin','voice','queue'].includes(status.effect);
       if(status.effect==='waves') {
         const phase=(time*.8+index/3)%1;
         ring.scale.setScalar(1+phase*1.4);ring.material.opacity=(1-phase)*.65;ring.rotation.set(0,0,0);
+      } else if(status.effect==='voice') {
+        ring.scale.setScalar(1+index*.2+.2*Math.sin(time*6+index));ring.material.opacity=.35+.2*Math.sin(time*6+index)**2;
+        ring.rotation.set(Math.PI/2,0,time*.5);
+      } else if(status.effect==='queue') {
+        ring.scale.setScalar(1+index*.18);ring.material.opacity=.2+.45*((Math.sin(time*2-index*1.5)+1)/2);
+        ring.rotation.set(0,0,0);
       } else {
         ring.scale.setScalar(1+index*.2);ring.material.opacity=.5;
         ring.rotation.set(time*(1+index*.3),index*Math.PI/3+time*.8,0);

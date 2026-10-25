@@ -15,11 +15,15 @@
     "character/runtime-preview/read.png",
     "character/runtime-preview/scan_code.png",
     "character/runtime-preview/fly.png",
+    "character/runtime-preview/library_air_spin.png",
     "character/runtime-preview/library_balloon.png",
     "character/runtime-preview/library_celebrate.png",
     "character/runtime-preview/library_chase_ball.png",
+    "character/runtime-preview/library_cheer_partner.png",
     "character/runtime-preview/library_climb_dock.png",
     "character/runtime-preview/library_dance.png",
+    "character/runtime-preview/library_dance_together.png",
+    "character/runtime-preview/library_dash.png",
     "character/runtime-preview/library_drag.png",
     "character/runtime-preview/library_explore.png",
     "character/runtime-preview/library_fold_arms.png",
@@ -36,6 +40,7 @@
     "character/runtime-preview/library_nod.png",
     "character/runtime-preview/library_parachute.png",
     "character/runtime-preview/library_peek.png",
+    "character/runtime-preview/library_playful_spar.png",
     "character/runtime-preview/library_point.png",
     "character/runtime-preview/library_ponder.png",
     "character/runtime-preview/library_push.png",
@@ -59,21 +64,23 @@
     "character/runtime-preview/offline.png",
     "character/runtime-preview/listening.png",
     "character/runtime-preview/thinking.png",
+    "character/runtime-preview/responding.png",
+    "character/runtime-preview/queued.png",
     "character/runtime-preview/reduced_motion.png"
   ],
   "errors": [],
   "animation_probes": [
     {
       "action": "walk",
-      "hand_displacement": 0.577
+      "hand_displacement": 0.5333
     },
     {
       "action": "handshake",
-      "hand_displacement": 0.1069
+      "hand_displacement": 0.0163
     },
     {
       "action": "wave",
-      "hand_displacement": 0.0151
+      "hand_displacement": 0.0138
     },
     {
       "action": "climb",
@@ -81,191 +88,216 @@
     },
     {
       "action": "pull_scroll",
-      "hand_displacement": 0.026
+      "hand_displacement": 0.028
+    },
+    {
+      "action": "air_spin",
+      "pose_change": 1.6869
     },
     {
       "action": "balloon",
-      "pose_change": 0.1982
+      "pose_change": 0.1947
     },
     {
       "action": "celebrate",
-      "pose_change": 0.3574
+      "pose_change": 0.3069
     },
     {
       "action": "chase_ball",
-      "pose_change": 2.8796
+      "pose_change": 2.8534
+    },
+    {
+      "action": "cheer_partner",
+      "pose_change": 0.223
     },
     {
       "action": "climb_dock",
-      "pose_change": 0.7675
+      "pose_change": 0.7007
     },
     {
       "action": "dance",
-      "pose_change": 0.3609
+      "pose_change": 0.3339
+    },
+    {
+      "action": "dance_together",
+      "pose_change": 0.1819
+    },
+    {
+      "action": "dash",
+      "pose_change": 2.0058
     },
     {
       "action": "drag",
-      "pose_change": 0.0572
+      "pose_change": 0.046
     },
     {
       "action": "explore",
-      "pose_change": 2.8442
+      "pose_change": 3.4874
     },
     {
       "action": "fold_arms",
-      "pose_change": 0.6583
+      "pose_change": 0.7046
     },
     {
       "action": "greet",
-      "pose_change": 0.1163
+      "pose_change": 0.0849
     },
     {
       "action": "hammer",
-      "pose_change": 1.9998
+      "pose_change": 0.0659
     },
     {
       "action": "happy",
-      "pose_change": 0.1796
+      "pose_change": 0.1819
     },
     {
       "action": "hover",
-      "pose_change": 0.6036
+      "pose_change": 0.1099
     },
     {
       "action": "inspect_icon",
-      "pose_change": 0.0758
+      "pose_change": 0.0735
     },
     {
       "action": "inspect_window",
-      "pose_change": 0.2152
+      "pose_change": 0.2211
     },
     {
       "action": "jump",
-      "pose_change": 0.3853
+      "pose_change": 0.3774
     },
     {
       "action": "kick_ball",
-      "pose_change": 1.5145
+      "pose_change": 1.4784
     },
     {
       "action": "land",
-      "pose_change": 0.2493
+      "pose_change": 0.3168
     },
     {
       "action": "listen",
-      "pose_change": 0.1799
+      "pose_change": 0.1821
     },
     {
       "action": "nod",
-      "pose_change": 0.131
+      "pose_change": 0.1087
     },
     {
       "action": "parachute",
-      "pose_change": 0.3753
+      "pose_change": 0.2988
     },
     {
       "action": "peek",
-      "pose_change": 0.2148
+      "pose_change": 0.2177
+    },
+    {
+      "action": "playful_spar",
+      "pose_change": 0.6938
     },
     {
       "action": "point",
-      "pose_change": 0.7094
+      "pose_change": 0.6789
     },
     {
       "action": "ponder",
-      "pose_change": 0.2159
+      "pose_change": 0.2186
     },
     {
       "action": "push",
-      "pose_change": 0.0586
+      "pose_change": 0.0463
     },
     {
       "action": "replace_text",
-      "pose_change": 0.3216
+      "pose_change": 0.3072
     },
     {
       "action": "roll",
-      "pose_change": 0.9761
+      "pose_change": 1.2176
     },
     {
       "action": "run",
-      "pose_change": 2.1704
+      "pose_change": 0.7972
     },
     {
       "action": "sad",
-      "pose_change": 0.1814
+      "pose_change": 0.1819
     },
     {
       "action": "scan_screen",
-      "pose_change": 0.2162
+      "pose_change": 0.2538
     },
     {
       "action": "search",
-      "pose_change": 0.0764
+      "pose_change": 0.0735
     },
     {
       "action": "sensor_scan",
-      "pose_change": 0.2471
+      "pose_change": 0.1955
     },
     {
       "action": "sleep",
-      "pose_change": 0.6248
+      "pose_change": 0.5976
     },
     {
       "action": "stretch",
-      "pose_change": 0.3558
+      "pose_change": 0.3102
     },
     {
       "action": "surprised",
-      "pose_change": 0.3463
+      "pose_change": 0.3472
     },
     {
       "action": "talk",
-      "pose_change": 0.6333
+      "pose_change": 0.1799
     },
     {
       "action": "turn_around",
-      "pose_change": 0.1048
+      "pose_change": 0.1001
     },
     {
       "action": "type",
-      "pose_change": 0.0934
+      "pose_change": 0.1035
     },
     {
       "action": "walk_window",
-      "pose_change": 2.8836
+      "pose_change": 2.1583
     },
     {
       "action": "whistle",
-      "pose_change": 0.108
+      "pose_change": 0.1047
     },
     {
       "action": "wink",
-      "pose_change": 0.4548
+      "pose_change": 0.4373
     }
   ],
   "eye_pixels": {
-    "front": 348,
-    "blink_closed": 10,
-    "eyes_reopened": 342
+    "front": 343,
+    "blink_closed": 0,
+    "eyes_reopened": 349
   },
   "runtime": {
-    "version": "3.1.0",
-    "assetHash": "d16eb2986b36d44dfa9444e8a79cf9ecf9ba86222564bee91c51912ed5625386",
+    "version": "3.2.0",
+    "assetHash": "c1d14c014ab820c44421c6d0508bef21ee1e1144802c6ec51bddcfe6648b3753",
     "clips": [
+      "air_spin",
       "balloon",
       "camera",
       "celebrate",
       "chase_ball",
+      "cheer_partner",
       "climb",
       "climb_dock",
       "dance",
+      "dance_together",
+      "dash",
       "drag",
       "explore",
       "fly",
       "fold_arms",
       "greet",
       "hammer",
+      "handshake",
       "happy",
       "hover",
       "idle",
@@ -279,6 +311,7 @@
       "nod",
       "parachute",
       "peek",
+      "playful_spar",
       "point",
       "ponder",
       "pull_scroll",
@@ -302,8 +335,7 @@
       "walk_window",
       "wave",
       "whistle",
-      "wink",
-      "handshake"
+      "wink"
     ],
     "bones": [
       "root",
@@ -366,7 +398,7 @@
       "thumb_tipR"
     ],
     "meshes": 252,
-    "renderedFrames": 3057,
+    "renderedFrames": 3296,
     "nonFinite": false,
     "translucent": false,
     "indicator": {
@@ -374,6 +406,7 @@
       "color": 2278750,
       "effect": "glow"
     },
+    "listeningAura": false,
     "eyeScales": [
       1,
       1
@@ -385,32 +418,32 @@
     "triangles": 134412,
     "drawCalls": 250,
     "propScales": {
-      "propmagnifier": 0.0009999973699450493,
-      "propcamera": 0.0009999973699450493,
-      "proptablet": 0.0009999973699450493,
-      "propscan": 0.0010000000474974513,
-      "jetL": 0.0010000000474974513,
-      "jetR": 0.0010000000474974513,
-      "propball": 0.0010000000474974513,
-      "prophammer": 0.0009999977191910148,
-      "propanvil": 0.0010000000474974513,
-      "proptether": 0.0009999977191910148,
-      "propballoon": 0.0010000000474974513,
-      "propparachute": 0.0010000000474974513
+      "propmagnifier": 0.0010000040589325991,
+      "propcamera": 0.0010000040589325991,
+      "proptablet": 0.0010000040589325991,
+      "propscan": 0.0010000067365017453,
+      "jetL": 0.0010000067365017453,
+      "jetR": 0.0010000067365017453,
+      "propball": 0.0010000067365017453,
+      "prophammer": 0.0010000044081793606,
+      "propanvil": 0.0010000067365017453,
+      "proptether": 0.0010000044081793606,
+      "propballoon": 0.0010000067365017453,
+      "propparachute": 0.0010000067365017453
     },
     "handPositions": [
       [
-        1.1200005262547796,
-        1.7609480201016456,
-        0.6045061145630514
+        1.1200005118400187,
+        1.507358949452653,
+        0.025000141880068785
       ],
       [
-        -1.12000051183955,
-        1.4899999339548984,
-        0.025000141880035538
+        -1.1200005118400187,
+        1.507358949452653,
+        0.025000141880068785
       ]
     ]
   },
-  "average_render_fps": 59.9,
+  "average_render_fps": 57.9,
   "success": true
 }

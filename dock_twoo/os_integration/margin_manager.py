@@ -281,6 +281,10 @@ class DesktopMarginManager(QObject):
         edge: str,
     ) -> None:
         """Run a lightweight AppleScript to check, clamp, or restore the frontmost window."""
+        with self._lock:
+            screen = QRect(self._screen_rect) if self._screen_rect is not None else None
+        if screen is None:
+            return
         script = f'''
         tell application "System Events"
             set frontApp to first application process whose frontmost is true
@@ -291,9 +295,13 @@ class DesktopMarginManager(QObject):
                         set w to window 1
                         set {{wx, wy}} to position of w
                         set {{ww, wh}} to size of w
+                        -- Each dock owns only the display containing the window's center.
+                        set cx to wx + ww / 2
+                        set cy to wy + wh / 2
+                        if cx < {screen.left()} or cx > {screen.right()} or cy < {screen.top()} or cy > {screen.bottom()} then return "none"
                         
                         -- Clamping on right edge
-                        if {max_right} > 0 and (wx + ww) > {max_right} then
+                        if "{edge}" is "right" and (wx + ww) > {max_right} then
                             set newW to ({max_right} - wx)
                             if newW >= 300 then
                                 set size of w to {{newW, wh}}
@@ -302,7 +310,7 @@ class DesktopMarginManager(QObject):
                         end if
                         
                         -- Clamping on left edge
-                        if {min_left} > 0 and wx < {min_left} then
+                        if "{edge}" is "left" and wx < {min_left} then
                             set newX to {min_left}
                             set newW to (wx + ww) - {min_left}
                             if newW >= 300 then
@@ -313,7 +321,7 @@ class DesktopMarginManager(QObject):
                         end if
 
                         -- Clamping on top edge
-                        if {min_top} > 0 and wy < {min_top} then
+                        if "{edge}" is "top" and wy < {min_top} then
                             set newY to {min_top}
                             set newH to (wy + wh) - {min_top}
                             if newH >= 200 then
@@ -324,7 +332,7 @@ class DesktopMarginManager(QObject):
                         end if
 
                         -- Clamping on bottom edge
-                        if {max_bottom} > 0 and (wy + wh) > {max_bottom} then
+                        if "{edge}" is "bottom" and (wy + wh) > {max_bottom} then
                             set newH to ({max_bottom} - wy)
                             if newH >= 200 then
                                 set size of w to {{ww, newH}}

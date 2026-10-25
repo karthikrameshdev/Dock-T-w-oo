@@ -57,3 +57,24 @@ simulation verification also checks that task queries survive to the final reply
 `python scripts/verify_tasks_window.py` renders disposable preview data without
 opening a microphone or submitting a cloud request; the dashboard verifier checks
 shared dropdown coverage and all four filter control heights.
+
+Cloud profile management is specified in `contracts/brain-profiles.openapi.json`.
+Use `scripts/verify_cloud_profiles.py` against the existing cloud simulation to
+verify switching during an iterative request and per-profile token accounting.
+Profiles never share saved credentials, even when their provider and model match.
+Historical totals without a profile identity stay under Earlier activity; deleting
+a profile preserves its daily usage. Both dashboard surfaces use the same profile
+filter and overall aggregate endpoint.
+
+Display selection and the shared execution queue are specified in
+`contracts/brain-displays.openapi.json`. `tests/test_multi_brain.py` exercises a
+four-display inventory, screens 1 and 4, hot-plug fallback/reconnection, one-screen
+crowds, non-overlap, queued profile snapshots, serial workers, Stop, and microphone
+handoff. Real local HTTP tests reject invalid/unselected screen ids and foreign
+origins. No live cloud calls are used for these checks.
+
+`QT_QPA_PLATFORM=offscreen python scripts/verify_multi_brain_queue.py` runs the real
+local request endpoint, Qt FIFO, two simulated display targets, both cloud API
+formats and the durable ledger together. It verifies four HTTP model calls,
+separate 480/620-token profile totals, and 1,100 tokens overall while switching
+profiles before the queued request starts. All model traffic stays on loopback.

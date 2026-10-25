@@ -88,7 +88,7 @@ def test_brain_storage_and_profiles(tmp_path):
     assert profile_mgr.get_key('gemini') == 'ai-test-key-12345'
     assert profile_mgr.get_active_profile()['status'] == 'configured'
     assert 'ai-test-key-12345' not in store.settings_file.read_text()
-    assert profile_mgr.activate_profile('local') is False
+    with pytest.raises(ValueError):profile_mgr.activate_profile('local')
 
 
 def test_companion_mascot_window(qtbot, qapp, tmp_path, monkeypatch):
@@ -245,7 +245,7 @@ def test_dock_window_brain_click_and_context_menu(qtbot, qapp, tmp_path, monkeyp
     brain_btn.right_clicked.connect(lambda app_id, pt: right_clicks.append((app_id, pt)))
 
     menu_shown = []
-    monkeypatch.setattr(brain_mgr, "show_context_menu", lambda pt: menu_shown.append(pt))
+    monkeypatch.setattr(brain_mgr, "show_context_menu", lambda pt, target=None: menu_shown.append(pt))
 
     qtbot.mouseClick(brain_btn, Qt.MouseButton.RightButton)
     assert len(right_clicks) == 1
@@ -452,17 +452,22 @@ def test_missing_wake_models_download_in_background(tmp_path, monkeypatch):
     assert set(downloads) == {("recognizer", models.ASR_MODEL), ("denoiser", models.ENHANCER_MODEL)}
 
 
-def test_continuous_multiturn_conversation_session(tmp_path):
+def test_continuous_multiturn_conversation_session(tmp_path, qtbot, monkeypatch):
     """Verify hands-free multi-turn session persistence and farewell exits."""
     mgr = BrainManager.get_instance()
     mgr.store = BrainStore(data_dir=tmp_path)
+    spoken = []
+    monkeypatch.setattr(mgr.speech, 'start', spoken.append)
+    monkeypatch.setattr(mgr.agent, 'run', lambda text, **_: 'Reply: '+text)
 
     # 1. Start session on wake
     mgr._on_wake_detected()
     assert mgr.in_conversation_session is True
+    mgr._on_speech_finished()  # Finish the greeting before the next request.
 
     # 2. Complete a statement: Brain responds and speech finishes
     mgr._on_turn_complete("How is my system?")
+    qtbot.waitUntil(lambda: len(spoken) == 2)
     assert mgr.in_conversation_session is True
     assert len(mgr.conversation_history) >= 1
 
@@ -474,8 +479,10 @@ def test_continuous_multiturn_conversation_session(tmp_path):
 
     # 3. Follow-up statement
     mgr._on_turn_complete("What time is it?")
+    qtbot.waitUntil(lambda: len(spoken) == 3)
     assert mgr.in_conversation_session is True
     assert len(mgr.conversation_history) >= 2
+    mgr._on_speech_finished()
 
     # 4. User says goodbye / farewell phrase -> terminates session
     mgr._on_turn_complete("Goodbye, that's all for now")

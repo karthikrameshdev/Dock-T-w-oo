@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "errors": [],
+  "samples": 1893,
+  "body_overlap_samples": 0,
+  "characters": 2,
+  "shared_service_objects": {
+    "agent": 1,
+    "listener": 1,
+    "speech": 1
+  },
+  "version": "3.2.0",
+  "asset_hash": "c1d14c014ab820c44421c6d0508bef21ee1e1144802c6ec51bddcfe6648b3753",
+  "captures": [
+    "character/playground-preview/listening.png",
+    "character/playground-preview/queued.png",
+    "character/playground-preview/responding.png",
+    "character/playground-preview/dance.png",
+    "character/playground-preview/handshake.png",
+    "character/playground-preview/ball.png",
+    "character/playground-preview/spar.png",
+    "character/playground-preview/race.png",
+    "character/playground-preview/fly.png",
+    "character/playground-preview/dash.png",
+    "character/playground-preview/greet.png"
+  ],
+  "cloud_calls": 0
+}

@@ -1,14 +1,18 @@
 {
-  "version": "3.1.0",
+  "version": "3.2.0",
   "name": "Brain",
   "design": "Glossy Blue",
   "source": "character/Brain.blend",
-  "source_sha256": "ee145c6cdf9b1e3ede3469a4f756c1a1d59484ac5a65d6c82e4019484bf50754",
+  "source_sha256": "ac48f5903a757fe07c30acd0cb765fae5ab9b4f7388eb547b83727ed0fdd87c8",
   "asset": "brain.glb",
-  "asset_sha256": "d16eb2986b36d44dfa9444e8a79cf9ecf9ba86222564bee91c51912ed5625386",
+  "asset_sha256": "c1d14c014ab820c44421c6d0508bef21ee1e1144802c6ec51bddcfe6648b3753",
   "bones": 58,
   "meshes": 248,
   "actions": {
+    "air_spin": {
+      "duration": 3.0,
+      "loop": true
+    },
     "balloon": {
       "duration": 5.0,
       "loop": false
@@ -25,6 +29,10 @@
       "duration": 1.0,
       "loop": true
     },
+    "cheer_partner": {
+      "duration": 3.0,
+      "loop": true
+    },
     "climb": {
       "duration": 1.0,
       "loop": true
@@ -36,6 +44,14 @@
     "dance": {
       "duration": 4.0,
       "loop": false
+    },
+    "dance_together": {
+      "duration": 4.0,
+      "loop": true
+    },
+    "dash": {
+      "duration": 2.0,
+      "loop": true
     },
     "drag": {
       "duration": 2.4,
@@ -60,6 +76,10 @@
     "hammer": {
       "duration": 4.4,
       "loop": false
+    },
+    "handshake": {
+      "duration": 2.5,
+      "loop": true
     },
     "happy": {
       "duration": 2.0,
@@ -112,6 +132,10 @@
     "peek": {
       "duration": 1.3,
       "loop": false
+    },
+    "playful_spar": {
+      "duration": 4.0,
+      "loop": true
     },
     "point": {
       "duration": 1.0,

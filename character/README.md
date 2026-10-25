@@ -1,9 +1,9 @@
-# Brain 3.1.0 · Glossy Blue
+# Brain 3.2.0 · Glossy Blue
 
 `Brain.blend` is the artist-authored source for the application's only character.
 The saved silver ceramic and cobalt-blue geometry, neck, face, individual fingers,
 and spring antenna are preserved. The original 222 character meshes retain their
-geometry hash when adding props. The complete rig has 58 bones and 50 clips.
+geometry hash when adding props. The complete rig has 58 bones and 56 clips.
 
 The application renders `dock_twoo/server/static/brain3d/brain.glb` with Three.js
 inside the transparent Qt view. The release manifest identifies the exact saved
@@ -19,7 +19,7 @@ and save the existing project, then export with a new semantic version:
 
 ```bash
 blender --background character/Brain.blend \
-  --python scripts/blender/export_character.py -- --version 3.1.0
+  --python scripts/blender/export_character.py -- --version 3.2.0
 ```
 
 The exporter reads the saved project without rebuilding or saving over it.
@@ -41,7 +41,8 @@ The `speech` bone and `mouth_open`, `mouth_round`, and `tongue_curl` keys remain
 editable in Blender. Authored facial animation plays outside live speech.
 
 The head indicator shows online green, offline red, listening yellow, and thinking
-purple, with corresponding glow and motion. Reduced motion freezes body acting.
+purple, responding cyan, and queued orange, with corresponding glow and motion.
+Only the microphone owner has a yellow aura behind its body. Reduced motion freezes body acting.
 
 ## Contact-based toys
 
@@ -69,8 +70,8 @@ node scripts/verify_brain_props.mjs
 python scripts/verify_brain_3d.py --all-actions
 ```
 
-The Qt check needs the running local console server. Blender reports cover 3,046
-frames, 450 transition samples, and 573 prop samples. Contact and clearance reports
+The Qt check needs the running local console server. Blender reports cover 3,607
+frames, 504 transition samples, and 573 prop samples. Contact and clearance reports
 are bound to both source and export hashes. The arm/helmet audit uses conservative
 envelopes; it is not a full-body physics collision solver.
 
@@ -81,3 +82,18 @@ the saved project without saving or changing its design.
 
 The interactive preview at `http://127.0.0.1:28842/brain3d/index.html` supports all
 clips, speech, indicator states, and full rotation. Three.js is vendored locally.
+
+## Shared desktop playground
+
+`add_social_actions.py` adds six dense Blender performances without changing any
+mesh: handshake, dance_together, playful_spar, dash, air_spin, and cheer_partner. The clearance
+audit covers these clips too. The local playground schedules these with existing
+handshakes, walking, flying, waving and ball contact clips; it does not call an LLM.
+The eight group activities are available under Brain's right-click **Play together**
+menu. Playful sparring is a gesture sequence, not a full rigid-body physics engine.
+
+**Add another Brain** works on one display or several. Characters have separate
+positions, gestures and conversation histories; audio, reading, model execution and
+credit limits remain shared. The layout fits crowds to the available space and
+steers characters around each other's window footprints. **Roam across all screens**
+lets characters cross connected extended displays independently of dock placement.

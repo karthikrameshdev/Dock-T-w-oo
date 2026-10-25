@@ -1,4 +1,3 @@
-import { handshakeClip } from './reactions.js';
 import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
 import { HeadIndicator } from './indicator.js';
@@ -13,6 +12,13 @@ let bridge, model, mixer, current, clips = {}, bones = {}, mouth, mouthIndex, bu
 const mouthMeshes=[];
 let state = {online:embedded?null:true, action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
 const scene = new THREE.Scene();
+// A single microphone owner gets a soft yellow aura behind the entire body.
+const auraCanvas=document.createElement('canvas');auraCanvas.width=auraCanvas.height=128;
+const auraContext=auraCanvas.getContext('2d'),auraGradient=auraContext.createRadialGradient(64,64,8,64,64,64);
+auraGradient.addColorStop(0,'rgba(250,204,21,.4)');auraGradient.addColorStop(.65,'rgba(250,204,21,.18)');auraGradient.addColorStop(1,'rgba(250,204,21,0)');
+auraContext.fillStyle=auraGradient;auraContext.fillRect(0,0,128,128);
+const listeningAura=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(auraCanvas),transparent:true,depthWrite:false}));
+listeningAura.position.set(0,2.5,-1.2);listeningAura.scale.set(5.8,6,1);listeningAura.visible=false;scene.add(listeningAura);
 const camera = new THREE.OrthographicCamera(-3.3,3.3,3.3,-3.3,.1,50);
 camera.position.set(0,2.45,10); camera.lookAt(0,2.45,0);
 const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true, powerPreference:'low-power'});
@@ -64,7 +70,6 @@ async function loadCharacter(){
     for(const track of clip.tracks)track.name=track.name.replace('.morphTargetInfluences','.authoredMorphTargetInfluences');
     clips[clip.name]=mixer.clipAction(clip);select.add(new Option(clip.name,clip.name));
   }
-  const handshake=handshakeClip(bones);clips.handshake=mixer.clipAction(handshake);select.add(new Option('handshake','handshake'));
   select.value='idle';window.brainDiagnostics={version:release.version,assetHash:release.asset_sha256,clips:Object.keys(clips),bones:Object.keys(bones),meshes:0,renderedFrames:0,nonFinite:false,translucent:false};
   model.traverse(node=>{if(node.isMesh)window.brainDiagnostics.meshes++;});
   report(`Brain ${release.version} · ${gltf.animations.length} animations ready`);
@@ -85,8 +90,8 @@ function frame(){
   // Drive locomotion by distance travelled rather than the cursor's speed.
   if(embedded && name!=='idle' && !automatic && !state.reducedMotion){
     const duration=action.getClip().duration;
-    const locomotion=['walk','walk_window','run','chase_ball','explore','climb','climb_dock'].includes(name);
-    const stride=['run','chase_ball'].includes(name)?90:(['climb','climb_dock'].includes(name)?44:68);
+    const locomotion=['walk','walk_window','run','dash','chase_ball','explore','climb','climb_dock'].includes(name);
+    const stride=['run','dash','chase_ball'].includes(name)?90:(['climb','climb_dock'].includes(name)?44:68);
     action.time=locomotion?((state.distance/stride)%1)*duration:Math.min(.999,state.progress)*duration;
     mixer.update(0);
   }
@@ -101,6 +106,9 @@ function frame(){
   if(flash)flash.emissiveIntensity=name==='camera' ? 1+14*Math.exp(-(((progress-.58)/.025)**2)) : 1;
 
   window.brainDiagnostics.indicator=indicator?.update(state,previewTime);
+  listeningAura.visible=state.activity==='listening';
+  listeningAura.material.opacity=state.reducedMotion?.8:.75+.2*Math.sin(previewTime*2)**2;
+  window.brainDiagnostics.listeningAura=listeningAura.visible;
   window.brainDiagnostics.renderedFrames++;
   window.brainDiagnostics.eyeScales = face.scales();
   window.brainDiagnostics.action = name;

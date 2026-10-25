@@ -3,6 +3,11 @@
 import math
 
 ACTIONS = {
+    "dance_together": ("Dance together", 4.0),
+    "playful_spar": ("Playful sparring", 4.0),
+    "dash": ("Dash", 2.0),
+    "air_spin": ("Air acrobatics", 3.0),
+    "cheer_partner": ("Cheer a partner", 3.0),
     "handshake": ("Shake hands", 2.5),
     "run": ("Run", 1.0),
     "talk": ("Talk expressively", 2.8),

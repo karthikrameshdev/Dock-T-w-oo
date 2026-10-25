@@ -296,6 +296,7 @@ rig.animation_data.action = bpy.data.actions['idle']; scene.frame_set(0)
 scene['brain_prop_contact_version'] = '3.1.0'
 scene['brain_original_geometry_sha256'] = original_geometry
 bpy.ops.object.select_all(action='DESELECT'); rig.select_set(True); bpy.context.view_layer.objects.active = rig
+bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(source_path))
 report = {'preserved_character_meshes': len(old_meshes), 'preserved_geometry_sha256': original_geometry,
           'bones': len(armature.bones), 'actions': len(bpy.data.actions),

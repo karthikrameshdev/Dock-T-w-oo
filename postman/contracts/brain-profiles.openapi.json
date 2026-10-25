@@ -1,0 +1,265 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Brain cloud model profiles",
+    "version": "1.0.0",
+    "description": "Named cloud-only profiles. Keys are write-only and isolated by profile and provider. Switching affects the next request; an in-flight request keeps its captured profile. Local controls only."
+  },
+  "paths": {
+    "/api/brain/profiles": {
+      "get": {
+        "description": "List redacted profiles and the active profile.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; no saved key values are returned."
+          },
+          "400": {
+            "description": "Invalid configuration, duplicate name, or unknown profile id."
+          },
+          "403": {
+            "description": "Use the local application controls."
+          }
+        }
+      },
+      "post": {
+        "description": "Create a profile without changing the active profile.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; no saved key values are returned."
+          },
+          "400": {
+            "description": "Invalid configuration, duplicate name, or unknown profile id."
+          },
+          "403": {
+            "description": "Use the local application controls."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "provider",
+                  "model"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "base_url": {
+                    "type": "string"
+                  },
+                  "protocol": {
+                    "type": "string"
+                  },
+                  "api_key": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brain/profile": {
+      "post": {
+        "description": "Update a profile by id; missing id updates the active profile for compatibility.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; no saved key values are returned."
+          },
+          "400": {
+            "description": "Invalid configuration, duplicate name, or unknown profile id."
+          },
+          "403": {
+            "description": "Use the local application controls."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "provider",
+                  "model"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "base_url": {
+                    "type": "string"
+                  },
+                  "protocol": {
+                    "type": "string"
+                  },
+                  "api_key": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brain/activate-profile": {
+      "post": {
+        "description": "Select an existing profile for subsequent requests.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; no saved key values are returned."
+          },
+          "400": {
+            "description": "Invalid configuration, duplicate name, or unknown profile id."
+          },
+          "403": {
+            "description": "Use the local application controls."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "profile_id"
+                ],
+                "properties": {
+                  "profile_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brain/profile/delete": {
+      "post": {
+        "description": "Delete configuration and its saved credentials. Usage history remains; deleting the last profile leaves the model unconfigured.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; no saved key values are returned."
+          },
+          "400": {
+            "description": "Invalid configuration, duplicate name, or unknown profile id."
+          },
+          "403": {
+            "description": "Use the local application controls."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "profile_id"
+                ],
+                "properties": {
+                  "profile_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

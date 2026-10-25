@@ -162,6 +162,16 @@
 
           <div class="settings-card">
             <div class="form-group">
+              <label for="displayMode">Show Dock on</label>
+              <p class="field-desc">Choose one display, every display, or a specific set such as screens 1 and 4. All Brains share one microphone and request queue.</p>
+              <select id="displayMode"><option value="single">One screen</option><option value="all">All screens</option><option value="selected">Selected screens</option></select>
+              <div id="displayChecklist" role="group" aria-label="Displays" style="display:grid;gap:10px;margin-top:16px"></div>
+              <p class="help-text" id="displayStatus" role="status">Detecting connected displays…</p>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="form-group">
               <label>Dock Screen Edge</label>
               <p class="field-desc">Choose which screen border Dock T(w)oo is pinned to</p>
               <div class="segmented-control" id="edgeControl">
@@ -474,7 +484,7 @@
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-profiles">
               <span class="tab-icon">🧠</span>
-              <span>Cloud Model</span>
+              <span>Cloud Profiles</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-motions">
               <span class="tab-icon">🤖</span>
@@ -607,9 +617,16 @@
           <!-- One configured external reasoning model -->
           <div class="brain-tab-panel" id="brain-tab-profiles">
             <div class="settings-card">
-              <h3>Cloud model</h3>
-              <p class="field-desc">One model plans, answers, and chooses actions. Speech recognition, voices, image captions, and desktop tools run on this computer.</p>
+              <h3>Cloud model profiles</h3>
+              <p class="field-desc">Save multiple cloud profiles and choose one for each conversation. Switch here or by right-clicking Brain in the dock. Speech and desktop tools stay local.</p>
+              <div class="form-row">
+                <div class="form-group flex-1"><label for="brainCloudProfile">Cloud profile</label><select id="brainCloudProfile" class="select-input"></select></div>
+                <button type="button" id="brainCloudNew" class="btn btn-secondary">New profile</button>
+              </div>
+              <p id="brainCloudActive" class="field-desc" role="status"></p>
+              <div class="action-btn-row"><button type="button" id="brainCloudActivate" class="btn btn-secondary">Use this profile</button><button type="button" id="brainCloudDelete" class="btn btn-secondary">Delete profile</button></div>
               <form id="brainCloudForm">
+                <div class="form-group"><label for="brainCloudName">Profile name</label><input id="brainCloudName" class="text-input" maxlength="80" placeholder="For example, Everyday or Research" required></div>
                 <div class="form-row">
                   <div class="form-group flex-1"><label for="brainCloudProvider">Provider</label><select id="brainCloudProvider" class="select-input"><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="deepseek">DeepSeek</option><option value="xai">xAI</option><option value="huggingface">Hugging Face</option><option value="custom">Custom cloud provider</option></select></div>
                   <div class="form-group flex-1"><label for="brainCloudProtocol">API format</label><select id="brainCloudProtocol" class="select-input"><option value="openai">OpenAI compatible</option><option value="anthropic">Anthropic Messages</option></select></div>
@@ -617,7 +634,7 @@
                 <div class="form-group"><label for="brainCloudUrl">Provider base URL</label><input id="brainCloudUrl" type="url" class="text-input" placeholder="https://provider.example/v1" required></div>
                 <div class="form-group"><label for="brainCloudModel">Model ID</label><input id="brainCloudModel" class="text-input" placeholder="Enter the provider's tool-capable model ID" required></div>
                 <div class="form-group"><label for="brainCloudKey">API key</label><input id="brainCloudKey" type="password" class="text-input" autocomplete="new-password" placeholder="Enter a key, or leave blank to retain the saved key"></div>
-                <div class="action-btn-row"><button type="submit" class="btn btn-primary">Save cloud model</button><button type="button" id="brainCloudTest" class="btn btn-secondary">Test connection</button></div>
+                <div class="action-btn-row"><button type="submit" class="btn btn-primary">Save profile</button><button type="button" id="brainCloudTest" class="btn btn-secondary">Test saved profile</button></div>
               </form>
               <p id="brainCloudStatus" class="field-desc" role="status">Model is not configured.</p>
             </div>

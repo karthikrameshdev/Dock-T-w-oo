@@ -152,6 +152,7 @@ async function loadConfig() {
     const data = await res.json();
     currentConfig = data;
     initForm(data);
+    await loadDisplays();
     updatePreview(data);
   } catch (err) {
     console.error('Failed to load config:', err);
@@ -867,12 +868,14 @@ async function saveConfig() {
   try {
     const res = await fetch('/api/config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Brain-Request': 'local' },
       body: JSON.stringify(currentConfig),
     });
     const data = await res.json();
     if (data.success) {
       showToast('Settings saved & applied to Dock');
+    } else {
+      showToast(data.error || 'Could not save settings', true);
     }
   } catch (err) {
     console.error('Failed to save config:', err);
@@ -1048,33 +1051,64 @@ async function initBrainConsole() {
     document.querySelectorAll('.brain-tab-btn,.brain-tab-panel').forEach(el=>el.classList.remove('active'));
     button.classList.add('active');byId(button.dataset.tab)?.classList.add('active');
   }));
-  async function modelForm() {
-    const data=await (await fetch('/api/brain/model')).json();
-    presets=data.presets;catalog=data.catalog;const config=data.model;
-    byId('brainCloudProvider').value=config.provider || 'gemini';
-    byId('brainCloudProtocol').value=config.protocol || 'openai';
-    byId('brainCloudUrl').value=config.base_url || presets.gemini;
-    byId('brainCloudModel').value=config.model || '';
+  let cloudProfiles=[],editingProfileId=null,newCloudProfile=false,activeCloudProfileId='';
+  function fillCloudProfile(config={}) {
+    byId('brainCloudName').value=config.name||'';
+    byId('brainCloudProvider').value=config.provider||'gemini';
+    byId('brainCloudProtocol').value=config.protocol||'openai';
+    byId('brainCloudUrl').value=config.base_url||presets.gemini;
+    byId('brainCloudModel').value=config.model||'';byId('brainCloudKey').value='';
+    byId('brainCloudActivate').disabled=!config.id||config.id===activeCloudProfileId;
+    byId('brainCloudDelete').disabled=!config.id;
+    byId('brainCloudTest').disabled=!config.id||config.status!=='configured';
+    byId('brainCloudStatus').textContent=!config.id?'Enter a name, model and key, then save the new profile.':config.status==='not configured'?'Model is not configured. Enter a model ID and API key.':`${config.name} · ${config.model} · Key saved`;
     initSearchableDropdowns();
-    byId('brainCloudStatus').textContent=config.status==='not configured'?'Model is not configured. Enter a model ID and API key.':`${config.name} · ${config.model} · Key saved`;
   }
+  async function modelForm(preferred=editingProfileId) {
+    const data=await (await fetch('/api/brain/model')).json();
+    presets=data.presets;catalog=data.catalog;cloudProfiles=data.profiles||[data.model];activeCloudProfileId=data.model.id||'';
+    const select=byId('brainCloudProfile');select.replaceChildren();
+    for(const profile of cloudProfiles)select.add(new Option(profile.name+(profile.id===activeCloudProfileId?' · Active':''),profile.id));
+    const config=cloudProfiles.find(p=>p.id===preferred)||cloudProfiles.find(p=>p.id===activeCloudProfileId);
+    editingProfileId=config?.id||null;newCloudProfile=!config;
+    if(!config)select.add(new Option('New profile','__new__'));
+    select.value=editingProfileId||'__new__';
+    byId('brainCloudActive').textContent=activeCloudProfileId?`Active: ${data.model.name}. Running requests retain their original profile.`:'Model is not configured. Create a profile to get started.';
+    fillCloudProfile(config);
+  }
+  byId('brainCloudProfile').addEventListener('change',()=>{
+    editingProfileId=byId('brainCloudProfile').value;newCloudProfile=false;
+    fillCloudProfile(cloudProfiles.find(p=>p.id===editingProfileId));
+  });
+  byId('brainCloudNew').addEventListener('click',()=>{
+    editingProfileId=null;newCloudProfile=true;
+    const select=byId('brainCloudProfile');if(!select.querySelector('option[value="__new__"]'))select.add(new Option('New profile','__new__'));
+    select.value='__new__';fillCloudProfile();byId('brainCloudName').focus();
+  });
+  byId('brainCloudActivate').addEventListener('click',async()=>{
+    try{await post('/api/brain/activate-profile',{profile_id:editingProfileId});await modelForm();showToast('Cloud profile switched.');}catch(error){report(error);}
+  });
+  byId('brainCloudDelete').addEventListener('click',async()=>{
+    if(!editingProfileId)return;
+    if(!confirm('Delete this saved profile and its credential? Usage history will remain.'))return;
+    try{await post('/api/brain/profile/delete',{profile_id:editingProfileId});editingProfileId=null;await modelForm();showToast('Profile deleted; usage history retained.');}catch(error){report(error);}
+  });
   byId('brainCloudProvider').addEventListener('change',()=>{
     const provider=byId('brainCloudProvider').value;
-    byId('brainCloudUrl').value=presets[provider] || '';
-    byId('brainCloudProtocol').value=provider==='anthropic'?'anthropic':'openai';
-    byId('brainCloudKey').value='';
-    initSearchableDropdowns();
+    byId('brainCloudUrl').value=presets[provider]||'';
+    byId('brainCloudProtocol').value=provider==='anthropic'?'anthropic':'openai';byId('brainCloudKey').value='';initSearchableDropdowns();
   });
+  byId('brainCloudForm').addEventListener('input',()=>{byId('brainCloudTest').disabled=true;});
   byId('brainCloudForm').addEventListener('submit',async event=>{
     event.preventDefault();
     try {
-      await post('/api/brain/model',{provider:byId('brainCloudProvider').value,protocol:byId('brainCloudProtocol').value,base_url:byId('brainCloudUrl').value.trim(),model:byId('brainCloudModel').value.trim(),api_key:byId('brainCloudKey').value.trim()});
-      byId('brainCloudKey').value='';await modelForm();showToast('Cloud model saved.');
+      const result=await post(newCloudProfile?'/api/brain/profiles':'/api/brain/profile',{...(editingProfileId?{id:editingProfileId}:{}),name:byId('brainCloudName').value.trim(),provider:byId('brainCloudProvider').value,protocol:byId('brainCloudProtocol').value,base_url:byId('brainCloudUrl').value.trim(),model:byId('brainCloudModel').value.trim(),api_key:byId('brainCloudKey').value.trim()});
+      editingProfileId=result.profile.id;byId('brainCloudKey').value='';await modelForm();showToast('Cloud profile saved.');
     } catch(error){report(error);}
   });
   byId('brainCloudTest').addEventListener('click',async()=>{
-    const button=byId('brainCloudTest');button.disabled=true;byId('brainCloudStatus').textContent='Testing the configured model…';
-    try {const result=await post('/api/brain/model/test');byId('brainCloudStatus').textContent=result.message;}catch(error){byId('brainCloudStatus').textContent=error.message;}finally{button.disabled=false;}
+    const button=byId('brainCloudTest');button.disabled=true;byId('brainCloudStatus').textContent='Testing the saved profile…';
+    try {const result=await post('/api/brain/model/test',{profile_id:editingProfileId});byId('brainCloudStatus').textContent=result.message;}catch(error){byId('brainCloudStatus').textContent=error.message;}finally{button.disabled=false;}
   });
   byId('brainRequestForm').addEventListener('submit',async event=>{
     event.preventDefault();const text=byId('brainRequestText').value.trim();if(!text)return;
@@ -1110,10 +1144,10 @@ async function initBrainConsole() {
       byId('brainTalkBtn').textContent=diag.recording?'✓ Finish speaking':(diag.decoding?'Processing speech…':'🎤 Talk to Brain');
       byId('brainTalkBtn').disabled=Boolean(diag.decoding);
       const devices=diag.audio_devices||{};
-      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Cloud model: ${model.model}.`)+` System defaults · Microphone: ${devices.input||diag.input_device||'unavailable'} · Speaker: ${devices.output||'unavailable'}.`;
+      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Cloud profile: ${data.active_profile?.name || model.name || "Default"} · ${model.model}.`)+` System defaults · Microphone: ${devices.input||diag.input_device||'unavailable'} · Speaker: ${devices.output||'unavailable'}.`;
       byId('brainWakeDiagnostics').textContent=`Wake ${input.wake_ready?'ready':'preparing'} · ${diag.recognizer_engine||'local speech'} · ${input.recognizer_ready?'ready':'preparing'} · ${diag.last_decision||''}`;
       byId('brainLocalSpeechStatus').textContent=`Local speech: ${data.local_speech?.engine||'Kokoro ONNX'} · ${data.local_speech?.state||'preparing'}${data.local_speech?.error?' · '+data.local_speech.error:''}`;
-      byId('brainAgentProgress').textContent=data.agent?.message && data.agent?.step>0?`Step ${data.agent.step||0} · ${data.agent.message}`:'';
+      byId('brainAgentProgress').textContent=(data.agent?.message && data.agent?.step>0?`Step ${data.agent.step||0} · ${data.agent.message}`:'')+(data.queue?.pending?.length?` · ${data.queue.pending.length} request${data.queue.pending.length===1?'':'s'} queued`:'');
       if(data.last_response?.generation>generation){byId('brainRequestStatus').textContent=data.last_response.text;generation=data.last_response.generation;}
       const check=diag.voice_check||{};
       if(check.active || check.heard?.length)byId('brainVoiceCheckStatus').textContent=`${check.active?'Listening '+check.seconds_remaining+'s':'Check finished'} · ${(check.heard||[]).map(entry=>entry.heard).join(' · ')}`;
@@ -1153,3 +1187,53 @@ async function initBrainConsole() {
   await modelForm();await refresh();setInterval(refresh,1500);initSearchableDropdowns();
 }
 
+
+// Display inventory is supplied by Qt on the GUI thread; never infer monitors
+// from browser screen dimensions (the console may be on a different display).
+let connectedDisplays=[],displayRenderSignature='';
+async function loadDisplays() {
+  const response=await fetch('/api/displays',{headers:{'X-Brain-Request':'local'}});
+  if(!response.ok)throw new Error('Could not load displays');
+  const data=await response.json();connectedDisplays=data.displays || [];
+  const mode=document.getElementById('displayMode');
+  mode.value=currentConfig.display_mode || 'single';
+  if(!currentConfig.display_ids?.length && connectedDisplays.length) {
+    currentConfig.display_ids=connectedDisplays.filter(d=>d.selected).map(d=>d.id);
+  }
+  renderDisplayChoices(data.fallback);
+}
+function renderDisplayChoices(fallback=false) {
+  const list=document.getElementById('displayChecklist'),mode=document.getElementById('displayMode').value;
+  const signature=JSON.stringify([mode,currentConfig.display_ids,connectedDisplays,fallback]);
+  if(signature===displayRenderSignature)return;
+  displayRenderSignature=signature;
+  list.replaceChildren();
+  connectedDisplays.forEach(display=>{
+    const label=document.createElement('label');label.className='display-choice';
+    Object.assign(label.style,{display:'flex',alignItems:'center',gap:'12px',padding:'12px 16px',border:'1px solid var(--border-color, #505057)',borderRadius:'10px',cursor:mode==='all'?'default':'pointer'});
+    const input=document.createElement('input');input.type=mode==='single'?'radio':'checkbox';input.name='dock-display';input.value=display.id;
+    input.checked=mode==='all' || currentConfig.display_ids.includes(display.id);input.disabled=mode==='all';
+    input.style.width='18px';input.style.height='18px';input.style.flex='0 0 18px';
+    const title=document.createElement('span');title.textContent=`Screen ${display.number} · ${display.name}${display.primary?' · Primary':''} · ${display.geometry[2]} × ${display.geometry[3]}`;
+    label.append(input,title);list.append(label);
+    input.addEventListener('change',()=>{
+      const ids=Array.from(list.querySelectorAll('input:checked')).map(field=>field.value);
+      if(!ids.length){input.checked=true;showToast('Keep at least one screen selected',true);return;}
+      currentConfig.display_ids=ids;autoSave();
+    });
+  });
+  // Retain disconnected choices so plugging them in restores the saved layout.
+  const disconnected=(currentConfig.display_ids || []).filter(id=>!connectedDisplays.some(d=>d.id===id));
+  const note=document.getElementById('displayStatus');
+  note.textContent=fallback?'Saved screens are disconnected. Dock is temporarily on the primary screen.':`${connectedDisplays.length} connected display${connectedDisplays.length===1?'':'s'}.`;
+  if(disconnected.length)note.textContent+=` ${disconnected.length} disconnected selection${disconnected.length===1?' is':'s are'} retained.`;
+  window.ConsoleControls?.enhance?.();
+}
+document.getElementById('displayMode')?.addEventListener('change',event=>{
+  currentConfig.display_mode=event.target.value;
+  if(event.target.value==='single')currentConfig.display_ids=(currentConfig.display_ids || []).slice(0,1);
+  if(!currentConfig.display_ids?.length && connectedDisplays.length)currentConfig.display_ids=[connectedDisplays.find(d=>d.primary)?.id || connectedDisplays[0].id];
+  renderDisplayChoices();autoSave();
+});
+// Hot-plug updates the checklist while preserving unsaved in-flight edits.
+setInterval(()=>{if(document.visibilityState==='visible' && currentConfig && document.getElementById('page-placement')?.classList.contains('active'))loadDisplays().catch(()=>{});},5000);

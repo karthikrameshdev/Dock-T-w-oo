@@ -228,7 +228,7 @@ class LocalTools:
             if self.manager is None:raise RuntimeError('The desktop application is not running.')
             if name=='read_aloud':
                 if args['source']=='text' and not args.get('text','').strip():raise ValueError('Supply the text to read.')
-                self.on_main(lambda:self.manager.read_text(args['text']) if args['source']=='text' else self.manager.start_reading(args['source']),cancel)
+                self.on_main(lambda:self.manager._read_text_now(args['text']) if args['source']=='text' else self.manager._start_reading_now(args['source']),cancel)
                 return {'started_reading':args['source']}
             action=args['action']
             from dock_twoo.brain.animation import ACTIONS

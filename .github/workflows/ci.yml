@@ -14,6 +14,8 @@ jobs:
   test:
     name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
     strategy:
       fail-fast: false
       matrix:
@@ -60,15 +62,15 @@ jobs:
       - name: Run test suite (macOS)
         if: runner.os == 'macOS'
         run: |
-          pytest tests -v
+          pytest tests -v -o faulthandler_timeout=60
 
       - name: Run test suite (Windows)
         if: runner.os == 'Windows'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: pytest tests -v
+        run: pytest tests -v -o faulthandler_timeout=60
 
       - name: Run test suite (Ubuntu with Xvfb)
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a pytest tests -v
+          xvfb-run -a pytest tests -v -o faulthandler_timeout=60

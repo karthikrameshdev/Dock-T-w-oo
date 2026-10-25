@@ -85,6 +85,14 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split("?")[0]
+        if path == '/api/displays':
+            if not self._local_control() or self.headers.get('X-Brain-Request') != 'local':
+                self._json(403, {'error': 'Use the local application console.'})
+                return
+            self._json(200, getattr(self.config_manager, 'display_snapshot', {
+                'mode': self.config_manager.config.display_mode,
+                'display_ids': list(self.config_manager.config.display_ids), 'fallback': False, 'displays': []}))
+            return
         if path in ('/api/activity','/api/usage') or path.startswith('/api/activity/'):
             if not self._local_control() or self.headers.get('X-Brain-Request') != 'local':
                 self._json(403,{'error':'Use the local application controls.'});return
@@ -102,7 +110,13 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                         tracker=self.server.activity_store
                 query=parse_qs(urlsplit(self.path).query)
                 if path=='/api/activity':result=tracker.list(offset=query.get('offset',[0])[0])
-                elif path=='/api/usage':result=tracker.metrics(start=query.get('from',[None])[0],end=query.get('to',[None])[0],period=query.get('period',['month'])[0])
+                elif path=='/api/usage':
+                    result=tracker.metrics(start=query.get('from',[None])[0],end=query.get('to',[None])[0],period=query.get('period',['month'])[0],profile_id=query.get('profile',[None])[0])
+                    options={p['id']:p for p in result['profile_options']}
+                    for profile in _get_safe_profile_mgr().get_profiles():options[profile['id']]={'id':profile['id'],'name':profile['name'],'historical':False}
+                    result['profile_options']=list(options.values())
+                    for row in result['profiles']:
+                        if row['profile_id'] in options:row['name']=options[row['profile_id']]['name']
                 else:result=tracker.detail(path.removeprefix('/api/activity/'))
                 self._json(200,result)
             except (ValueError,TypeError) as exc:self._json(400,{'error':str(exc)})
@@ -112,7 +126,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.FORBIDDEN,{'success':False,'error':'Use the local application console.'});return
             try:
                 if path=='/api/brain/model':
-                    pm=_get_safe_profile_mgr();self._json(200,{'model':pm.get_active_profile(),**pm.get_provider_catalog()})
+                    pm=_get_safe_profile_mgr();self._json(200,{'model':pm.get_active_profile(),'profiles':pm.get_profiles(),**pm.get_provider_catalog()})
                 elif path=='/api/tasks':
                     from urllib.parse import parse_qs,urlsplit
                     from dock_twoo.tasks import TaskStore
@@ -221,6 +235,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             port = self.server.server_address[1]
             if self.headers.get('X-Brain-Request') != 'local' or (origin and origin not in (f'http://127.0.0.1:{port}', f'http://localhost:{port}')):
                 status_dict.pop('last_response', None)
+                status_dict.pop('queue', None)
             if origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
                 check = status_dict.get("voice_input", {}).get("wake_diagnostics", {}).get("voice_check")
                 if check:
@@ -230,6 +245,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/brain/profiles":
+            if not self._local_control():
+                self._json(403,{"error":"Use the local application controls."});return
             pm = _get_safe_profile_mgr()
             self._set_headers(HTTPStatus.OK, "application/json")
             self.wfile.write(
@@ -284,24 +301,38 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = self.path.split("?")[0]
-        if path in ('/api/brain/settings', '/api/brain/profile', '/api/brain/key', '/api/brain/activate') and not self._local_control(write=True):
+        if path in ('/api/brain/settings', '/api/brain/profile', '/api/brain/key', '/api/brain/activate-profile', '/api/brain/profile/delete', '/api/brain/profiles') and not self._local_control(write=True):
             self._json(403, {'success': False, 'error': 'Use the local application controls.'})
             return
-        if path in ('/api/brain/model','/api/brain/model/test','/api/brain/stop','/api/tasks','/api/keep-awake'):
+        if path in ('/api/brain/model','/api/brain/model/test','/api/brain/stop','/api/tasks','/api/keep-awake','/api/brain/profiles','/api/brain/profile','/api/brain/activate-profile','/api/brain/profile/delete'):
             if not self._local_control(write=True):
                 self._json(403,{'success':False,'error':'Use the local application controls.'});return
             try:
                 length=int(self.headers.get('Content-Length',0))
                 if length>32000:raise ValueError('Request is too large.')
                 body=json.loads(self.rfile.read(length) or b'{}')
-                if path=='/api/brain/model':
+                if not isinstance(body,dict):raise ValueError('Supply a JSON object.')
+                if path=='/api/brain/profiles':
+                    self._json(200,{'success':True,'profile':_get_safe_profile_mgr().create_profile(body)})
+                elif path=='/api/brain/profile':
+                    self._json(200,{'success':True,'profile':_get_safe_profile_mgr().save_profile(body)})
+                elif path=='/api/brain/activate-profile':
+                    pm=_get_safe_profile_mgr();pm.activate_profile(body.get('profile_id',''))
+                    self._json(200,{'success':True,'active':pm.get_active_profile()})
+                elif path=='/api/brain/profile/delete':
+                    pm=_get_safe_profile_mgr();pm.delete_profile(body.get('profile_id',''))
+                    self._json(200,{'success':True,'active':pm.get_active_profile()})
+                elif path=='/api/brain/model':
                     pm=_get_safe_profile_mgr();model=pm.save_profile(body)
                     self._json(200,{'success':True,'model':model})
                 elif path=='/api/brain/model/test':
                     from dock_twoo.brain.cloud import CloudClient
                     from dock_twoo.brain.agent_tools import TOOLS
                     pm=_get_safe_profile_mgr();config=pm.get_active_profile()
-                    turn=CloudClient(config,pm.get_key(config['provider'])).turn([{'role':'user','content':'Test connection. Use finish with text Ready.'}],[TOOLS[-1]])
+                    if body.get('profile_id'):
+                        config=next((p for p in pm.get_profiles() if p['id']==body['profile_id']),None)
+                        if config is None:raise ValueError('Cloud profile not found.')
+                    turn=CloudClient(config,pm.get_key(config['provider'],config.get('id'))).turn([{'role':'user','content':'Test connection. Use finish with text Ready.'}],[TOOLS[-1]])
                     self._json(200,{'success':True,'message':'Connection successful. '+('Tool calling verified.' if turn.calls else 'Text response verified; tool calling was not exercised.')})
                 elif path=='/api/brain/stop':
                     from dock_twoo.brain.manager import BrainManager
@@ -337,7 +368,14 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 bm = BrainManager._instance
                 if bm is None:
                     raise RuntimeError('Start the desktop application before sending a request.')
-                if hasattr(bm,'submit_request'):bm.submit_request(text.strip(),'console')
+                screen_id = body.get('screen_id')
+                if screen_id is not None:
+                    displays = getattr(self.config_manager, 'display_snapshot', {}).get('displays', [])
+                    if not isinstance(screen_id, str) or not any(d['id'] == screen_id and d['selected'] for d in displays):
+                        raise ValueError('Choose a connected display showing Dock T(w)oo.')
+                if hasattr(bm,'submit_request'):
+                    if screen_id is None:bm.submit_request(text.strip(),'console')
+                    else:bm.submit_request(text.strip(),'console',screen_id)
                 else:bm.turn_complete_requested.emit(text.strip())
                 self._set_headers(HTTPStatus.ACCEPTED, 'application/json')
                 self.wfile.write(b'{"success":true}')
@@ -347,10 +385,22 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/config":
+            # Existing configuration saves are same-origin; all display mutations
+            # also require the local control header used by the console.
+            if not self._local_control() or (self.headers.get('Origin') and not self._local_control(write=True)):
+                self._json(403, {'success': False, 'error': 'Use the local application console.'})
+                return
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
+                if not 0 < content_length <= 256000:
+                    raise ValueError('Configuration request is empty or too large.')
                 body = self.rfile.read(content_length).decode("utf-8")
                 updates = json.loads(body)
+                if not isinstance(updates, dict):
+                    raise ValueError('Supply a JSON object.')
+                if any(key in updates for key in ('display_mode','display_ids')) and not self._local_control(write=True):
+                    self._json(403, {'success': False, 'error': 'Use the local application controls.'})
+                    return
 
                 updated = self.config_manager.update(updates)
                 self._set_headers(HTTPStatus.OK, "application/json")
@@ -405,45 +455,13 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
             return
 
-        if path == "/api/brain/activate-profile":
-            try:
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                pm = _get_safe_profile_mgr()
-                profile_id = body.get("profile_id", "")
-                success = pm.activate_profile(profile_id)
-                from dock_twoo.brain.manager import BrainManager
-                if BrainManager._instance is not None:
-                    BrainManager._instance._update_status_indicator()
-                self._set_headers(HTTPStatus.OK, "application/json")
-                self.wfile.write(
-                    json.dumps({"success": success, "active": pm.get_active_profile()}).encode("utf-8")
-                )
-            except Exception as e:
-                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
-                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
-            return
-
-        if path == "/api/brain/profile":
-            try:
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                pm = _get_safe_profile_mgr()
-                saved = pm.save_profile(body)
-                self._set_headers(HTTPStatus.OK, "application/json")
-                self.wfile.write(json.dumps({"success": True, "profile": saved}).encode("utf-8"))
-            except Exception as e:
-                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
-                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
-            return
-
         if path == "/api/brain/settings":
             try:
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
                 store = _get_safe_brain_store()
-                if any(key in body for key in ('cloud_keys', 'cloud_model', 'profiles', 'active_profile')):
-                    raise ValueError('Use the Cloud Model form to configure the single provider securely.')
+                if any(key in body for key in ('cloud_keys', 'cloud_model', 'cloud_profiles', 'profiles', 'active_profile')):
+                    raise ValueError('Use Cloud Profiles to configure model profiles securely.')
                 for key,low,high in (('agent_max_steps',1,12),('agent_token_budget',2000,64000),('agent_no_progress_turns',2,3),('agent_max_output_tokens',128,2048)):
                     if key in body and (type(body[key]) is not int or not low<=body[key]<=high):
                         raise ValueError(f'{key} must be an integer between {low} and {high}.')
@@ -471,10 +489,10 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 content_length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(content_length).decode("utf-8"))
                 pm = _get_safe_profile_mgr()
-                pm.set_key(body.get("provider", "gemini"), body.get("key", ""))
+                pm.set_key(body.get("provider", "gemini"), body.get("key", ""),body.get("profile_id"))
                 from dock_twoo.brain.manager import BrainManager
                 if BrainManager._instance is not None:
-                    BrainManager._instance._update_status_indicator()
+                    BrainManager._instance.run_on_main_thread(BrainManager._instance.companion.update)
                 self._set_headers(HTTPStatus.OK, "application/json")
                 self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
             except Exception as e:
@@ -559,20 +577,6 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._set_headers(HTTPStatus.INTERNAL_SERVER_ERROR, "application/json")
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
             return
-
-        if path == "/api/brain/profile/delete":
-            try:
-                content_length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(content_length).decode("utf-8"))
-                pm = _get_safe_profile_mgr()
-                deleted = pm.delete_profile(body.get("profile_id", ""))
-                self._set_headers(HTTPStatus.OK, "application/json")
-                self.wfile.write(json.dumps({"success": deleted}).encode("utf-8"))
-            except Exception as e:
-                self._set_headers(HTTPStatus.BAD_REQUEST, "application/json")
-                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
-            return
-
 
         self._set_headers(HTTPStatus.NOT_FOUND, "text/plain")
         self.wfile.write(b"404 Not Found")
