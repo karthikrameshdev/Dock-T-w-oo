@@ -22,10 +22,11 @@ class WakeDetector:
     JOINER = "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
     FILES = (ENCODER, DECODER, JOINER, "tokens.txt", "bpe.model")
 
-    def __init__(self, model_dir: Path | str, wake_word: str = "brain"):
+    def __init__(self, model_dir: Path | str, wake_word: str = "brain", *, keywords=None):
         self.model_dir = Path(model_dir)
         self.cache_dir = self.model_dir / "huggingface" / "hub"
         self.wake_word = wake_word
+        self.keywords = tuple(keywords) if keywords else None
         self.state = "not started"
         self.error = ""
         self.frames = 0
@@ -75,17 +76,17 @@ class WakeDetector:
             bpe = sentencepiece.SentencePieceProcessor(model_file=str(folder / "bpe.model"))
             # The required base list is never empty. Stream-specific custom names
             # are added with create_stream(), without reloading the neural network.
-            keywords_path = self.model_dir / "wake-keywords.txt"
+            keywords_path = self.model_dir / ("stop-keywords.txt" if self.keywords else "wake-keywords.txt")
             keywords_path.parent.mkdir(parents=True, exist_ok=True)
             keywords_path.write_text("\n".join(
-                " ".join(bpe.encode(word, out_type=str)) + " @" + word
-                for word in ("BRAIN", "BUDDY")
+                " ".join(bpe.encode(word, out_type=str)) + " @" + word.replace(' ', '_')
+                for word in (self.keywords or ("BRAIN", "BUDDY"))
             ) + "\n", encoding="utf-8")
             spotter = sherpa_onnx.KeywordSpotter(
                 tokens=str(folder / "tokens.txt"), encoder=str(folder / self.ENCODER),
                 decoder=str(folder / self.DECODER), joiner=str(folder / self.JOINER),
                 keywords_file=str(keywords_path), num_threads=2, provider="cpu",
-                keywords_score=1.0, keywords_threshold=0.25, num_trailing_blanks=1,
+                keywords_score=1.0, keywords_threshold=.45 if self.keywords else .25, num_trailing_blanks=1,
             )
             with self._lock:
                 self._spotter, self._bpe = spotter, bpe
@@ -99,7 +100,7 @@ class WakeDetector:
 
     def _new_stream(self) -> None:
         phrase = re.sub(r"^(?:hey|hello|hi|okay|ok|yo)\s+", "", self.wake_word.strip(), flags=re.I).upper()
-        if phrase and phrase not in ("BRAIN", "BUDDY"):
+        if not self.keywords and phrase and phrase not in ("BRAIN", "BUDDY"):
             tokens = " ".join(self._bpe.encode(phrase, out_type=str))
             self._stream = self._spotter.create_stream(f"{tokens} @{phrase.replace(' ', '_')}")
         else:

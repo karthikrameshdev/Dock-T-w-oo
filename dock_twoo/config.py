@@ -24,6 +24,21 @@ def get_default_config_dir() -> Path:
     return config_dir
 
 
+def validate_display_settings(changes: Dict[str, Any]) -> None:
+    """Reject ambiguous display selections before saving any configuration."""
+    if 'display_mode' in changes and changes['display_mode'] not in ('single', 'selected', 'all'):
+        raise ValueError('Choose single, selected, or all displays.')
+    if 'display_ids' in changes:
+        ids = changes['display_ids']
+        if not isinstance(ids, list) or any(not isinstance(i, str) or not i or len(i) > 160 for i in ids) or len(set(ids)) != len(ids):
+            raise ValueError('Display ids must be a list of unique, non-empty strings.')
+        mode = changes.get('display_mode')
+        if mode == 'single' and len(ids) > 1:
+            raise ValueError('Choose one display.')
+        if mode == 'selected' and not ids:
+            raise ValueError('Choose at least one display.')
+
+
 def migrate_storage_data(old_root: Path, new_root: Path) -> Dict[str, Any]:
     """Safely migrate all component app data from old storage directory to new storage directory."""
     import shutil
@@ -236,6 +251,8 @@ class DockConfig:
     # Edge placement
     edge: str = "right"  # "right", "left", "top", "bottom"
     screen_index: int = 0
+    display_mode: str = "single"  # single, selected, all
+    display_ids: List[str] = field(default_factory=list)
     edge_offset_x: int = 12
     offset_y: int = 0
 
@@ -504,6 +521,10 @@ class ConfigManager(QObject):
 
     def update(self, changes: Dict[str, Any]) -> DockConfig:
         """Update configuration and notify listeners."""
+        validate_display_settings(changes)
+        if 'display_mode' in changes or 'display_ids' in changes:
+            validate_display_settings({'display_mode': changes.get('display_mode', self._config.display_mode),
+                                       'display_ids': changes.get('display_ids', self._config.display_ids)})
         for k, v in changes.items():
             if k == "apps" and isinstance(v, list):
                 apps_list = []

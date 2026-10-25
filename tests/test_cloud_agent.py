@@ -34,7 +34,12 @@ def test_legacy_keys_are_migrated_and_never_returned_in_settings(tmp_path):
     assert manager.get_key('gemini')=='private-test-secret'
     assert 'private-test-secret' not in store.settings_file.read_text()
     assert 'private-test-secret' not in (tmp_path/'cloud-credentials.enc').read_bytes().decode('latin1')
-    assert (tmp_path/'cloud-credentials.key').stat().st_mode & 0o077==0
+    from dock_twoo.brain.credential_key import windows_user_protection,WINDOWS_HEADER
+    if windows_user_protection():
+        assert (tmp_path/'cloud-credentials.key').read_bytes().startswith(WINDOWS_HEADER)
+        assert ProfileManager(BrainStore(tmp_path)).get_key('gemini')=='private-test-secret'
+    else:
+        assert (tmp_path/'cloud-credentials.key').stat().st_mode & 0o077==0
 
 
 def test_work_entries_persist_by_date_and_deduplicate(tmp_path):

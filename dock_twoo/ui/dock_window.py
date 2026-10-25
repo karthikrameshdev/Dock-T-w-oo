@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from dock_twoo.brain import get_brain_manager
+from dock_twoo.ui.theme import paint_color
 from dock_twoo.config import ConfigManager, DockAppItem, DockConfig
 from dock_twoo.icons import IconManager
 from dock_twoo.os_integration.margin_manager import DesktopMarginManager
@@ -126,7 +127,7 @@ class DockLogoWidget(QWidget):
 
         rect = QRectF(2, 2, self.width() - 4, self.height() - 4)
         if self._is_hover:
-            hover_bg = QColor(self.config.get_effective_hover_bg())
+            hover_bg = paint_color(self.config.get_effective_hover_bg())
             painter.setBrush(QBrush(hover_bg))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(rect)
@@ -195,11 +196,13 @@ class ThreeDotsDivider(QWidget):
 class DockWindow(QWidget):
     """The resident secondary dock window pinned to a screen edge."""
 
-    def __init__(self, config_manager: ConfigManager):
+    def __init__(self, config_manager: ConfigManager, *, screen_id=None, screen_index=None):
         # Frameless and stays on top — NO Qt.WindowType.Tool so macOS never hides it on deactivate!
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.config_manager = config_manager
-        self.config = config_manager.config
+        self.screen_id = screen_id
+        self.display_index = screen_index
+        self.config = self._display_config(config_manager.config)
         self._current_edge: str = self.config.edge
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
@@ -209,7 +212,7 @@ class DockWindow(QWidget):
         self.brain_manager = get_brain_manager()
         self.brain_manager.app_open_requested.connect(self._open_voice_app)
         self.brain_manager.tasks_view_requested.connect(self._show_task_summary)
-        self.brain_manager.app_data_changed.connect(lambda ident: self.attached_window._apps[ident]._load_notes() if ident=='notes' and ident in self.attached_window._apps and self.attached_window._apps[ident].stack.currentIndex()==0 else None)
+        self.brain_manager.app_data_changed.connect(self._refresh_app_data)
         self.awake_timer=QTimer(self)
         self.awake_timer.setInterval(1000)
         def update_awake():
@@ -219,9 +222,7 @@ class DockWindow(QWidget):
                 enabled=get_keep_awake().status()['enabled'];button.set_active(enabled)
                 button.item.tooltip='Keep Awake · '+('On' if enabled else 'Off')
         self.awake_timer.timeout.connect(update_awake);self.awake_timer.start()
-        self.brain_manager.visibility_changed.connect(
-            lambda visible: self._set_active_icon("brain" if visible else None)
-        )
+        self.brain_manager.visibility_changed.connect(self._on_brain_visibility)
 
         # Margin Manager ensures other application windows stop at Dock 2 and don't slide behind it
         self.margin_manager = DesktopMarginManager(self.config, self)
@@ -244,6 +245,24 @@ class DockWindow(QWidget):
 
         # Thread-safe Qt Signal dispatch guarantees GUI updates occur strictly on the main thread
         self.config_manager.config_updated.connect(self.on_config_updated)
+
+    def _display_config(self, config):
+        from dataclasses import replace
+        return config if self.display_index is None else replace(config, screen_index=self.display_index)
+
+    def set_display_index(self, index):
+        self.display_index = index
+        self.on_config_updated(self.config_manager.config)
+
+    def _refresh_app_data(self, ident):
+        if ident == 'notes' and ident in self.attached_window._apps:
+            widget = self.attached_window._apps[ident]
+            if widget.stack.currentIndex() == 0:
+                widget._load_notes()
+
+    def _on_brain_visibility(self, _visible):
+        visible = self.brain_manager.companion_for(self.screen_id).isVisible()
+        self._set_active_icon('brain' if visible else None)
 
     def _setup_ui(self) -> None:
         self._icon_buttons.clear()
@@ -388,6 +407,8 @@ class DockWindow(QWidget):
             self.bottom_layout.addWidget(btn)
 
     def _show_task_summary(self, payload) -> None:
+        if self.screen_id and self.screen_id != self.brain_manager.active_screen_id:
+            return
         widget=self.attached_window._apps.get('tasks')
         if widget:
             widget.show_query(payload.get('filters',{}),summary_text=payload.get('summary',''))
@@ -395,6 +416,8 @@ class DockWindow(QWidget):
 
     def _open_voice_app(self, app_id: str) -> None:
         """An agent's open request is idempotent, unlike a dock click toggle."""
+        if self.screen_id and self.screen_id != self.brain_manager.active_screen_id:
+            return
         if app_id == 'brain':
             self.brain_manager.show_mini_agent()
             return
@@ -422,7 +445,7 @@ class DockWindow(QWidget):
         # Click on Brain summons or activates the desktop robot mini agent directly
         if app_id in ("brain",):
             self.attached_window.hide_window()
-            self.brain_manager.toggle_mini_agent()
+            self.brain_manager.toggle_talking(self.screen_id)
             self._set_active_icon("brain" if self.brain_manager.is_mini_agent_visible() else None)
             return
 
@@ -432,7 +455,7 @@ class DockWindow(QWidget):
     def _handle_icon_right_click(self, app_id: str, global_pos: QPoint) -> None:
         """Handle right-click context menu on a dock icon button."""
         if app_id == "brain":
-            self.brain_manager.show_context_menu(global_pos)
+            self.brain_manager.show_context_menu(global_pos, self.screen_id)
             self._set_active_icon("brain" if self.brain_manager.is_mini_agent_visible() else None)
         elif app_id in ("settings", "console"):
             url = f"http://{self.config.server_host}:{self.config.server_port}"
@@ -717,6 +740,7 @@ class DockWindow(QWidget):
 
     def on_config_updated(self, config: DockConfig) -> None:
         """Handle live configuration updates from Web Console."""
+        config = self._display_config(config)
         edge_changed = (self._current_edge != config.edge)
         self._current_edge = config.edge
         self.config = config
@@ -778,7 +802,7 @@ class DockWindow(QWidget):
         path.addRoundedRect(capsule_rect, radius, radius)
 
         # 2. Main Capsule Fill
-        bg_col = QColor(self.config.get_effective_dock_bg())
+        bg_col = paint_color(self.config.get_effective_dock_bg())
         bg_col.setAlphaF(self.config.dock_opacity)
         painter.setBrush(QBrush(bg_col))
         painter.setPen(Qt.PenStyle.NoPen)
@@ -792,6 +816,20 @@ class DockWindow(QWidget):
         painter.end()
 
     def closeEvent(self, event) -> None:
+        if getattr(self, '_closed', False):
+            super().closeEvent(event)
+            return
+        self._closed = True
+        for signal, slot in ((self.config_manager.config_updated, self.on_config_updated),
+                             (self.brain_manager.app_open_requested, self._open_voice_app),
+                             (self.brain_manager.tasks_view_requested, self._show_task_summary),
+                             (self.brain_manager.app_data_changed, self._refresh_app_data),
+                             (self.brain_manager.visibility_changed, self._on_brain_visibility)):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+        self.awake_timer.stop()
         self._restore_default_cursor()
         if hasattr(self, "margin_manager"):
             self.margin_manager.stop()

@@ -17,7 +17,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from dock_twoo.config import DockConfig
-from dock_twoo.ui.theme import create_app_font, get_theme_tokens
+from dock_twoo.ui.theme import create_app_font, get_theme_tokens, paint_color
 
 
 class DockTooltip(QWidget):
@@ -126,7 +126,7 @@ class DockTooltip(QWidget):
         tokens = get_theme_tokens(self.config)
         is_dark = self.config.get_effective_theme() == "dark"
 
-        bg_color = QColor(tokens.card_bg)
+        bg_color = paint_color(tokens.card_bg)
         border_color = QColor(255, 255, 255, 30) if is_dark else QColor(0, 0, 0, 25)
         text_color = QColor(tokens.text_primary)
 

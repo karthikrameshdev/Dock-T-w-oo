@@ -9,7 +9,6 @@ from PySide6.QtCore import QPoint, QPointF, QRect
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
-from dock_twoo.brain.animation import gait_at, two_bone_joint
 from dock_twoo.brain.listener import AudioListener, command_after_keyword
 from dock_twoo.brain.mascot import Companion
 from dock_twoo.brain.profiles import ProfileManager
@@ -96,6 +95,9 @@ def test_playback_echo_and_its_tail_cannot_wake_the_agent(monkeypatch):
     assert frames == []
     clock[0] = 10.4
     listener._handle_pcm_frame(pcm)
+    assert frames == []  # Busy playback remains stop-only until explicitly armed.
+    listener.arm_wake()
+    listener._handle_pcm_frame(pcm)
     assert frames == [pcm]
 
 
@@ -137,116 +139,20 @@ def test_cached_command_model_starts_without_contacting_hugging_face(tmp_path, m
     assert recognizer.ready
 
 
-def test_support_foot_is_planted_and_swing_foot_lifts():
-    first = gait_at(7)[0]
-    second = gait_at(15)[0]
-    assert first.stance and second.stance
-    assert 7 + first.x == pytest.approx(15 + second.x)
-    left, right = gait_at(51)
-    assert not left.stance and left.lift > 5
-    assert right.stance and right.lift == 0
 
 
-def test_elbows_and_knees_preserve_bone_lengths():
-    start, end = (0, 0), (12, 30)
-    joint = two_bone_joint(start, end, 20, 22)
-    assert math.dist(start, joint) == pytest.approx(20)
-    assert math.dist(joint, end) == pytest.approx(22)
 
 
-def test_side_profile_articulates_legs_between_steps(companion):
-    companion.action = 'walk'
-    companion.turn_progress = 1
-    companion.gait_blend = 1
-    frames = []
-    for distance in (0, 17):
-        companion.gait_distance = distance
-        image = QImage(companion.size(), QImage.Format.Format_ARGB32)
-        image.fill(0)
-        companion.render(image)
-        frames.append(image.copy(65, 180, 145, 62))
-    assert frames[0] != frames[1]
 
 
-def test_turn_blend_preserves_opacity_on_overlapping_body_pixels(companion):
-    import numpy as np
-    masks = []
-    for turn in (0, .5, .25):
-        companion.turn_progress = turn
-        image = QImage(companion.size(), QImage.Format.Format_ARGB32)
-        image.fill(0)
-        companion.render(image)
-        masks.append(np.frombuffer(image.constBits(), dtype=np.uint8).reshape(image.height(), image.bytesPerLine())[:, 3::4].copy())
-    # Keep the original texture's alpha instead of darkening it during turns.
-    assert (masks[2][90:120, 120:145] == masks[0][90:120, 120:145]).all()
 
 
-@pytest.mark.parametrize('view', ['turn', 'side'])
-def test_original_profile_art_changes_only_the_facial_lights(companion, view):
-    import numpy as np
-    from dock_twoo.brain.mascot import get_robot_turn_path, get_robot_side_path
-    path = get_robot_turn_path() if view == 'turn' else get_robot_side_path()
-    actual = getattr(companion, f'art_{view}').toImage().convertToFormat(QImage.Format.Format_ARGB32)
-    ratio = getattr(companion, f'art_{view}').devicePixelRatioF()
-    original = companion._load_scaled_pixmap(path, ratio).toImage().convertToFormat(QImage.Format.Format_ARGB32)
-    first = np.frombuffer(original.constBits(), np.uint8).reshape(original.height(), original.width(), 4)
-    second = np.frombuffer(actual.constBits(), np.uint8).reshape(actual.height(), actual.width(), 4)
-    allowed = np.zeros(first.shape[:2], dtype=bool)
-    regions = ((83, 64, 92, 76), (104, 64, 110, 76), (93, 74, 102, 81)) if view == 'turn' else ((102, 65, 109, 77),)
-    for left, top, right, bottom in regions:
-        allowed[round(top * ratio):round(bottom * ratio), round(left * ratio):round(right * ratio)] = True
-    opaque = (first[:, :, 3] == 255) & ~allowed
-    assert np.array_equal(first[opaque], second[opaque])
-    white = (second[:, :, 0] == second[:, :, 1]) & (second[:, :, 1] == second[:, :, 2]) & (second[:, :, 0] > 160)
-    assert np.count_nonzero(white & allowed) > 20
 
 
-def test_body_parts_respect_a_parent_clip(companion):
-    from PySide6.QtCore import QRectF
-    from PySide6.QtGui import QPainter
-    image = QImage(168, 202, QImage.Format.Format_ARGB32)
-    image.fill(0)
-    painter = QPainter(image)
-    painter.setClipRect(QRectF(0, 115, 168, 87))
-    companion._draw_part(painter, 'head', 0, (.5, .5))
-    painter.end()
-    assert all(image.pixelColor(x, y).alpha() == 0 for y in range(115) for x in range(168))
 
 
-@pytest.mark.parametrize('yaw', [0, .0001, .1, .4, .8, 1])
-@pytest.mark.parametrize('head_angle', [-18, 18])
-def test_body_render_cannot_duplicate_the_head_or_antenna(companion, monkeypatch, yaw, head_angle):
-    from dock_twoo.brain.animation import Pose
-    companion.action = 'inspect_window'
-    companion.turn_progress = yaw
-    companion.pose = Pose(head=head_angle, tilt=3)
-
-    def render():
-        image = QImage(companion.size(), QImage.Format.Format_ARGB32)
-        image.fill(0)
-        companion.render(image)
-        return image.copy(0, 0, 264, 100)
-
-    full = render()
-    monkeypatch.setattr(companion, '_paint_front_body', lambda *_args: None)
-    assert render() == full
 
 
-def test_head_has_no_front_profile_render_switch(companion):
-    import numpy as np
-    from PySide6.QtGui import QPainter
-    frames = []
-    for yaw in (0, .0001, .0009, .0011):
-        image = QImage(168, 112, QImage.Format.Format_ARGB32_Premultiplied)
-        image.fill(0)
-        painter = QPainter(image)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        companion._paint_motion_head(painter, yaw)
-        painter.end()
-        frames.append(np.frombuffer(image.constBits(), np.uint8).astype(int).copy())
-    for yaw, frame in zip((.0001, .0009, .0011), frames[1:]):
-        assert np.mean(np.abs(frame - frames[0])) < 250 * yaw + .03
 
 
 def test_turn_callback_runs_once_and_cancelled_turns_cannot_resume(companion, monkeypatch):

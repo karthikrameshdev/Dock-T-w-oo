@@ -107,6 +107,23 @@ class ActivityStore:
               retries INTEGER DEFAULT 0, latency_ms INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0,
               cost_known_calls INTEGER DEFAULT 0, PRIMARY KEY(day,provider,model));
             ''')
+            # Existing totals cannot be assigned to a profile retrospectively.
+            for column,default in (('profile_id','__legacy__'),('profile_name','Earlier activity')):
+                if column not in {row[1] for row in db.execute('PRAGMA table_info(calls)')}:
+                    db.execute(f"ALTER TABLE calls ADD COLUMN {column} TEXT NOT NULL DEFAULT '{default}'")
+            if 'profile_id' not in {row[1] for row in db.execute('PRAGMA table_info(daily_usage)')}:
+                columns=[row[1] for row in db.execute('PRAGMA table_info(daily_usage)')]
+                db.execute('ALTER TABLE daily_usage RENAME TO daily_usage_before_profiles')
+                db.execute("""CREATE TABLE daily_usage (
+                    day TEXT,provider TEXT,model TEXT,profile_id TEXT NOT NULL,profile_name TEXT NOT NULL,
+                    calls INTEGER DEFAULT 0,input_tokens INTEGER DEFAULT 0,output_tokens INTEGER DEFAULT 0,
+                    total_tokens INTEGER DEFAULT 0,cached_tokens INTEGER DEFAULT 0,reasoning_tokens INTEGER DEFAULT 0,
+                    known_usage_calls INTEGER DEFAULT 0,failed_calls INTEGER DEFAULT 0,cancelled_calls INTEGER DEFAULT 0,
+                    retries INTEGER DEFAULT 0,latency_ms INTEGER DEFAULT 0,cost_usd REAL DEFAULT 0,cost_known_calls INTEGER DEFAULT 0,
+                    PRIMARY KEY(day,provider,model,profile_id))""")
+                names=','.join(columns)
+                db.execute('INSERT INTO daily_usage('+names+',profile_id,profile_name) SELECT '+names+",'__legacy__','Earlier activity' FROM daily_usage_before_profiles")
+                db.execute('DROP TABLE daily_usage_before_profiles')
             db.execute('INSERT OR IGNORE INTO metadata VALUES(?,?)',('tracking_started',self.clock().isoformat()))
         self.path.chmod(0o600)
         self.prune()
@@ -149,9 +166,10 @@ class ActivityStore:
         ident = uuid.uuid4().hex
         started = self.clock()
         with self.db() as db:
-            db.execute('INSERT INTO calls(id,run_id,started,day,provider,model,requested_model,step,retry,status) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                       (ident, run_id, started.isoformat(), started.date().isoformat(), config['provider'], config['model'], config['model'], step, int(retry), 'in_flight'))
+            db.execute('INSERT INTO calls(id,run_id,started,day,provider,model,requested_model,step,retry,status,profile_id,profile_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                       (ident, run_id, started.isoformat(), started.date().isoformat(), config['provider'], config['model'], config['model'], step, int(retry), 'in_flight', config.get('id') or '__legacy__', config.get('name') or 'Earlier activity'))
         self.event(run_id, 'cloud_request', {'call_id': ident, 'provider': config['provider'], 'model': config['model'],
+                    'profile_id': config.get('id') or '__legacy__', 'profile_name': config.get('name') or 'Earlier activity',
                     'retry': bool(retry), 'payload': safe_payload(payload, secret)}, step)
         return ident
 
@@ -173,9 +191,9 @@ class ActivityStore:
             values = [1,usage['input_tokens'] or 0,usage['output_tokens'] or 0,usage['total_tokens'] or 0,
                       usage['cached_tokens'],usage['reasoning_tokens'],int(usage['input_tokens'] is not None and usage['output_tokens'] is not None),
                       int(status=='error'),int(status in ('cancelled','interrupted')),row['retry'],latency_ms,usage['cost_usd'] or 0,int(usage['cost_usd'] is not None)]
-            db.execute('INSERT INTO daily_usage(day,provider,model,'+','.join(fields)+') VALUES('+','.join('?' for _ in range(3+len(fields)))+') '
-                       'ON CONFLICT(day,provider,model) DO UPDATE SET '+','.join(f'{field}={field}+excluded.{field}' for field in fields),
-                       [row['day'],row['provider'],model]+values)
+            db.execute('INSERT INTO daily_usage(day,provider,model,profile_id,profile_name,'+','.join(fields)+') VALUES('+','.join('?' for _ in range(5+len(fields)))+') '
+                       'ON CONFLICT(day,provider,model,profile_id) DO UPDATE SET profile_name=excluded.profile_name,'+','.join(f'{field}={field}+excluded.{field}' for field in fields),
+                       [row['day'],row['provider'],model,row['profile_id'],row['profile_name']]+values)
         self.event(row['run_id'], 'cloud_response', {'call_id': ident, 'status': status, 'error': error,
                     'usage': usage, 'latency_ms': latency_ms, 'response': safe_payload(response, secret)}, row['step'])
 
@@ -223,7 +241,7 @@ class ActivityStore:
             calls=[dict(call) for call in db.execute('SELECT * FROM calls WHERE run_id=? ORDER BY started',(ident,))]
         return {'run':dict(row),'calls':calls,'events':events,'retention_days':RETENTION_DAYS}
 
-    def metrics(self, start=None, end=None, period='month'):
+    def metrics(self, start=None, end=None, period='month', profile_id=None):
         today=self.clock().date()
         if period not in ('month','7d','custom'):raise ValueError('Choose month, 7d, or custom.')
         if period=='custom' and (not start or not end):raise ValueError('Choose both From and To dates.')
@@ -232,7 +250,12 @@ class ActivityStore:
         if first>last or (last-first).days>730:raise ValueError('Choose a valid date range of up to two years.')
         with self.db() as db:
             tracking_started=db.execute("SELECT value FROM metadata WHERE key='tracking_started'").fetchone()[0]
-            rows=[dict(row) for row in db.execute('SELECT * FROM daily_usage WHERE day BETWEEN ? AND ? ORDER BY day',(first.isoformat(),last.isoformat()))]
+            options={row['profile_id']:row['profile_name'] for row in db.execute('SELECT profile_id,profile_name,max(day) FROM daily_usage GROUP BY profile_id')}
+            if profile_id not in (None,'','all'):
+                if not isinstance(profile_id,str) or len(profile_id)>128:raise ValueError('Choose a valid cloud profile.')
+                rows=[dict(row) for row in db.execute('SELECT * FROM daily_usage WHERE day BETWEEN ? AND ? AND profile_id=? ORDER BY day',(first.isoformat(),last.isoformat(),profile_id))]
+            else:
+                rows=[dict(row) for row in db.execute('SELECT * FROM daily_usage WHERE day BETWEEN ? AND ? ORDER BY day',(first.isoformat(),last.isoformat()))]
         fields=['calls','input_tokens','output_tokens','total_tokens','cached_tokens','reasoning_tokens','known_usage_calls','failed_calls','cancelled_calls','retries','latency_ms','cost_usd','cost_known_calls']
         # Some compatible APIs report a total larger than their input/output
         # breakdown. Preserve the total without inventing a reasoning count.
@@ -243,8 +266,11 @@ class ActivityStore:
         total['unknown_usage_calls']=total['calls']-total['known_usage_calls']
         total['average_latency_ms']=round(total['latency_ms']/max(1,total['calls']))
         total['successful_calls']=total['calls']-total['failed_calls']-total['cancelled_calls']
-        daily={};models={}
+        total['unique_profiles']=len({row['profile_id'] for row in rows if row['profile_id']!='__legacy__'})
+        daily={};models={};profiles={}
         for row in rows:
+            if row['profile_id'] not in profiles:profiles[row['profile_id']]={'profile_id':row['profile_id'],'name':row['profile_name'],**{field:0 for field in fields}}
+            for field in fields:profiles[row['profile_id']][field]+=row[field]
             for group,key in ((daily,row['day']),(models,row['provider']+'/'+row['model'])):
                 if key not in group:group[key]={field:0 for field in fields}
                 for field in fields:group[key][field]+=row[field]
@@ -253,5 +279,7 @@ class ActivityStore:
             days.append({'day':current.isoformat(),**daily.get(current.isoformat(),{field:0 for field in fields})});current+=timedelta(days=1)
         return {'from':first.isoformat(),'to':last.isoformat(),'tracking_started':tracking_started,'summary':total,'daily':days,
                 'models':[{'model':key,**value} for key,value in models.items()],
+                'profile_id':profile_id or 'all','profiles':list(profiles.values()),
+                'profile_options':[{'id':ident,'name':name,'historical':True} for ident,name in options.items()],
                 'source':'Provider-reported cloud API usage only. Local speech/vision are excluded.',
                 'retention_days':RETENTION_DAYS,'totals_retention':'Daily aggregates retained; detailed requests and responses expire after seven days.'}

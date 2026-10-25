@@ -6,6 +6,7 @@
     "character/runtime-preview/speech.png",
     "character/runtime-preview/quarter.png",
     "character/runtime-preview/side_walk.png",
+    "character/runtime-preview/handshake.png",
     "character/runtime-preview/wave.png",
     "character/runtime-preview/climb.png",
     "character/runtime-preview/pull.png",
@@ -14,14 +15,20 @@
     "character/runtime-preview/read.png",
     "character/runtime-preview/scan_code.png",
     "character/runtime-preview/fly.png",
+    "character/runtime-preview/library_air_spin.png",
+    "character/runtime-preview/library_balloon.png",
     "character/runtime-preview/library_celebrate.png",
     "character/runtime-preview/library_chase_ball.png",
+    "character/runtime-preview/library_cheer_partner.png",
     "character/runtime-preview/library_climb_dock.png",
     "character/runtime-preview/library_dance.png",
+    "character/runtime-preview/library_dance_together.png",
+    "character/runtime-preview/library_dash.png",
     "character/runtime-preview/library_drag.png",
     "character/runtime-preview/library_explore.png",
     "character/runtime-preview/library_fold_arms.png",
     "character/runtime-preview/library_greet.png",
+    "character/runtime-preview/library_hammer.png",
     "character/runtime-preview/library_happy.png",
     "character/runtime-preview/library_hover.png",
     "character/runtime-preview/library_inspect_icon.png",
@@ -31,7 +38,9 @@
     "character/runtime-preview/library_land.png",
     "character/runtime-preview/library_listen.png",
     "character/runtime-preview/library_nod.png",
+    "character/runtime-preview/library_parachute.png",
     "character/runtime-preview/library_peek.png",
+    "character/runtime-preview/library_playful_spar.png",
     "character/runtime-preview/library_point.png",
     "character/runtime-preview/library_ponder.png",
     "character/runtime-preview/library_push.png",
@@ -51,197 +60,249 @@
     "character/runtime-preview/library_walk_window.png",
     "character/runtime-preview/library_whistle.png",
     "character/runtime-preview/library_wink.png",
+    "character/runtime-preview/online.png",
+    "character/runtime-preview/offline.png",
     "character/runtime-preview/listening.png",
     "character/runtime-preview/thinking.png",
+    "character/runtime-preview/responding.png",
+    "character/runtime-preview/queued.png",
     "character/runtime-preview/reduced_motion.png"
   ],
   "errors": [],
   "animation_probes": [
     {
       "action": "walk",
-      "hand_displacement": 0.6426
+      "hand_displacement": 0.6805,
+      "arm_pose_change": 2.7842
+    },
+    {
+      "action": "handshake",
+      "hand_displacement": 0.0163,
+      "arm_pose_change": 0.0087
     },
     {
       "action": "wave",
-      "hand_displacement": 0.0138
+      "hand_displacement": 0.004,
+      "arm_pose_change": 0.0392
     },
     {
       "action": "climb",
-      "hand_displacement": 0.0932
+      "hand_displacement": 0.2434,
+      "arm_pose_change": 0.5295
     },
     {
       "action": "pull_scroll",
-      "hand_displacement": 0.0222
+      "hand_displacement": 0.0895,
+      "arm_pose_change": 0.2218
+    },
+    {
+      "action": "air_spin",
+      "pose_change": 1.7557
+    },
+    {
+      "action": "balloon",
+      "pose_change": 0.2008
     },
     {
       "action": "celebrate",
-      "pose_change": 0.3776
+      "pose_change": 0.345
     },
     {
       "action": "chase_ball",
-      "pose_change": 2.1993
+      "pose_change": 3.4403
+    },
+    {
+      "action": "cheer_partner",
+      "pose_change": 0.231
     },
     {
       "action": "climb_dock",
-      "pose_change": 0.7907
+      "pose_change": 0.8039
     },
     {
       "action": "dance",
-      "pose_change": 0.3673
+      "pose_change": 0.343
+    },
+    {
+      "action": "dance_together",
+      "pose_change": 0.1837
+    },
+    {
+      "action": "dash",
+      "pose_change": 2.0497
     },
     {
       "action": "drag",
-      "pose_change": 0.0578
+      "pose_change": 0.0489
     },
     {
       "action": "explore",
-      "pose_change": 3.5091
+      "pose_change": 2.8445
     },
     {
       "action": "fold_arms",
-      "pose_change": 0.6203
+      "pose_change": 0.6664
     },
     {
       "action": "greet",
-      "pose_change": 0.0838
+      "pose_change": 0.083
+    },
+    {
+      "action": "hammer",
+      "pose_change": 1.9995
     },
     {
       "action": "happy",
-      "pose_change": 0.1821
+      "pose_change": 0.1757
     },
     {
       "action": "hover",
-      "pose_change": 0.1362
+      "pose_change": 0.1157
     },
     {
       "action": "inspect_icon",
-      "pose_change": 0.0727
+      "pose_change": 0.0776
     },
     {
       "action": "inspect_window",
-      "pose_change": 0.189
+      "pose_change": 0.2208
     },
     {
       "action": "jump",
-      "pose_change": 0.3729
+      "pose_change": 0.3946
     },
     {
       "action": "kick_ball",
-      "pose_change": 0.2241
+      "pose_change": 1.4335
     },
     {
       "action": "land",
-      "pose_change": 0.2069
+      "pose_change": 0.1789
     },
     {
       "action": "listen",
-      "pose_change": 0.1803
+      "pose_change": 0.176
     },
     {
       "action": "nod",
-      "pose_change": 0.117
+      "pose_change": 0.1216
+    },
+    {
+      "action": "parachute",
+      "pose_change": 0.2753
     },
     {
       "action": "peek",
-      "pose_change": 0.2168
+      "pose_change": 0.2286
+    },
+    {
+      "action": "playful_spar",
+      "pose_change": 0.7206
     },
     {
       "action": "point",
-      "pose_change": 0.7481
+      "pose_change": 0.7191
     },
     {
       "action": "ponder",
-      "pose_change": 0.2341
+      "pose_change": 0.2303
     },
     {
       "action": "push",
-      "pose_change": 0.082
+      "pose_change": 0.0635
     },
     {
       "action": "replace_text",
-      "pose_change": 0.3393
+      "pose_change": 0.3256
     },
     {
       "action": "roll",
-      "pose_change": 0.8336
+      "pose_change": 1.7472
     },
     {
       "action": "run",
-      "pose_change": 2.3043
+      "pose_change": 2.97
     },
     {
       "action": "sad",
-      "pose_change": 2.8293
+      "pose_change": 0.1757
     },
     {
       "action": "scan_screen",
-      "pose_change": 2.6303
+      "pose_change": 0.2222
     },
     {
       "action": "search",
-      "pose_change": 2.0103
+      "pose_change": 0.0777
     },
     {
       "action": "sensor_scan",
-      "pose_change": 2.2967
+      "pose_change": 0.2208
     },
     {
       "action": "sleep",
-      "pose_change": 2.8484
+      "pose_change": 0.6324
     },
     {
       "action": "stretch",
-      "pose_change": 1.1141
+      "pose_change": 0.326
     },
     {
       "action": "surprised",
-      "pose_change": 0.6146
+      "pose_change": 0.3535
     },
     {
       "action": "talk",
-      "pose_change": 2.7903
+      "pose_change": 0.1796
     },
     {
       "action": "turn_around",
-      "pose_change": 2.9019
+      "pose_change": 0.1065
     },
     {
       "action": "type",
-      "pose_change": 3.1932
+      "pose_change": 0.088
     },
     {
       "action": "walk_window",
-      "pose_change": 4.2921
+      "pose_change": 3.5024
     },
     {
       "action": "whistle",
-      "pose_change": 4.0113
+      "pose_change": 0.1156
     },
     {
       "action": "wink",
-      "pose_change": 0.9791
+      "pose_change": 0.4634
     }
   ],
   "eye_pixels": {
     "front": 346,
-    "blink_closed": 12,
-    "eyes_reopened": 343
+    "blink_closed": 11,
+    "eyes_reopened": 344
   },
   "runtime": {
-    "version": "3.0.0",
-    "assetHash": "fd1bd74dc1cd0b623838790601e609947d2e0df9e312dda36535ac2a06093a56",
+    "version": "3.2.0",
+    "assetHash": "c1d14c014ab820c44421c6d0508bef21ee1e1144802c6ec51bddcfe6648b3753",
     "clips": [
+      "air_spin",
+      "balloon",
       "camera",
       "celebrate",
       "chase_ball",
+      "cheer_partner",
       "climb",
       "climb_dock",
       "dance",
+      "dance_together",
+      "dash",
       "drag",
       "explore",
       "fly",
       "fold_arms",
       "greet",
+      "hammer",
+      "handshake",
       "happy",
       "hover",
       "idle",
@@ -253,7 +314,9 @@
       "listen",
       "magnifier",
       "nod",
+      "parachute",
       "peek",
+      "playful_spar",
       "point",
       "ponder",
       "pull_scroll",
@@ -281,6 +344,9 @@
     ],
     "bones": [
       "root",
+      "propanvil",
+      "propball",
+      "propparachute",
       "thighL",
       "shinL",
       "footL",
@@ -314,7 +380,10 @@
       "digit3L",
       "digit_tip3L",
       "propcamera",
+      "prophammer",
       "propmagnifier",
+      "proptether",
+      "propballoon",
       "thumbL",
       "thumb_tipL",
       "upper_armR",
@@ -333,10 +402,16 @@
       "thumbR",
       "thumb_tipR"
     ],
-    "meshes": 222,
-    "renderedFrames": 2061,
+    "meshes": 252,
+    "renderedFrames": 3420,
     "nonFinite": false,
     "translucent": false,
+    "indicator": {
+      "name": "online",
+      "color": 2278750,
+      "effect": "glow"
+    },
+    "listeningAura": false,
     "eyeScales": [
       1,
       1
@@ -345,29 +420,297 @@
     "mouth": 0,
     "actionTime": 0,
     "speechMeshes": 4,
-    "triangles": 121022,
-    "drawCalls": 222,
+    "triangles": 134412,
+    "drawCalls": 250,
     "propScales": {
-      "propmagnifier": 0.0009999996014247317,
-      "propcamera": 0.0009999996014247317,
-      "proptablet": 0.0009999996014247317,
-      "propscan": 0.0010000022789827198,
-      "jetL": 0.0010000022789827198,
-      "jetR": 0.0010000022789827198
+      "propmagnifier": 0.0009999973699450493,
+      "propcamera": 0.0009999973699450493,
+      "proptablet": 0.0009999973699450493,
+      "propscan": 0.0010000000474974513,
+      "jetL": 0.0010000000474974513,
+      "jetR": 0.0010000000474974513,
+      "propball": 0.0010000000474974513,
+      "prophammer": 0.0009999977191910148,
+      "propanvil": 0.0010000000474974513,
+      "proptether": 0.0009999977191910148,
+      "propballoon": 0.0010000000474974513,
+      "propparachute": 0.0010000000474974513
     },
     "handPositions": [
       [
-        1.1200005070392047,
-        1.5813042357837077,
-        0.37276085072938936
+        1.1200005181105133,
+        1.5072530400194544,
+        0.02500014254718616
       ],
       [
-        -1.120000511839905,
-        1.4899999339549046,
-        0.025000141880060917
+        -1.1200005181105133,
+        1.5072530400194544,
+        0.02500014254718616
       ]
+    ],
+    "armPoseSignature": [
+      0.7700000405311584,
+      0.9300000071525574,
+      5.296837102264362e-08,
+      -0.9491083025932312,
+      -0.21977661550045013,
+      -0.21977652609348297,
+      0.05089166387915611,
+      1.000001072883606,
+      1.000000238418579,
+      1,
+      1.6429189031441638e-07,
+      0.5232590436935425,
+      6.927711382331836e-08,
+      -0.057125452905893326,
+      -0.08033035695552826,
+      0.06147809326648712,
+      0.9932291507720947,
+      1,
+      0.9999998211860657,
+      1,
+      -4.3227913693044684e-08,
+      0.40880918502807617,
+      -3.5112437402062824e-09,
+      -0.05091260001063347,
+      -0.11667175590991974,
+      0.09915433079004288,
+      0.9868962168693542,
+      1,
+      1,
+      1,
+      -0.14499984681606293,
+      0.09499995410442352,
+      -7.949054747768969e-08,
+      -0.1391923651678665,
+      1.2328026276827908e-08,
+      -2.470387733236115e-08,
+      0.9902653611426456,
+      1,
+      0.9999999403953552,
+      0.9999999403953552,
+      8.837180764942332e-09,
+      0.09708225727081299,
+      2.688507194648082e-08,
+      -0.16585490079737236,
+      -1.7042403053937121e-10,
+      -1.2262340397678237e-08,
+      0.9861501670037346,
+      1,
+      1.0000001192092896,
+      1,
+      -0.052999962121248245,
+      0.09499996155500412,
+      -4.854559065847752e-08,
+      -0.13919236834339135,
+      1.2328015243147203e-08,
+      -2.4703873023554236e-08,
+      0.9902653606962919,
+      1,
+      0.9999998807907104,
+      0.9999999403953552,
+      -1.1037211322673102e-07,
+      0.09708259254693985,
+      -1.4208900722678663e-10,
+      -0.09580569695008442,
+      1.314980506953422e-10,
+      -1.298850621138712e-08,
+      0.9954000544664987,
+      1,
+      1,
+      1,
+      0.039000045508146286,
+      0.09499997645616531,
+      3.373840229414782e-08,
+      -0.1391923537309304,
+      1.232802326232422e-08,
+      -2.4703865969364662e-08,
+      0.990265362750229,
+      1,
+      0.9999998807907104,
+      0.9999999403953552,
+      8.837181653120751e-09,
+      0.09708233922719955,
+      2.365101892110033e-08,
+      -0.09580571541295368,
+      1.3152563852097116e-10,
+      -1.2988520413268342e-08,
+      0.9954000526894762,
+      1,
+      0.9999999403953552,
+      1,
+      0.13099993765354156,
+      0.09500010311603546,
+      6.947986008754015e-08,
+      -0.1391923537309304,
+      1.232802326232422e-08,
+      -2.4703865969364662e-08,
+      0.990265362750229,
+      1,
+      0.9999998807907104,
+      0.9999999403953552,
+      -1.1037211322673102e-07,
+      0.0970824658870697,
+      -6.205263503034075e-08,
+      -0.16585487907496982,
+      -1.7041638572864522e-10,
+      -1.2262344898211313e-08,
+      0.9861501706570998,
+      1,
+      1.0000001192092896,
+      1,
+      0.16278569400310516,
+      0.106719009578228,
+      -0.0034311471972614527,
+      -0.07616903632879257,
+      0.2901698052883148,
+      -0.26350194215774536,
+      0.9168241620063782,
+      1,
+      1,
+      1,
+      -1.8554057135133917e-07,
+      0.10452274978160858,
+      3.0789437666101094e-09,
+      -0.08217614009469237,
+      -0.681538262113354,
+      0.47048543982713875,
+      0.5544331611522803,
+      1,
+      0.9999998211860657,
+      0.9999997615814209,
+      -0.7700000405311584,
+      0.9300000071525574,
+      5.296837102264362e-08,
+      -0.9491083025932312,
+      0.21977661550045013,
+      0.21977652609348297,
+      0.05089166387915611,
+      1.000001072883606,
+      1.000000238418579,
+      1,
+      -1.6429189031441638e-07,
+      0.5232590436935425,
+      6.927711382331836e-08,
+      -0.057125452905893326,
+      0.08033035695552826,
+      -0.06147809326648712,
+      0.9932291507720947,
+      1,
+      0.9999998211860657,
+      1,
+      4.3227913693044684e-08,
+      0.40880918502807617,
+      -3.5112437402062824e-09,
+      -0.05091260001063347,
+      0.11667175590991974,
+      -0.09915433079004288,
+      0.9868962168693542,
+      1,
+      1,
+      1,
+      0.14499984681606293,
+      0.09499995410442352,
+      -7.949054747768969e-08,
+      -0.1391923651678665,
+      -1.2328026276827908e-08,
+      2.470387733236115e-08,
+      0.9902653611426456,
+      1,
+      0.9999999403953552,
+      0.9999999403953552,
+      -8.837180764942332e-09,
+      0.09708225727081299,
+      2.688507194648082e-08,
+      -0.16585490079737236,
+      1.7042403053937121e-10,
+      1.2262340397678237e-08,
+      0.9861501670037346,
+      1,
+      1.0000001192092896,
+      1,
+      0.052999962121248245,
+      0.09499996155500412,
+      -4.854559065847752e-08,
+      -0.13919236834339135,
+      -1.2328015243147203e-08,
+      2.4703873023554236e-08,
+      0.9902653606962919,
+      1,
+      0.9999998807907104,
+      0.9999999403953552,
+      1.1037211322673102e-07,
+      0.09708259254693985,
+      -1.4208900722678663e-10,
+      -0.09580569695008442,
+      -1.314980506953422e-10,
+      1.298850621138712e-08,
+      0.9954000544664987,
+      1,
+      1,
+      1,
+      -0.039000045508146286,
+      0.09499997645616531,
+      3.373840229414782e-08,
+      -0.1391923537309304,
+      -1.232802326232422e-08,
+      2.4703865969364662e-08,
+      0.990265362750229,
+      1,
+      0.9999998807907104,
+      0.9999999403953552,
+      -8.837181653120751e-09,
+      0.09708233922719955,
+      2.365101892110033e-08,
+      -0.09580571541295368,
+      -1.3152563852097116e-10,
+      1.2988520413268342e-08,
+      0.9954000526894762,
+      1,
+      0.9999999403953552,
+      1,
+      -0.13099993765354156,
+      0.09500010311603546,
+      6.947986008754015e-08,
+      -0.1391923537309304,
+      -1.232802326232422e-08,
+      2.4703865969364662e-08,
+      0.990265362750229,
+      1,
+      0.9999998807907104,
+      0.9999999403953552,
+      1.1037211322673102e-07,
+      0.0970824658870697,
+      -6.205263503034075e-08,
+      -0.16585487907496982,
+      1.7041638572864522e-10,
+      1.2262344898211313e-08,
+      0.9861501706570998,
+      1,
+      1.0000001192092896,
+      1,
+      -0.16278569400310516,
+      0.106719009578228,
+      -0.0034311471972614527,
+      -0.07616903632879257,
+      -0.2901698052883148,
+      0.26350194215774536,
+      0.9168241620063782,
+      1,
+      1,
+      1,
+      1.8554057135133917e-07,
+      0.10452274978160858,
+      3.0789437666101094e-09,
+      -0.08217614009469237,
+      0.681538262113354,
+      -0.47048543982713875,
+      0.5544331611522803,
+      1,
+      0.9999998211860657,
+      0.9999997615814209
     ]
   },
-  "average_render_fps": 43.7,
+  "average_render_fps": 59.9,
   "success": true
 }

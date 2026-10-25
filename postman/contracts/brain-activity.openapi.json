@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Brain local Activity Tracker and cloud usage",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Loopback and explicit local header required. Detailed traces expire after seven days; daily totals remain. No local STT/TTS tokens."
   },
   "paths": {
@@ -112,11 +112,19 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "profile",
+            "in": "query",
+            "description": "Omit or use all for the overall dashboard; otherwise use a stable profile id. __legacy__ selects earlier unassigned usage. Deleting a configuration does not delete counts.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Daily/model cloud aggregates with explicit unknown usage"
+            "description": "Cloud aggregates for the selected profile or all profiles, plus profile breakdowns and historical profile options. Provider tokens only; all input/output context is included."
           },
           "400": {
             "description": "Invalid range or expired activity"

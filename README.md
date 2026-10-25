@@ -187,8 +187,8 @@ prompt. Whisper small.en INT8 transcribes commands locally on CPU. The wake asse
 are about 6 MB; command recognition adds about 380 MB. First launch downloads these
 in background workers and Brain settings reports when each stage is ready.
 
-Brain uses **one external cloud model** for reasoning and iterative tool calls.
-Open **Brain → Cloud Model** in the local settings console and enter the provider,
+Brain uses **one cloud profile per request** for reasoning and iterative tool calls.
+Save any number of named profiles under **Brain → Cloud Profiles**, each with its own provider,
 HTTPS base URL, exact model ID and API key. OpenAI-compatible APIs (including
 Gemini and OpenRouter) and Anthropic Messages are supported. Choose a model that
 supports tool calling. Until configured, Brain says **“Model is not configured.”**
@@ -285,7 +285,7 @@ plus an MP4 preview when `ffmpeg` is installed.
 
 ## Blender character and document reading
 
-The editable rig lives in [`character/MiniAssistant.blend`](character/MiniAssistant.blend).
+The editable rig lives in [`character/Brain.blend`](character/Brain.blend).
 Brain uses its exported GLB through a transparent local Qt/WebGL renderer. The same
 opaque meshes, white eyes, pupils, smile, gloves and boots appear at every angle.
 See [`character/README.md`](character/README.md) for rebuilding and animation validation.
@@ -322,6 +322,7 @@ See [the agent design](docs/brain-agent-design.md) and [provider simulations](po
 
 Contributions are welcome! Dock T(w)oo operates under a strictly protected open-source model:
 - Direct pushes and unreviewed merges to `main` are blocked.
+- Primary code owner: **@karthikrameshdev**. Secondary code owner and backup reviewer: **@jobphone24**. One approval from either listed code owner is required.
 - All contributions must be submitted via a **Fork & Pull Request**.
 - For detailed instructions on running tests and coding guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Please adhere to our [Code of Conduct](CODE_OF_CONDUCT.md) and report any security concerns privately via [SECURITY.md](SECURITY.md).
@@ -329,3 +330,54 @@ Contributions are welcome! Dock T(w)oo operates under a strictly protected open-
 ## 📄 License
 
 Apache 2.0 License. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
+
+Brain audio follows the **system default microphone and speaker** through Qt
+Multimedia on Windows, macOS and Linux. Device changes reopen only the affected
+route; microphone capture retains the statement and speech resumes from the last
+played frame. Bluetooth/native sample rates are converted to 16 kHz for local
+recognition and to the output device's supported format for speech.
+
+Click Brain once to listen, then again to finish and process the recorded statement.
+During speech, thinking and reading, the local keyword model listens for **Stop**
+or **Brain Stop**. These controls cancel the agent and speech without a cloud
+request. A playback-reference echo suppressor reduces self-triggering; difficult
+room acoustics and overlapping voices still require real-device validation.
+
+On Ubuntu/Debian, Qt audio also needs the native PulseAudio client library (this
+is used with PulseAudio or PipeWire's PulseAudio compatibility service):
+
+```bash
+sudo apt-get install libpulse0 libasound2-dev
+```
+
+Windows and macOS use Qt's native audio backend from the installed PySide6 wheels.
+
+### Displays and multiple Brains
+
+Use **Placement & Sizing → Show Dock on** to choose one display, all displays, or
+specific screens such as 1 and 4. Hardware identities retain the selection when
+screens are rearranged. Disconnected selections are remembered; if none are
+connected, Dock temporarily appears on the primary screen. All-screens mode also
+includes newly attached monitors. Mirrored displays follow the logical screens
+reported by the operating system.
+
+Right-click the dock's Brain icon for **Add another Brain**, **Brains on this
+screen**, **Roam across all screens**, and **Play together**. Extra characters work
+on a single screen too. They roam and animate independently, avoid one another,
+and scale to fit a crowded display. Only one Brain owns the microphone; clicking
+another finishes the current capture before handing over listening. When two or more visible Brains share a screen, a yellow
+body glow marks its microphone owner. A lone Brain uses only the yellow head light. A wake word selects the visible Brain nearest the
+pointer, without making every character listen or speak.
+
+All characters share one FIFO agent and speech lane. A second request waits until
+the current request and spoken answer finish. Each turn retains its original cloud
+profile and credential even if the active profile changes while it is queued.
+**Stop** cancels current work and removes pending requests. Every request still has
+the same progress, call, token and time limits. Local playground animation creates
+no cloud calls. Profiles have isolated saved credentials; overall and per-profile
+usage dashboards retain counts even after a profile is deleted.
+
+Head lights: **green** online/idle, **yellow** listening, **purple** processing,
+**cyan** responding, **orange** queued, **red** offline. Head effects respect reduced
+motion. Multi-screen behavior uses Qt on macOS, Windows and Linux; native window
+reading/automation availability still depends on the platform integration.

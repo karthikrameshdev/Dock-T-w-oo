@@ -110,7 +110,7 @@ class BrainAgent:
                 'max_output_tokens':integer('agent_max_output_tokens',1024,128,2048),
                 'time_limit_seconds':120}
 
-    def run(self,prompt,history=None,cancel=None,source='text',run_id=None):
+    def run(self,prompt,history=None,cancel=None,source='text',run_id=None,profile=None,api_key=None):
         token=cancel or threading.Event()
         if token.is_set():
             if run_id:self.tracker.finish(run_id,'stopped',reason='Stopped before a cloud call was made.')
@@ -129,7 +129,8 @@ class BrainAgent:
             self._update(state=state,tool='',error=reason,message=reason or 'Response ready.')
             return reply
         try:
-            config=self.profiles.get_active_profile();key=self.profiles.get_key(config.get('provider'))
+            config=dict(profile) if profile is not None else self.profiles.get_active_profile()
+            key=api_key if api_key is not None else self.profiles.get_key(config.get('provider'),config.get('id'))
             if config.get('status')=='not configured' or not key:
                 return finish(AgentReply(NOT_CONFIGURED,emotion='concerned'),'not configured',NOT_CONFIGURED)
             client=self.client_factory(config,key)

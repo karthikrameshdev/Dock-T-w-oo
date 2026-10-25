@@ -32,6 +32,6 @@ if labels.exists() and len(list(frames.glob('*.png'))) == 576:
     subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '24',
                     '-i', str(labeled / '%04d.png'), '-c:v', 'libx264', '-crf', '20',
                     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-                    str(root / 'MiniAssistant-actions.mp4')], check=True)
+                    str(root / 'Brain-actions.mp4')], check=True)
     shutil.rmtree(labeled)
 print('Packaged previews in', root)

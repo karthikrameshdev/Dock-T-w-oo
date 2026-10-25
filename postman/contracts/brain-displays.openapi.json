@@ -1,0 +1,178 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Dock displays and shared Brain queue",
+    "version": "1.0.0",
+    "description": "Qt display inventory is captured on the GUI thread. Stable display ids select single, all or a subset of extended displays. One shared FIFO agent, microphone and speech output serve all characters. Each enqueued turn freezes its cloud profile. Stop clears pending turns and cancels the current turn without starting another worker until it exits."
+  },
+  "paths": {
+    "/api/displays": {
+      "get": {
+        "description": "List connected displays, stable ids, number, geometry, primary/selected state, selection mode, and temporary primary-display fallback when saved displays are disconnected. No desktop pixels are returned.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful local operation."
+          },
+          "400": {
+            "description": "Invalid mode, screen id or empty selected display list."
+          },
+          "403": {
+            "description": "Use the local application console."
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "post": {
+        "description": "Save display_mode and display_ids together. single accepts one id; selected accepts one or more; all uses all connected displays and includes newly attached displays. Disconnected saved ids are retained for reconnection. An empty single-display id list retains legacy screen_index selection.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful local operation."
+          },
+          "400": {
+            "description": "Invalid mode, screen id or empty selected display list."
+          },
+          "403": {
+            "description": "Use the local application console."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "display_mode": {
+                    "type": "string",
+                    "enum": [
+                      "single",
+                      "selected",
+                      "all"
+                    ]
+                  },
+                  "display_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "uniqueItems": true
+                  }
+                },
+                "required": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brain/request": {
+      "post": {
+        "description": "Submit a complete text turn to the shared FIFO. Optional screen_id must name a currently selected display; omitted uses the current Brain display. Returns acceptance, not task completion. Queue entries include screen/profile ids but never credentials. Duplicate HTTP requests are distinct turns. One turn occupies the queue through its speech or reading completion.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Invalid mode, screen id or empty selected display list."
+          },
+          "403": {
+            "description": "Use the local application console."
+          },
+          "202": {
+            "description": "Successful local operation."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "screen_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brain/status": {
+      "get": {
+        "description": "Includes displays and queue: active turn, pending turns, listener screen id, worker_running. Indicator colors: idle online green, listening yellow, processing purple, responding cyan, queued orange, offline red.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful local operation."
+          },
+          "400": {
+            "description": "Invalid mode, screen id or empty selected display list."
+          },
+          "403": {
+            "description": "Use the local application console."
+          }
+        }
+      }
+    }
+  }
+}

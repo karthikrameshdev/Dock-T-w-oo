@@ -16,7 +16,7 @@ from dock_twoo.config import ConfigManager
 from dock_twoo.icons import IconManager
 from dock_twoo.os_integration.screen_manager import ScreenManager
 from dock_twoo.server import WebConsoleServer
-from dock_twoo.ui import DockTrayIcon, DockWindow
+from dock_twoo.ui import DockTrayIcon
 
 
 def main() -> int:
@@ -99,8 +99,9 @@ def main() -> int:
     app.setWindowIcon(QIcon(app_pixmap))
 
     # Create Dock Window and Tray Icon
-    dock = DockWindow(config_mgr)
-    dock.show()
+    from dock_twoo.displays import DisplayController
+    dock = DisplayController(config_mgr, brain)
+    app.aboutToQuit.connect(dock.close)
 
     tray = DockTrayIcon(dock, config_mgr)
     tray.show()

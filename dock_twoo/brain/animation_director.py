@@ -22,9 +22,11 @@ class AnimationDirector(QObject):
         from dock_twoo.brain.animation import ACTIONS
         if action not in ACTIONS:return
         self.last=time.monotonic()
+        actor=self.manager.companion
         def play():
             if token!=self.generation or self.manager.reader.active:return
-            self.manager.companion.play_action(action)
+            if actor not in self.manager.companions.values():return
+            actor.play_action(action)
         # A response gesture is applied after speech has begun, while live mouth
         # and eyes remain independent from the skeletal clip.
         QTimer.singleShot(180,self,play)

@@ -127,3 +127,17 @@ def test_voice_summary_is_displayed_in_tasks(tmp_path,qtbot,monkeypatch):
     assert dock.attached_window.is_showing_app('tasks')
     assert tasks.filters()['date']=='2026-01-05' and 'Yesterday you reviewed' in tasks.summary.toPlainText()
     dock.attached_window.close();dock.close()
+
+
+def test_native_filter_hints_cannot_expand_the_drawer(tmp_path,qtbot):
+    from PySide6.QtGui import QFont
+    widget=window(tmp_path,qtbot)
+    widget.setFont(QFont('Segoe UI',12))
+    for period in ('today','custom','month'):
+        widget.period.setCurrentIndex(widget.period.findData(period))
+        widget.resize(370,800);qtbot.wait(10)
+        assert widget.minimumSizeHint().width()<=370
+        for field in (widget.period,widget.status_filter,widget.date,widget.to_date):
+            if field.isVisible():
+                right=field.mapTo(widget,field.rect().topRight()).x()
+                assert right<widget.width()

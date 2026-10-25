@@ -10,6 +10,15 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEngineScript
 
 
+def listening_aura_allowed(companion):
+    """An aura identifies the listener only among visible peers on its display."""
+    manager = getattr(companion, 'manager', None)
+    actors = getattr(manager, 'companions', {})
+    display = getattr(companion, 'screen_id', None)
+    return sum(actor.isVisible() and getattr(actor, 'screen_id', None) == display
+               for actor in actors.values()) > 1
+
+
 class ModelBridge(QObject):
     loaded = Signal(str, str)
     error = Signal(str)
@@ -74,7 +83,7 @@ class CharacterView(QWebEngineView):
 
     def _check_ready(self):
         if not self.ready:
-            self._error(self.error or "The 3D renderer did not become ready; using the artwork fallback.")
+            self._error(self.error or "The 3D renderer did not become ready; restart Dock to retry.")
 
     def _ready(self, version, asset_hash):
         self.version = version
@@ -84,6 +93,8 @@ class CharacterView(QWebEngineView):
         self.error = ''
         self.show()
         self.timer.start()
+        if hasattr(self.companion, 'set_renderer_status'):
+            self.companion.set_renderer_status('')
         self.companion.update()
 
     def _error(self, message):
@@ -91,6 +102,9 @@ class CharacterView(QWebEngineView):
         self.error = message
         self.hide()
         self.timer.stop()
+        if hasattr(self.companion, 'set_renderer_status'):
+            self.companion.set_renderer_status('Brain 3D could not load.\nRestart Dock to retry.', error=True)
+            self.companion.setToolTip(message)
         self.companion.update()
 
     def _sync(self):
@@ -98,7 +112,7 @@ class CharacterView(QWebEngineView):
         if not c.isVisible():
             return
         progress = min(1, max(0, (time.monotonic() - c.motion_started) / max(.01, c.motion_duration)))
-        state = dict(online=self.connectivity.online, reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
+        state = dict(online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
                      distance=c.gait_distance, blink=c.blink_amount,
                      mouth=c.mouth_level if c.activity == 'speaking' else 0,
                      gazeX=max(-1, min(1, c._gaze_offset.x() / .018)),
