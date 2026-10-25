@@ -87,11 +87,11 @@ def test_two_brains_single_screen_do_not_duplicate_services_or_overlap(qapp,tmp_
     assert services==(manager.listener,manager.speech,manager.agent,manager.audio_devices)
     actors=list(manager.companions.values())
     for i,a in enumerate(actors):
-        assert entries[0]['screen'].availableGeometry().contains(a.geometry())
-        assert all(not a.geometry().intersects(b.geometry()) for b in actors[i+1:])
+        assert entries[0]['screen'].availableGeometry().contains(manager.playground.bounds(a))
+        assert all(not manager.playground.region(a).intersects(manager.playground.region(b)) for b in actors[i+1:])
     # Deliberately walk one actor into another; the playground resolves it.
     actors[1].move(actors[0].pos());manager.playground.step()
-    assert not actors[1].geometry().intersects(actors[0].geometry())
+    assert not manager.playground.region(actors[1]).intersects(manager.playground.region(actors[0]))
     assert len(manager.store.setting('brain_instances'))==7
     manager.shutdown()
 

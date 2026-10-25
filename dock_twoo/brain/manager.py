@@ -623,6 +623,7 @@ class BrainManager(QObject, BrainSessions):
 
     def shutdown(self):
         self.stop_talking()
+        self.input_router.close()
         self._stopping = True
         self.reader.remember_timer.stop()
         self.activity_cleanup.stop()

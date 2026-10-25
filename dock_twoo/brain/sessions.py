@@ -53,6 +53,8 @@ class BrainSessions:
         self._histories = {}
         self._session_actor_id = None
         self._session_source = None
+        from dock_twoo.brain.native_input import NativeInputRouter
+        self.input_router = NativeInputRouter(self)
 
     @property
     def companion(self):

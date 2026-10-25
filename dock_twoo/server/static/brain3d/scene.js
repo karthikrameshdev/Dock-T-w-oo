@@ -3,6 +3,7 @@ import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
 import { HeadIndicator } from './indicator.js';
 import { FaceOverlay, SpeechOverlay } from './face.js';
 import { RoomEnvironment } from './vendor/environments/RoomEnvironment.js';
+import { InputShape } from './input-shape.js';
 
 const embedded = new URLSearchParams(location.search).has('embedded');
 document.querySelector('#controls').hidden = embedded;
@@ -22,6 +23,7 @@ listeningAura.position.set(0,2.5,-1.2);listeningAura.scale.set(5.8,6,1);listenin
 const camera = new THREE.OrthographicCamera(-3.3,3.3,3.3,-3.3,.1,50);
 camera.position.set(0,2.45,10); camera.lookAt(0,2.45,0);
 const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true, powerPreference:'low-power'});
+const inputShape = new InputShape(renderer);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setClearColor(0,0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .9;
 document.body.prepend(renderer.domElement);
@@ -123,6 +125,12 @@ function frame(){
   window.brainDiagnostics.armPoseSignature = Object.values(bones).filter(bone=>/^(upper_arm|forearm|hand|digit|thumb)/.test(bone.name)).flatMap(bone=>[...bone.position.toArray(),...bone.quaternion.toArray(),...bone.scale.toArray()]);
   model.traverse(node=>{if(node.isMesh && !node.userData.statusEffect){if(node.material.opacity<1 || node.material.transparent)window.brainDiagnostics.translucent=true;}if(node.isBone && ![...node.position.toArray(),...node.quaternion.toArray(),...node.scale.toArray()].every(Number.isFinite))window.brainDiagnostics.nonFinite=true;});
   renderer.render(scene,camera);
+  if(bridge?.silhouette) {
+    const shape=inputShape.sample(scene,camera,model,innerWidth,innerHeight,previewTime);
+    if(shape)bridge.silhouette(JSON.stringify(shape));
+    window.brainDiagnostics.inputShapeSamples=inputShape.samples;
+    window.brainDiagnostics.inputShapeMilliseconds=inputShape.elapsed/Math.max(1,inputShape.samples);
+  }
 }
 frame();
 window.addEventListener('error',event=>{if(bridge)bridge.failed(event.message);});

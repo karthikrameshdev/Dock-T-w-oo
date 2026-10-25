@@ -376,6 +376,16 @@ pointer, without making every character listen or speak.
 placements, including disconnected displays. Primary Brains cannot be removed.
 Accepted work and microphone ownership transfer to a primary if an extra is removed.
 
+Brain's native click area follows the live 3D body silhouette, including turns,
+hands and gaps between limbs. Transparent canvas space, light effects and toy
+props let clicks reach the app underneath. Collision checks use the same body
+shape, so transparent render canvases can overlap without keeping Brains apart.
+The visual layer remains complete while the input layer follows the outline.
+
+The parachute action first flies to altitude, opens the saved Blender canopy,
+descends with a gentle drift, and reaches the landing point before the canopy
+retracts. The desktop path shares the authored clip's progress clock.
+
 All characters share one FIFO agent and speech lane. A second request waits until
 the current request and spoken answer finish. Each turn retains its original cloud
 profile and credential even if the active profile changes while it is queued.

@@ -610,7 +610,7 @@ def test_props_voice_commands_lifecycle(tmp_path):
     rep_parachute = handle_voice_command("Brain, deploy parachute", mgr)
     assert rep_parachute is not None
     assert "parachute" in rep_parachute.lower()
-    assert companion.action == "parachute"
+    assert companion.action in ("fly", "parachute")  # Reach altitude before deploying.
 
     # 4. Stop playing
     rep_stop = handle_voice_command("stop playing", mgr)

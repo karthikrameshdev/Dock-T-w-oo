@@ -66,7 +66,7 @@ def step():
  if now-phase_started>3.2 and not phase_captured:
   capture(checks[phase]);phase_captured=True
  samples+=1
- if manager.playground.bounds(first).intersects(manager.playground.bounds(second)):
+ if manager.playground.region(first).intersects(manager.playground.region(second)):
   overlaps+=1
   errors.append('Body footprints overlap during '+checks[phase])
   finish()
