@@ -211,3 +211,23 @@ def test_http_thread_captures_profile_before_gui_dispatch(qtbot,tmp_path,monkeyp
     assert calls==[(first['id'],'first-key')]
     qtbot.waitUntil(lambda:not manager._worker_running)
     manager.shutdown()
+
+
+def test_passive_stop_and_speech_animation_dispatch_to_gui_thread(qtbot,tmp_path,monkeypatch):
+    from PySide6.QtCore import QThread
+    manager=manager_at(tmp_path,inventory()[:1]);actor=manager.companion
+    stops=[]
+    original=manager.stop_talking
+    def stop():stops.append(QThread.currentThread());original()
+    monkeypatch.setattr(manager,'stop_talking',stop)
+    worker=threading.Thread(target=lambda:(manager._set_active_activity('speaking'),actor.set_mouth(.8)))
+    worker.start();worker.join(2)
+    assert actor.activity=='idle' and actor.mouth_level==0
+    qtbot.waitUntil(lambda:actor.activity=='speaking' and actor.mouth_level>0)
+    worker=threading.Thread(target=lambda:manager.listener.stop_requested.emit('Brain Stop'))
+    worker.start();worker.join(2)
+    assert not stops
+    qtbot.waitUntil(lambda:bool(stops))
+    assert stops==[manager.thread()] and manager.last_response['text']=='Stopped.'
+    assert actor.activity=='idle'
+    manager.shutdown()

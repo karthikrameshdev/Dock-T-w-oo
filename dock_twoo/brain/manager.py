@@ -549,6 +549,7 @@ class BrainManager(QObject, BrainSessions):
             return  # Rapid clicks cannot reset an in-flight decoder.
         self.start_talking(actor.actor_id)
 
+    @Slot(str)
     def _on_voice_stop(self, command='Stop') -> None:
         """Stop speech, reading, and pending cloud actions locally and silently."""
         self.stop_talking()

@@ -7,7 +7,7 @@ import re
 import threading
 import uuid
 
-from PySide6.QtCore import QPoint, QTimer
+from PySide6.QtCore import QPoint, QThread, QTimer
 from PySide6.QtGui import QCursor
 
 
@@ -254,6 +254,9 @@ class BrainSessions:
         self._refresh_actor_states()
 
     def _set_active_activity(self, state):
+        if QThread.currentThread() != self.thread():
+            self.run_on_main_thread(lambda: self._set_active_activity(state))
+            return
         if self._active_turn:
             self._active_turn.phase = state
             self._refresh_actor_states()

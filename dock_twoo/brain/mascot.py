@@ -364,6 +364,9 @@ class Companion(QWidget):
 
     def set_activity(self, state: str) -> None:
         """Update robot state: idle, listening, thinking, speaking, error."""
+        if QThread.currentThread() != self.thread():
+            self.manager.run_on_main_thread(lambda: self.set_activity(state))
+            return
         if state not in LABELS:
             return
         prev = self.activity
@@ -391,6 +394,9 @@ class Companion(QWidget):
 
     def set_mouth(self, value: float) -> None:
         """Update audio-synchronized mouth aperture."""
+        if QThread.currentThread() != self.thread():
+            self.manager.run_on_main_thread(lambda: self.set_mouth(value))
+            return
         val = max(0.0, min(1.0, value)) if math.isfinite(value) else 0.0
         blend = 0.72 if val >= self.mouth_level else 0.48
         self.mouth_level = self.mouth_level + (val - self.mouth_level) * blend
