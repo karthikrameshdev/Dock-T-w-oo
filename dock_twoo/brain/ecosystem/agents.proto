@@ -1,0 +1,14 @@
+syntax = "proto3";
+package dock.agents.v1;
+import "google/protobuf/struct.proto";
+// Loopback only. Each logical character receives an in-memory bearer credential.
+// Assign and Cancel require Brain's credential. Report/Publish require ownership.
+// Struct fields are validated by the server; no credentials appear in events.
+service AgentBus {
+  rpc Assign(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc Report(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc Publish(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc Cancel(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc Snapshot(google.protobuf.Struct) returns (google.protobuf.Struct);
+  rpc Watch(google.protobuf.Struct) returns (stream google.protobuf.Struct);
+}

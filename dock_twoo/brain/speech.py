@@ -52,15 +52,22 @@ class SpeechPlayback(QObject):
         """Play robot whistle clip."""
         self._start(None)
 
-    def _start(self, text: Optional[str], *, song=False) -> None:
+    def sound(self, character_id):
+        self._start(None,sound_id=character_id)
+
+    def _start(self, text: Optional[str], *, song=False, sound_id=None) -> None:
         self.stop()
         self.last_error = ""
         token = self.generation
         cancel = self.cancel_event = threading.Event()
         self.activity.emit("thinking")
+        from dock_twoo.brain.ecosystem.voices import tuning
+        owner=getattr(self.parent(),'companion',None)
+        character_id=sound_id or getattr(owner,'character_id','default')
+        voice_settings=tuning(self.store,character_id) if self.store else None
         self.worker = threading.Thread(
             target=self._play_worker,
-            args=(token, text, cancel, song),
+            args=(token, text, cancel, song, voice_settings, sound_id),
             daemon=True,
             name="brain-speech",
         )
@@ -76,13 +83,17 @@ class SpeechPlayback(QObject):
         self.progress.emit(0.0)
         self.activity.emit("idle")
 
-    def _play_worker(self, token: int, text: Optional[str], cancel: threading.Event, song=False) -> None:
+    def _play_worker(self, token: int, text: Optional[str], cancel: threading.Event, song=False, voice_settings=None, sound_id=None) -> None:
         error = ""
         try:
             with tempfile.TemporaryDirectory(prefix="dock-twoo-brain-speech-") as folder:
                 wav_path = Path(folder) / "speech.wav"
-                if song or text is None:
-                    clip = synthesize_song(text, wav_path, cancel) if song else whistle_clip()
+                if sound_id is not None:
+                    from dock_twoo.brain.ecosystem.voices import species_sound
+                    self._progress_offset,self._progress_scale=0.,1.
+                    self._play_clip(species_sound(sound_id),wav_path,token,cancel)
+                elif song or text is None:
+                    clip = synthesize_song(text, wav_path, cancel, self.voice_models, voice_settings) if song else whistle_clip()
                     self._progress_offset,self._progress_scale=0.,1.
                     self._play_clip(clip, wav_path, token, cancel)
                 else:
@@ -91,14 +102,18 @@ class SpeechPlayback(QObject):
                     from dock_twoo.brain.local_tts import get_local_tts,VOICES
                     engine=get_local_tts()
                     if self.store:
-                        requested=self.store.setting('voice_name','af_heart')
+                        requested=(voice_settings or {}).get('voice',self.store.setting('voice_name','af_heart'))
                         engine.voice=requested if requested in VOICES else 'af_heart'
-                        engine.speed=float(self.store.setting('speech_rate',1))
+                        engine.speed=float((voice_settings or {}).get('speed',self.store.setting('speech_rate',1)))/float((voice_settings or {}).get('pitch',1))
                     chunks=speech_chunks(text,limit=320)
                     total=max(1,sum(len(chunk) for chunk in chunks));offset=0
                     def render(index):
                         path=Path(folder)/f'phrase-{index}.wav'
-                        return synthesize(chunks[index],path,cancel,self.voice_models),path
+                        clip=synthesize(chunks[index],path,cancel,self.voice_models,voice_settings)
+                        pitch=float((voice_settings or {}).get('pitch',1))
+                        if abs(pitch-1)>.001:
+                            clip=SpeechClip.from_pcm(clip.pcm,round(clip.rate*pitch),clip.channels)
+                        return clip,path
                     with ThreadPoolExecutor(max_workers=1,thread_name_prefix='brain-phrase-prefetch') as pool:
                         pending=pool.submit(render,0) if chunks else None
                         for index,chunk in enumerate(chunks):

@@ -12,6 +12,7 @@ import platform
 from PySide6.QtCore import QObject, QPoint, QTimer, Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication
+from shiboken6 import isValid
 
 
 class NativeInputRouter(QObject):
@@ -65,7 +66,9 @@ class NativeInputRouter(QObject):
         point = point if isinstance(point, QPoint) else QCursor.pos()
         known = set()
         for actor in self.manager.companions.values():
-            if actor.windowHandle() is None:
+            # A closed Qt widget can outlive its C++ window in the manager's
+            # Python collection until the next removal callback.
+            if not isValid(actor) or actor.windowHandle() is None:
                 continue
             key = (id(actor), int(actor.winId()));known.add(key)
             accepts = actor.isVisible() and (actor.origin is not None or

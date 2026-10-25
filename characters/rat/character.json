@@ -1,0 +1,837 @@
+{
+  "id": "rat",
+  "name": "Remy",
+  "family": "quadruped",
+  "species": "rat",
+  "main": "#8992A4",
+  "secondary": "#D8CDDC",
+  "accent": "#F3B6E1",
+  "scale": 0.48,
+  "index": 15,
+  "version": "4.0.0",
+  "design": "Rat",
+  "source": "characters/rat/rat.blend",
+  "source_sha256": "863bea2e7e4664dbf6e3aba5798861e977e5105785a0758513b7aa57de4f575e",
+  "asset": "rat.glb",
+  "asset_sha256": "ba0d1724feeec362feafc8496d64939083dc77633bff3bde24dba9d32e85d204",
+  "bones": 39,
+  "meshes": 95,
+  "actions": {
+    "air_spin": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Air Spin \u00b7 Remy"
+    },
+    "backstep": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Backstep \u00b7 Remy"
+    },
+    "balanced_pose": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Balanced Pose \u00b7 Remy"
+    },
+    "balloon": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Balloon \u00b7 Remy"
+    },
+    "bank_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Left \u00b7 Remy"
+    },
+    "bank_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Right \u00b7 Remy"
+    },
+    "beg": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Beg \u00b7 Remy"
+    },
+    "bow": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Bow \u00b7 Remy"
+    },
+    "brake": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Brake \u00b7 Remy"
+    },
+    "bury": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Bury \u00b7 Remy"
+    },
+    "camera": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Camera \u00b7 Remy"
+    },
+    "carry_box": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Carry Box \u00b7 Remy"
+    },
+    "catch": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Catch \u00b7 Remy"
+    },
+    "celebrate": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Celebrate \u00b7 Remy"
+    },
+    "charge": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Charge \u00b7 Remy"
+    },
+    "chase_ball": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Chase Ball \u00b7 Remy"
+    },
+    "chase_tail": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Chase Tail \u00b7 Remy"
+    },
+    "cheer_partner": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cheer Partner \u00b7 Remy"
+    },
+    "climb": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb \u00b7 Remy"
+    },
+    "climb_dock": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb Dock \u00b7 Remy"
+    },
+    "cook": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cook \u00b7 Remy"
+    },
+    "crawl": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crawl \u00b7 Remy"
+    },
+    "crouch": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crouch \u00b7 Remy"
+    },
+    "cry": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cry \u00b7 Remy"
+    },
+    "dance": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance \u00b7 Remy"
+    },
+    "dance_together": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance Together \u00b7 Remy"
+    },
+    "dash": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Dash \u00b7 Remy"
+    },
+    "dig": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Dig \u00b7 Remy"
+    },
+    "double_blink": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Double Blink \u00b7 Remy"
+    },
+    "drag": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Drag \u00b7 Remy"
+    },
+    "drink": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Drink \u00b7 Remy"
+    },
+    "ear_flick": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Ear Flick \u00b7 Remy"
+    },
+    "explore": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Explore \u00b7 Remy"
+    },
+    "fly": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Fly \u00b7 Remy"
+    },
+    "fold_arms": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Fold Arms \u00b7 Remy"
+    },
+    "glance_back": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Glance Back \u00b7 Remy"
+    },
+    "glide": {
+      "duration": 2.4,
+      "loop": true,
+      "category": "locomotion",
+      "description": "Glide \u00b7 Remy"
+    },
+    "greet": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Greet \u00b7 Remy"
+    },
+    "groom": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Groom \u00b7 Remy"
+    },
+    "hammer": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Hammer \u00b7 Remy"
+    },
+    "handshake": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Handshake \u00b7 Remy"
+    },
+    "happy": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Happy \u00b7 Remy"
+    },
+    "head_tilt": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Head Tilt \u00b7 Remy"
+    },
+    "hover": {
+      "duration": 3.1333,
+      "loop": true,
+      "category": "acting",
+      "description": "Hover \u00b7 Remy"
+    },
+    "howl": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Howl \u00b7 Remy"
+    },
+    "idle": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "acting",
+      "description": "Idle \u00b7 Remy"
+    },
+    "inspect_icon": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Icon \u00b7 Remy"
+    },
+    "inspect_window": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Window \u00b7 Remy"
+    },
+    "jump": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Jump \u00b7 Remy"
+    },
+    "kick_ball": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Kick Ball \u00b7 Remy"
+    },
+    "kneel": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Kneel \u00b7 Remy"
+    },
+    "land": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Land \u00b7 Remy"
+    },
+    "laugh": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Laugh \u00b7 Remy"
+    },
+    "lean_back": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Back \u00b7 Remy"
+    },
+    "lean_forward": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Forward \u00b7 Remy"
+    },
+    "lie_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Lie Down \u00b7 Remy"
+    },
+    "lift_object": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Lift Object \u00b7 Remy"
+    },
+    "listen": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Listen \u00b7 Remy"
+    },
+    "look_down": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Down \u00b7 Remy"
+    },
+    "look_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Left \u00b7 Remy"
+    },
+    "look_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Right \u00b7 Remy"
+    },
+    "look_up": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Up \u00b7 Remy"
+    },
+    "magnifier": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Magnifier \u00b7 Remy"
+    },
+    "nod": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Nod \u00b7 Remy"
+    },
+    "nuzzle": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Nuzzle \u00b7 Remy"
+    },
+    "paint": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Paint \u00b7 Remy"
+    },
+    "parachute": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Parachute \u00b7 Remy"
+    },
+    "paw_tap": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Paw Tap \u00b7 Remy"
+    },
+    "peek": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Peek \u00b7 Remy"
+    },
+    "play_bow": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Play Bow \u00b7 Remy"
+    },
+    "playful_spar": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Playful Spar \u00b7 Remy"
+    },
+    "point": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Point \u00b7 Remy"
+    },
+    "point_down": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Down \u00b7 Remy"
+    },
+    "point_up": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Up \u00b7 Remy"
+    },
+    "ponder": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Ponder \u00b7 Remy"
+    },
+    "pounce": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Pounce \u00b7 Remy"
+    },
+    "power_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Down \u00b7 Remy"
+    },
+    "power_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Up \u00b7 Remy"
+    },
+    "present_left": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Left \u00b7 Remy"
+    },
+    "present_right": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Right \u00b7 Remy"
+    },
+    "pull_scroll": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Pull Scroll \u00b7 Remy"
+    },
+    "push": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Push \u00b7 Remy"
+    },
+    "read": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Read \u00b7 Remy"
+    },
+    "replace_text": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Replace Text \u00b7 Remy"
+    },
+    "roar": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roar \u00b7 Remy"
+    },
+    "roll": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Roll \u00b7 Remy"
+    },
+    "roll_back": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roll Back \u00b7 Remy"
+    },
+    "run": {
+      "duration": 0.8,
+      "loop": true,
+      "category": "acting",
+      "description": "Run \u00b7 Remy"
+    },
+    "sad": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sad \u00b7 Remy"
+    },
+    "scan_code": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Code \u00b7 Remy"
+    },
+    "scan_screen": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Screen \u00b7 Remy"
+    },
+    "scratch_ear": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Scratch Ear \u00b7 Remy"
+    },
+    "search": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Search \u00b7 Remy"
+    },
+    "self_check": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Self Check \u00b7 Remy"
+    },
+    "sensor_scan": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Sensor Scan \u00b7 Remy"
+    },
+    "set_object_down": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Set Object Down \u00b7 Remy"
+    },
+    "shake_body": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Shake Body \u00b7 Remy"
+    },
+    "shake_head": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Shake Head \u00b7 Remy"
+    },
+    "shiver": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Shiver \u00b7 Remy"
+    },
+    "sidestep_left": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Left \u00b7 Remy"
+    },
+    "sidestep_right": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Right \u00b7 Remy"
+    },
+    "sit": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sit \u00b7 Remy"
+    },
+    "sleep": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sleep \u00b7 Remy"
+    },
+    "smell": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Smell \u00b7 Remy"
+    },
+    "sneak": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sneak \u00b7 Remy"
+    },
+    "sneeze": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Sneeze \u00b7 Remy"
+    },
+    "sniff_ground": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Sniff Ground \u00b7 Remy"
+    },
+    "snuggle": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Snuggle \u00b7 Remy"
+    },
+    "spin_left": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Left \u00b7 Remy"
+    },
+    "spin_right": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Right \u00b7 Remy"
+    },
+    "stand_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Stand Up \u00b7 Remy"
+    },
+    "stir": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stir \u00b7 Remy"
+    },
+    "stretch": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch \u00b7 Remy"
+    },
+    "stretch_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Left \u00b7 Remy"
+    },
+    "stretch_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Right \u00b7 Remy"
+    },
+    "stretch_spine": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Stretch Spine \u00b7 Remy"
+    },
+    "surprised": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Surprised \u00b7 Remy"
+    },
+    "tail_wag": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "species",
+      "description": "Tail Wag \u00b7 Remy"
+    },
+    "takeoff": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Takeoff \u00b7 Remy"
+    },
+    "talk": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Talk \u00b7 Remy"
+    },
+    "taste": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Taste \u00b7 Remy"
+    },
+    "throw": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Throw \u00b7 Remy"
+    },
+    "tiptoe": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Tiptoe \u00b7 Remy"
+    },
+    "touchdown": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Touchdown \u00b7 Remy"
+    },
+    "trip_recover": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Trip Recover \u00b7 Remy"
+    },
+    "turn_around": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Turn Around \u00b7 Remy"
+    },
+    "type": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Type \u00b7 Remy"
+    },
+    "victory_pose": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Victory Pose \u00b7 Remy"
+    },
+    "wake_up": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Wake Up \u00b7 Remy"
+    },
+    "walk": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk \u00b7 Remy"
+    },
+    "walk_window": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk Window \u00b7 Remy"
+    },
+    "water_plant": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Water Plant \u00b7 Remy"
+    },
+    "wave": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Wave \u00b7 Remy"
+    },
+    "whistle": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Whistle \u00b7 Remy"
+    },
+    "wink": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Wink \u00b7 Remy"
+    },
+    "yawn": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Yawn \u00b7 Remy"
+    }
+  }
+}

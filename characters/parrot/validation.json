@@ -1,0 +1,27 @@
+{
+  "id": "parrot",
+  "source_sha256": "2651d34dc1fddce0ad8127555583235db7d3137f66c86aaedb079c94fb4c8408",
+  "asset_sha256": "b4838e47fa20d8ed8237210ba82ef47b09fa7936e26194a2452d79dfd074e71b",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

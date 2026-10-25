@@ -16,6 +16,8 @@ dependencies = [
     "cryptography>=42.0.0",
     "sounddevice>=0.5.3",
     "numpy>=1.26.0",
+    "grpcio>=1.68,<2",
+    "protobuf>=5,<8",
     "sherpa-onnx>=2.0.0,<3",
     "sentencepiece>=0.2.0",
     "huggingface-hub>=0.26.0",
@@ -57,4 +59,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.setuptools.package-data]
-dock_twoo = ["assets/**/*", "server/static/**/*"]
+dock_twoo = ["assets/**/*", "server/static/**/*", "brain/ecosystem/*.proto"]

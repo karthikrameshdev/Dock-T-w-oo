@@ -8,14 +8,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-NOT_CONFIGURED = 'Model is not configured. Open Brain settings and set a cloud provider URL, model ID, and API key.'
+NOT_CONFIGURED = 'Model is not configured. Open Voice Assistant settings and assign an agent model profile.'
 PRESETS = {
     'gemini':'https://generativelanguage.googleapis.com/v1beta/openai',
     'openai':'https://api.openai.com/v1', 'anthropic':'https://api.anthropic.com/v1',
     'openrouter':'https://openrouter.ai/api/v1', 'deepseek':'https://api.deepseek.com/v1',
     'xai':'https://api.x.ai/v1', 'huggingface':'https://router.huggingface.co/v1', 'custom':''}
 
-class CloudError(RuntimeError): pass
+class CloudError(RuntimeError):
+    def __init__(self, message, *, retryable=False):
+        super().__init__(message);self.retryable=retryable
 class ModelNotConfigured(CloudError): pass
 
 @dataclass
@@ -27,17 +29,17 @@ class ModelTurn:
     usage: dict = field(default_factory=dict)
 
 
-def validate_config(config, *, allow_test_endpoint=False):
+def validate_config(config, *, allow_test_endpoint=False, allow_network_endpoint=False):
     provider=config.get('provider','custom')
     if provider not in PRESETS:raise ValueError('Choose an external cloud provider.')
     url=str(config.get('base_url') or PRESETS[provider]).rstrip('/')
     address=urllib.parse.urlsplit(url)
     if address.username or address.password or address.query or address.fragment:
         raise ValueError('Use a provider base URL without credentials, query parameters or fragments.')
-    if not address.hostname or (address.scheme!='https' and not (allow_test_endpoint and address.hostname in ('localhost','127.0.0.1') and address.scheme=='http')):
+    if not address.hostname or (address.scheme!='https' and not ((allow_network_endpoint or (allow_test_endpoint and address.hostname in ('localhost','127.0.0.1'))) and address.scheme=='http')):
         raise ValueError('The cloud provider URL must use HTTPS.')
-    if address.hostname in ('localhost','127.0.0.1','::1') and not allow_test_endpoint:
-        raise ValueError('Local reasoning model endpoints are not supported.')
+    if address.hostname in ('localhost','127.0.0.1','::1') and not (allow_test_endpoint or allow_network_endpoint):
+        raise ValueError('Choose an explicit Network/Ollama profile for local model endpoints.')
     model=str(config.get('model','')).strip()
     if not model:raise ValueError('Enter the cloud model ID.')
     protocol=config.get('protocol') or ('anthropic' if provider=='anthropic' else 'openai')
@@ -48,20 +50,25 @@ def validate_config(config, *, allow_test_endpoint=False):
 class CloudClient:
     def __init__(self, config, key, *, timeout=45, allow_test_endpoint=False):
         if not key or not str(config.get('model','')).strip():raise ModelNotConfigured(NOT_CONFIGURED)
-        self.config=validate_config(config,allow_test_endpoint=allow_test_endpoint)
+        from dock_twoo.brain.ecosystem.models import validate_agent_model
+        self.config=validate_agent_model(config,allow_test_endpoint=allow_test_endpoint)
         self.key=key.strip();self.timeout=timeout
 
     def payload(self, messages, tools):
-        maximum = max(128, min(2048, int(getattr(self, 'max_output_tokens', 1024))))
+        maximum = max(128, min(16384, int(getattr(self, 'max_output_tokens', 4096))))
         if self.config['protocol'] == 'anthropic':
-            return {'model':self.config['model'],'max_tokens':maximum,
+            payload = {'model':self.config['model'],'max_tokens':maximum,
                     'system':'\n'.join(m['content'] for m in messages if m['role']=='system'),
                     'messages':[m for m in messages if m['role']!='system'],
                     'tools':[{'name':t['function']['name'],'description':t['function']['description'],
                               'input_schema':t['function']['parameters']} for t in tools]}
+            from dock_twoo.brain.ecosystem.cache import native_cache_payload
+            return native_cache_payload(self.config,payload,getattr(self,'prompt_cache_key',''))
         limit_key='max_completion_tokens' if self.config['provider']=='openai' else 'max_tokens'
-        return {'model':self.config['model'],'messages':messages,'tools':tools,
-                'tool_choice':'auto','stream':False,limit_key:maximum}
+        payload = {'model':self.config['model'],'messages':messages,'tools':tools,
+                   'tool_choice':'auto','stream':False,limit_key:maximum}
+        from dock_twoo.brain.ecosystem.cache import native_cache_payload
+        return native_cache_payload(self.config,payload,getattr(self,'prompt_cache_key',''))
 
     def turn(self, messages, tools, cancel=None):
         from dock_twoo.brain.activity import ActivityStore, provider_usage
@@ -69,7 +76,7 @@ class CloudClient:
         if cancel.is_set():raise InterruptedError('Request stopped.')
         anthropic=self.config['protocol']=='anthropic'
         payload=self.payload(messages,tools)
-        headers=({'Content-Type':'application/json','x-api-key':self.key,'anthropic-version':'2023-06-01'} if anthropic
+        headers=({'Content-Type':'application/json','Authorization':'Bearer '+self.key,'anthropic-version':'2023-06-01'} if anthropic and self.config['provider']=='openrouter' else {'Content-Type':'application/json','x-api-key':self.key,'anthropic-version':'2023-06-01'} if anthropic
                  else {'Content-Type':'application/json','Authorization':'Bearer '+self.key})
         endpoint='/messages' if anthropic else '/chat/completions'
         tracker=getattr(self,'tracker',None)
@@ -92,9 +99,9 @@ class CloudClient:
                 except OSError:data={'http_status':exc.code}
                 labels={401:'The provider rejected the API key.',403:'The provider denied access to this model.',
                         404:'The provider URL or model ID was not found.',429:'The provider rate or credit limit was reached.'}
-                raise CloudError(labels.get(exc.code,f'The cloud provider returned HTTP {exc.code}. Check its model and tool-calling support.')) from None
+                raise CloudError(labels.get(exc.code,f'The cloud provider returned HTTP {exc.code}. Check its model and tool-calling support.'), retryable=exc.code in (408,500,502,503,504)) from None
             except (OSError,ValueError):
-                raise CloudError('The cloud provider did not return a valid response. Check connectivity and the provider URL.') from None
+                raise CloudError('The cloud provider did not return a valid response. Check connectivity and the provider URL.', retryable=True) from None
             usage=provider_usage(data,self.config['protocol'])
             if cancel.is_set():
                 status='cancelled'

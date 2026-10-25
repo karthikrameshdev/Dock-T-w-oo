@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Brain cloud model profiles",
-    "version": "1.0.0",
-    "description": "Named cloud-only profiles. Keys are write-only and isolated by profile and provider. Switching affects the next request; an in-flight request keeps its captured profile. Local controls only."
+    "title": "Agent model profiles",
+    "version": "2.0.0",
+    "description": "API, explicit network/Ollama, and installed headless CLI profiles. Credentials are write-only and isolated per profile. A character without a binding falls back to the active default. Accepted work retains its profile snapshot."
   },
   "paths": {
     "/api/brain/profiles": {
@@ -92,6 +92,22 @@
                   },
                   "api_key": {
                     "type": "string"
+                  },
+                  "executable": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cache_mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "off"
+                    ]
                   }
                 }
               }
@@ -159,6 +175,22 @@
                   },
                   "api_key": {
                     "type": "string"
+                  },
+                  "executable": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cache_mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "off"
+                    ]
                   }
                 }
               }
@@ -206,6 +238,22 @@
                 "properties": {
                   "profile_id": {
                     "type": "string"
+                  },
+                  "executable": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cache_mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "off"
+                    ]
                   }
                 }
               }
@@ -253,6 +301,22 @@
                 "properties": {
                   "profile_id": {
                     "type": "string"
+                  },
+                  "executable": {
+                    "type": "string"
+                  },
+                  "arguments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "cache_mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "off"
+                    ]
                   }
                 }
               }

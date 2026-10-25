@@ -58,7 +58,7 @@ class BrainStore:
             "agent_budget_version": 1,
             "agent_no_progress_turns": 3,
             "agent_token_budget": 24000,
-            "agent_max_output_tokens": 1024,
+            "agent_max_output_tokens": 4096,
 
         }
 

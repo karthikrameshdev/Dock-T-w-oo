@@ -92,7 +92,7 @@ def test_cloud_credentials_are_redacted_in_both_directions(tmp_path):
     assert secret not in json.dumps(store.detail(run))
 
 
-def test_stalled_agent_stops_after_three_calls_without_a_final_paid_call(tmp_path):
+def test_stalled_agent_reviews_and_recovers_before_reporting_failure(tmp_path):
     profiles=configured(tmp_path);turns=[]
     class Client:
         def __init__(self,*_args):pass
@@ -102,8 +102,10 @@ def test_stalled_agent_stops_after_three_calls_without_a_final_paid_call(tmp_pat
         def append_results(self,messages,results):pass
     agent=BrainAgent(profiles,client_factory=Client)
     reply=agent.run('Open Cursor and type hello world')
-    assert len(turns)==3 and agent.status()['state']=='limited' and 'credits' in reply
-    assert 'No measurable progress' in agent.status()['error']
+    assert 3<len(turns)<=15 and agent.status()['state']=='error'
+    assert 'try again' in reply
+    events=agent.tracker.detail(agent.status()['run_id'])['events']
+    assert sum(event['kind']=='recovery' for event in events)==2
 
 
 def test_changing_observation_ids_does_not_reset_progress_guard(tmp_path):
@@ -119,11 +121,11 @@ def test_changing_observation_ids_does_not_reset_progress_guard(tmp_path):
         outputs.append(True);return {'observation':str(len(outputs)),'controls':[{'id':'1','label':'same window'}]}
     agent=BrainAgent(profiles,tools=SimpleNamespace(execute=execute),client_factory=Client)
     agent.run('Complete a task')
-    assert len(turns)==3 and len(outputs)==2 and agent.status()['state']=='limited'
+    assert 3<len(turns)<=15 and 2<=len(outputs)<=6 and agent.status()['state']=='error'
 
 
 def test_small_budget_blocks_a_cloud_call_before_it_is_sent(tmp_path):
-    profiles=configured(tmp_path);profiles.store.set_setting('agent_token_budget',2000)
+    profiles=configured(tmp_path);profiles.store.set_setting('agent_task_token_limit',2000)
     calls=[]
     class Client:
         def __init__(self,*_args):pass
@@ -224,7 +226,7 @@ def test_status_requests_read_qt_objects_on_the_gui_thread(tmp_path,qtbot):
     result=[]
     worker=threading.Thread(target=lambda:result.append(manager.get_status()))
     worker.start();qtbot.waitUntil(lambda:bool(result),timeout=2000);worker.join()
-    assert result[0]['name']=='Brain' and 'character' in result[0]
+    assert result[0]['name']=='Voice Assistant' and 'character' in result[0]
     manager.shutdown()
 
 

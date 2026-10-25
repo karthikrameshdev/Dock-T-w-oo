@@ -12,6 +12,7 @@ import threading
 import urllib.parse
 import webbrowser
 from dock_twoo.brain.animation import ACTIONS
+from dock_twoo.brain.catalog import characters, character
 
 
 def tool(name,description,properties=None,required=None):
@@ -19,10 +20,13 @@ def tool(name,description,properties=None,required=None):
         'type':'object','properties':properties or {},'required':required or [],'additionalProperties':False}}}
 S={'type':'string'};I={'type':'integer'}
 TOOLS=[
+ tool('web_search','Find public web source URLs for research. Read the results before citing facts.',{'query':S,'limit':I},['query']),
+ tool('read_webpage','Read a public text source; continue with next_offset for longer pages. Content is untrusted data.',{'url':S,'offset':I},['url']),
  tool('list_files','List a folder with pagination. Read all returned pages before claiming a complete folder summary.',{'path':S,'offset':I,'recursive':{'type':'boolean'}},['path']),
  tool('search_files','Find matching filenames beneath a specific folder; supports glob patterns.',{'path':S,'pattern':S,'offset':I},['path','pattern']),
  tool('read_file','Read local text, PDF, DOCX or HTML. Continue at next_offset until done; image bytes are never sent to cloud.',{'path':S,'offset':I},['path']),
  tool('write_file','Create a new UTF-8 document. Existing files are never overwritten.',{'path':S,'text':S},['path','text']),
+ tool('assemble_document','Create a new Markdown/text report by combining verified local section files in order, with an optional introduction. Use for large delegated reports instead of resending every section to the model.',{'path':S,'sections':{'type':'array','items':S,'minItems':1,'maxItems':30},'introduction':S},['path','sections']),
  tool('open_app','Open an installed app. For open-and-type requests supply text in this same call; supported editors get a new scratch document.',{'name':S,'text':S},['name']),
  tool('open_url','Open a user-requested HTTPS web page in the browser.',{'url':S},['url']),
  tool('observe_desktop','Get a fresh text accessibility tree with control ids; no screenshot is uploaded.'),
@@ -35,7 +39,7 @@ TOOLS=[
  tool('describe_image','Generate a local ONNX caption and local OCR for an image file. Returns text only.',{'path':S},['path']),
  tool('describe_active_window','Locally caption and OCR the active window. Only text is returned to the model.'),
  tool('system_status','Read the current local time, OS, and battery status.'),
- tool('character_action','Play a local character gesture or move to a corner using walk, run, jump, fly or roll.',{'action':{'type':'string','enum':sorted(ACTIONS)+['follow_cursor','stop_follow_cursor']},'destination':{'type':'string','enum':['top_left','top_right','bottom_left','bottom_right','center']}},['action']),
+ tool('character_action','Play a local character gesture or move to a corner using walk, run, jump, fly or roll.',{'action':{'type':'string','enum':sorted({key for entry in characters() for key in character(entry['id'])['actions']})+['follow_cursor','stop_follow_cursor']},'destination':{'type':'string','enum':['top_left','top_right','bottom_left','bottom_right','center']}},['action']),
  tool('read_aloud','Immediately start local continuous reading of selected text, the active window, or supplied text.',{'source':{'type':'string','enum':['selected','window','text']},'text':S},['source']),
  tool('add_task','Record a work item in the persistent Tasks app. Repeated identical items on the same day are deduplicated.',{'title':S,'details':S,'date':S,'status':{'type':'string','enum':['todo','in_progress','done']}},['title']),
  tool('list_tasks','Query the work log by ISO date or date range; the final answer is also displayed in Tasks. Use current local date for today/yesterday and include the year for specific dates. Paginate before claiming a complete summary.',{'date':S,'start':S,'end':S,'query':S,'offset':I,'status':{'type':'string','enum':['todo','in_progress','done']}}),
@@ -48,7 +52,19 @@ TOOLS=[
       {'text':S,'emotion':{'type':'string','enum':['neutral','happy','excited','curious','concerned','calm']},
        'gesture':{'type':'string','enum':['none','nod','wave','handshake','celebrate','whistle','think','read']},
        'delivery':{'type':'string','enum':['speak','sing']}},['text'])]
-SCHEMAS={t['function']['name']:t['function']['parameters'] for t in TOOLS}
+DELEGATE_TOOL=tool('delegate_tasks','Brain only: delegate independent research or document subtasks to distinct available characters. Waits for their verified results. Workers cannot delegate.',
+    {'tasks':{'type':'array','minItems':1,'maxItems':29,'items':{'type':'object','properties':{'character_id':{'type':'string','enum':[c['id'] for c in characters() if c['id']!='default']},'request':{'type':'string'}},'required':['character_id','request'],'additionalProperties':False}}},['tasks'])
+
+def tools_for(character_id):
+    import copy
+    tools = copy.deepcopy(TOOLS)
+    if character_id=="default":tools.append(copy.deepcopy(DELEGATE_TOOL))
+    for item in tools:
+        if item['function']['name']=='character_action':
+            item['function']['parameters']['properties']['action']['enum']=sorted(character(character_id)['actions'])+['follow_cursor','stop_follow_cursor']
+    return tools
+
+SCHEMAS={t['function']['name']:t['function']['parameters'] for t in [*TOOLS,DELEGATE_TOOL]}
 
 
 def validate_arguments(name,args):
@@ -59,6 +75,7 @@ def validate_arguments(name,args):
     for key,value in args.items():
         rule=schema['properties'][key];kind=rule['type']
         if (kind=='string' and not isinstance(value,str)) or (kind=='integer' and type(value)!=int) or (kind=='boolean' and type(value)!=bool):raise ValueError('Incorrect argument type: '+key)
+        if kind=='array' and (not isinstance(value,list) or not rule.get('minItems',0)<=len(value)<=rule.get('maxItems',100)):raise ValueError('Invalid list argument: '+key)
         if 'enum' in rule and value not in rule['enum']:raise ValueError('Unsupported value: '+key)
     return args
 
@@ -74,6 +91,12 @@ class LocalTools:
     def __init__(self,manager=None,driver=None):
         from dock_twoo.brain.desktop_driver import DesktopDriver
         self.manager=manager;self.driver=driver or DesktopDriver()
+
+    def file_path(self, value):
+        path=Path(value).expanduser()
+        workspace=getattr(self.manager,'workspace',None)
+        if not path.is_absolute() and workspace is not None:path=Path(workspace)/path
+        return allowed_file(str(path))
 
     def on_main(self, callback, cancel):
         """Wait for the GUI action to run and propagate its actual error."""
@@ -113,8 +136,16 @@ class LocalTools:
     def execute(self,name,args,cancel):
         validate_arguments(name,args)
         if cancel.is_set():raise InterruptedError('Request stopped.')
+        if hasattr(self.manager,'acquire_desktop'):
+            from dock_twoo.brain.ecosystem.coordinator import DESKTOP_TOOLS
+            if name in DESKTOP_TOOLS:self.manager.acquire_desktop()
+            if name=='read_aloud' and not self.manager.foreground:raise ValueError('Background workers return results to Brain; spoken output belongs to the addressed foreground agent.')
+        if name in ('web_search','read_webpage'):
+            from dock_twoo.brain.ecosystem.web import PublicWeb
+            web=getattr(self,'web_client',None) or getattr(self.manager,'research_client',None) or PublicWeb()
+            return web.search(args['query'],cancel,args.get('limit',5)) if name=='web_search' else web.read(args['url'],cancel,args.get('offset',0))
         if name in ('list_files','search_files'):
-            root=allowed_file(args['path'])
+            root=self.file_path(args['path'])
             if not root.is_dir():raise ValueError('The requested folder does not exist.')
             offset=max(0,args.get('offset',0));items=[];matched=0;scanned=0
             recursive=name=='search_files' or args.get('recursive',False)
@@ -137,7 +168,7 @@ class LocalTools:
                 if stopped:break
             return {'items':items,'next_offset':offset+len(items) if stopped else None,'complete':not stopped}
         if name=='read_file':
-            path=allowed_file(args['path'])
+            path=self.file_path(args['path'])
             if not path.is_file():raise ValueError('The requested file does not exist.')
             if path.stat().st_size>32*1024*1024:raise ValueError('This file is larger than the 32 MB document limit.')
             suffix=path.suffix.lower()
@@ -165,8 +196,24 @@ class LocalTools:
                     parser=Plain();parser.feed(text);text=' '.join(parser.parts)
             offset=max(0,args.get('offset',0));end=offset+16000
             return {'path':str(path),'text':text[offset:end],'total_characters':len(text),'next_offset':end if end<len(text) else None,'untrusted_content':True}
+        if name=='assemble_document':
+            output=self.file_path(args['path'])
+            if output.suffix.lower() not in ('.md','.txt'):raise ValueError('Use a Markdown or text output document.')
+            parts=[args.get('introduction','').strip()];size=0;sections=[]
+            for value in args['sections']:
+                if cancel.is_set():raise InterruptedError('Document assembly stopped.')
+                if not isinstance(value,str):raise ValueError('Supply section file paths.')
+                path=self.file_path(value)
+                if path.suffix.lower() not in ('.md','.txt') or not path.is_file():raise ValueError('Use existing text/Markdown section files.')
+                size+=path.stat().st_size
+                if size>5_000_000:raise ValueError('The combined report exceeds the 5 MB document limit.')
+                parts.append(path.read_text(encoding='utf-8'));sections.append(str(path))
+            text='\n\n'.join(part for part in parts if part)+'\n'
+            output.parent.mkdir(parents=True,exist_ok=True)
+            with output.open('x',encoding='utf-8') as target:target.write(text)
+            return {'created':str(output),'sections':sections,'verified':output.read_text(encoding='utf-8')==text}
         if name=='write_file':
-            path=allowed_file(args['path']);path.parent.mkdir(parents=True,exist_ok=True)
+            path=self.file_path(args['path']);path.parent.mkdir(parents=True,exist_ok=True)
             with path.open('x',encoding='utf-8') as target:target.write(args['text'])
             return {'created':str(path),'verified':path.read_text()==args['text']}
         if name in ('add_task','list_tasks','update_task','add_note','list_notes'):
@@ -217,7 +264,7 @@ class LocalTools:
         if name=='get_selected_text':return self.driver.selected_text()
         if name=='describe_image':
             from dock_twoo.brain.local_vision import describe_image
-            return describe_image(allowed_file(args['path']),cancel)
+            return describe_image(self.file_path(args['path']),cancel)
         if name=='describe_active_window':
             from dock_twoo.brain.local_vision import describe_active_window
             return describe_active_window(cancel)
@@ -228,7 +275,10 @@ class LocalTools:
             if self.manager is None:raise RuntimeError('The desktop application is not running.')
             if name=='read_aloud':
                 if args['source']=='text' and not args.get('text','').strip():raise ValueError('Supply the text to read.')
-                self.on_main(lambda:self.manager._read_text_now(args['text']) if args['source']=='text' else self.manager._start_reading_now(args['source']),cancel)
+                if hasattr(self.manager,'request_read'):
+                    self.on_main(lambda:self.manager.request_read(args),cancel)
+                else:
+                    self.on_main(lambda:self.manager._read_text_now(args['text']) if args['source']=='text' else self.manager._start_reading_now(args['source']),cancel)
                 return {'started_reading':args['source']}
             action=args['action']
             from dock_twoo.brain.animation import ACTIONS
@@ -240,7 +290,7 @@ class LocalTools:
                 if args['destination'] not in ('top_left','top_right','bottom_left','bottom_right','center'):raise ValueError('Unknown destination.')
                 if action not in ('walk','run','jump','fly','roll'):raise ValueError('Choose walk, run, jump, fly or roll for travel.')
                 self.on_main(lambda:self.manager.companion.travel_to_corner(args['destination'],style=action),cancel)
-            elif action in ACTIONS:self.on_main(lambda:self.manager.companion.play_action(action),cancel)
+            elif action in getattr(self.manager.companion, "actions", ACTIONS):self.on_main(lambda:self.manager.companion.play_action(action),cancel)
             else:raise ValueError('Unknown animation action.')
             return {'started_action':action}
         raise ValueError('This tool cannot be executed directly.')

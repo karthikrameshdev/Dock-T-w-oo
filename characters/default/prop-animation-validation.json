@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "samples": 573,
+  "ball_contact_frame": 42,
+  "ball_contact_gap": -1.0013580323264826e-07,
+  "ball_launch_frame": 43,
+  "ball_launch_distance": 0.06678700855237348,
+  "hammer_contacts": [
+    {
+      "frame": 45,
+      "gap": 1.1682510375976562e-05
+    },
+    {
+      "frame": 86,
+      "gap": 1.1682510375976562e-05
+    }
+  ],
+  "maximum_grip_error": 5.339525004377638e-07,
+  "maximum_rope_grip_error": 0.026117829276636213,
+  "issues": [],
+  "blend_sha256": "8ecdad84fc8a5553cefdc9873013323a9d2c2f5c9e0ccde2b25f9198f4f6426a",
+  "glb_sha256": "7172101ec58aea9d9e8552aaf1a1fd978f4a635289af1825d8369bb497854248"
+}

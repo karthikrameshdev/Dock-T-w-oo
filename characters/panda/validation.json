@@ -1,0 +1,27 @@
+{
+  "id": "panda",
+  "source_sha256": "dccff9cb7cc2ec71f609685df86864187ff95a1c3afc7a23eb7d50bf071731f5",
+  "asset_sha256": "bf05a015f30eaa2294e7283a01d0f38ce27a91b295b0bfd541d29559728615b0",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

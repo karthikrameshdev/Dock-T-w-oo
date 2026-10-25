@@ -1,0 +1,27 @@
+{
+  "id": "owl",
+  "source_sha256": "0508a0fa6a574902b09ea82a30c58ed8c32cc9ab46ee73b97fc1efda17cfea88",
+  "asset_sha256": "e244cd7c8500463f2628ce2bccf4e5694d0967d915d1799e5d6a07c58db2b955",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

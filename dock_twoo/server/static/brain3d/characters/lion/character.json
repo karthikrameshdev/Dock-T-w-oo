@@ -1,0 +1,837 @@
+{
+  "id": "lion",
+  "name": "Leo",
+  "family": "quadruped",
+  "species": "lion",
+  "main": "#DBA14E",
+  "secondary": "#9F5F31",
+  "accent": "#FFDD65",
+  "scale": 1.0,
+  "index": 17,
+  "version": "4.0.0",
+  "design": "Lion",
+  "source": "characters/lion/lion.blend",
+  "source_sha256": "9380ddc004c22a2bdc7e8e5ef3427b415fcc3d2b671f05e82969131f6dfaa50f",
+  "asset": "lion.glb",
+  "asset_sha256": "24f41aeb588a4cb18d668a2bf3935d915ab2b9aa87e20b1c43921823e8e8cb07",
+  "bones": 39,
+  "meshes": 109,
+  "actions": {
+    "air_spin": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Air Spin \u00b7 Leo"
+    },
+    "backstep": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Backstep \u00b7 Leo"
+    },
+    "balanced_pose": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Balanced Pose \u00b7 Leo"
+    },
+    "balloon": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Balloon \u00b7 Leo"
+    },
+    "bank_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Left \u00b7 Leo"
+    },
+    "bank_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Right \u00b7 Leo"
+    },
+    "beg": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Beg \u00b7 Leo"
+    },
+    "bow": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Bow \u00b7 Leo"
+    },
+    "brake": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Brake \u00b7 Leo"
+    },
+    "bury": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Bury \u00b7 Leo"
+    },
+    "camera": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Camera \u00b7 Leo"
+    },
+    "carry_box": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Carry Box \u00b7 Leo"
+    },
+    "catch": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Catch \u00b7 Leo"
+    },
+    "celebrate": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Celebrate \u00b7 Leo"
+    },
+    "charge": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Charge \u00b7 Leo"
+    },
+    "chase_ball": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Chase Ball \u00b7 Leo"
+    },
+    "chase_tail": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Chase Tail \u00b7 Leo"
+    },
+    "cheer_partner": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cheer Partner \u00b7 Leo"
+    },
+    "climb": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb \u00b7 Leo"
+    },
+    "climb_dock": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb Dock \u00b7 Leo"
+    },
+    "cook": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cook \u00b7 Leo"
+    },
+    "crawl": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crawl \u00b7 Leo"
+    },
+    "crouch": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crouch \u00b7 Leo"
+    },
+    "cry": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cry \u00b7 Leo"
+    },
+    "dance": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance \u00b7 Leo"
+    },
+    "dance_together": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance Together \u00b7 Leo"
+    },
+    "dash": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Dash \u00b7 Leo"
+    },
+    "dig": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Dig \u00b7 Leo"
+    },
+    "double_blink": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Double Blink \u00b7 Leo"
+    },
+    "drag": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Drag \u00b7 Leo"
+    },
+    "drink": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Drink \u00b7 Leo"
+    },
+    "ear_flick": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Ear Flick \u00b7 Leo"
+    },
+    "explore": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Explore \u00b7 Leo"
+    },
+    "fly": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Fly \u00b7 Leo"
+    },
+    "fold_arms": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Fold Arms \u00b7 Leo"
+    },
+    "glance_back": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Glance Back \u00b7 Leo"
+    },
+    "glide": {
+      "duration": 2.4,
+      "loop": true,
+      "category": "locomotion",
+      "description": "Glide \u00b7 Leo"
+    },
+    "greet": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Greet \u00b7 Leo"
+    },
+    "groom": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Groom \u00b7 Leo"
+    },
+    "hammer": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Hammer \u00b7 Leo"
+    },
+    "handshake": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Handshake \u00b7 Leo"
+    },
+    "happy": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Happy \u00b7 Leo"
+    },
+    "head_tilt": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Head Tilt \u00b7 Leo"
+    },
+    "hover": {
+      "duration": 3.1333,
+      "loop": true,
+      "category": "acting",
+      "description": "Hover \u00b7 Leo"
+    },
+    "howl": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Howl \u00b7 Leo"
+    },
+    "idle": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "acting",
+      "description": "Idle \u00b7 Leo"
+    },
+    "inspect_icon": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Icon \u00b7 Leo"
+    },
+    "inspect_window": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Window \u00b7 Leo"
+    },
+    "jump": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Jump \u00b7 Leo"
+    },
+    "kick_ball": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Kick Ball \u00b7 Leo"
+    },
+    "kneel": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Kneel \u00b7 Leo"
+    },
+    "land": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Land \u00b7 Leo"
+    },
+    "laugh": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Laugh \u00b7 Leo"
+    },
+    "lean_back": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Back \u00b7 Leo"
+    },
+    "lean_forward": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Forward \u00b7 Leo"
+    },
+    "lie_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Lie Down \u00b7 Leo"
+    },
+    "lift_object": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Lift Object \u00b7 Leo"
+    },
+    "listen": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Listen \u00b7 Leo"
+    },
+    "look_down": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Down \u00b7 Leo"
+    },
+    "look_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Left \u00b7 Leo"
+    },
+    "look_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Right \u00b7 Leo"
+    },
+    "look_up": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Up \u00b7 Leo"
+    },
+    "magnifier": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Magnifier \u00b7 Leo"
+    },
+    "nod": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Nod \u00b7 Leo"
+    },
+    "nuzzle": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Nuzzle \u00b7 Leo"
+    },
+    "paint": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Paint \u00b7 Leo"
+    },
+    "parachute": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Parachute \u00b7 Leo"
+    },
+    "paw_tap": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Paw Tap \u00b7 Leo"
+    },
+    "peek": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Peek \u00b7 Leo"
+    },
+    "play_bow": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Play Bow \u00b7 Leo"
+    },
+    "playful_spar": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Playful Spar \u00b7 Leo"
+    },
+    "point": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Point \u00b7 Leo"
+    },
+    "point_down": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Down \u00b7 Leo"
+    },
+    "point_up": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Up \u00b7 Leo"
+    },
+    "ponder": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Ponder \u00b7 Leo"
+    },
+    "pounce": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Pounce \u00b7 Leo"
+    },
+    "power_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Down \u00b7 Leo"
+    },
+    "power_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Up \u00b7 Leo"
+    },
+    "present_left": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Left \u00b7 Leo"
+    },
+    "present_right": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Right \u00b7 Leo"
+    },
+    "pull_scroll": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Pull Scroll \u00b7 Leo"
+    },
+    "push": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Push \u00b7 Leo"
+    },
+    "read": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Read \u00b7 Leo"
+    },
+    "replace_text": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Replace Text \u00b7 Leo"
+    },
+    "roar": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roar \u00b7 Leo"
+    },
+    "roll": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Roll \u00b7 Leo"
+    },
+    "roll_back": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roll Back \u00b7 Leo"
+    },
+    "run": {
+      "duration": 0.8,
+      "loop": true,
+      "category": "acting",
+      "description": "Run \u00b7 Leo"
+    },
+    "sad": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sad \u00b7 Leo"
+    },
+    "scan_code": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Code \u00b7 Leo"
+    },
+    "scan_screen": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Screen \u00b7 Leo"
+    },
+    "scratch_ear": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Scratch Ear \u00b7 Leo"
+    },
+    "search": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Search \u00b7 Leo"
+    },
+    "self_check": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Self Check \u00b7 Leo"
+    },
+    "sensor_scan": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Sensor Scan \u00b7 Leo"
+    },
+    "set_object_down": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Set Object Down \u00b7 Leo"
+    },
+    "shake_body": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Shake Body \u00b7 Leo"
+    },
+    "shake_head": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Shake Head \u00b7 Leo"
+    },
+    "shiver": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Shiver \u00b7 Leo"
+    },
+    "sidestep_left": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Left \u00b7 Leo"
+    },
+    "sidestep_right": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Right \u00b7 Leo"
+    },
+    "sit": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sit \u00b7 Leo"
+    },
+    "sleep": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sleep \u00b7 Leo"
+    },
+    "smell": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Smell \u00b7 Leo"
+    },
+    "sneak": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sneak \u00b7 Leo"
+    },
+    "sneeze": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Sneeze \u00b7 Leo"
+    },
+    "sniff_ground": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Sniff Ground \u00b7 Leo"
+    },
+    "snuggle": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Snuggle \u00b7 Leo"
+    },
+    "spin_left": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Left \u00b7 Leo"
+    },
+    "spin_right": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Right \u00b7 Leo"
+    },
+    "stand_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Stand Up \u00b7 Leo"
+    },
+    "stir": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stir \u00b7 Leo"
+    },
+    "stretch": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch \u00b7 Leo"
+    },
+    "stretch_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Left \u00b7 Leo"
+    },
+    "stretch_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Right \u00b7 Leo"
+    },
+    "stretch_spine": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Stretch Spine \u00b7 Leo"
+    },
+    "surprised": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Surprised \u00b7 Leo"
+    },
+    "tail_wag": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "species",
+      "description": "Tail Wag \u00b7 Leo"
+    },
+    "takeoff": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Takeoff \u00b7 Leo"
+    },
+    "talk": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Talk \u00b7 Leo"
+    },
+    "taste": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Taste \u00b7 Leo"
+    },
+    "throw": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Throw \u00b7 Leo"
+    },
+    "tiptoe": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Tiptoe \u00b7 Leo"
+    },
+    "touchdown": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Touchdown \u00b7 Leo"
+    },
+    "trip_recover": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Trip Recover \u00b7 Leo"
+    },
+    "turn_around": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Turn Around \u00b7 Leo"
+    },
+    "type": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Type \u00b7 Leo"
+    },
+    "victory_pose": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Victory Pose \u00b7 Leo"
+    },
+    "wake_up": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Wake Up \u00b7 Leo"
+    },
+    "walk": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk \u00b7 Leo"
+    },
+    "walk_window": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk Window \u00b7 Leo"
+    },
+    "water_plant": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Water Plant \u00b7 Leo"
+    },
+    "wave": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Wave \u00b7 Leo"
+    },
+    "whistle": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Whistle \u00b7 Leo"
+    },
+    "wink": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Wink \u00b7 Leo"
+    },
+    "yawn": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Yawn \u00b7 Leo"
+    }
+  }
+}

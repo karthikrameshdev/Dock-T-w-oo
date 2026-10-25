@@ -204,9 +204,9 @@ def get_default_apps() -> List[DockAppItem]:
         ),
         DockAppItem(
             id="brain",
-            name="Brain",
+            name="Voice Assistant",
             icon="brain",
-            tooltip="Brain",
+            tooltip="Voice Assistant",
             enabled=True,
             is_bottom=True,
         ),
@@ -480,6 +480,9 @@ class ConfigManager(QObject):
                     # Clean up any legacy tooltips or names containing "T(w)oo" for inner apps
                     needs_save = False
                     for app in self._config.apps:
+                        if app.id == 'brain' and (app.name != 'Voice Assistant' or app.tooltip != 'Voice Assistant'):
+                            app.name = app.tooltip = 'Voice Assistant'
+                            needs_save = True
                         if "T(w)oo" in app.tooltip or "T(w)oo" in app.name:
                             needs_save = True
                             if app.id == "notes":
@@ -489,8 +492,8 @@ class ConfigManager(QObject):
                                 app.name = "Vault"
                                 app.tooltip = "Vault"
                             elif app.id == "brain":
-                                app.name = "Brain"
-                                app.tooltip = "Brain"
+                                app.name = "Voice Assistant"
+                                app.tooltip = "Voice Assistant"
                             elif app.id == "settings":
                                 app.name = "Settings"
                                 app.tooltip = "Settings"

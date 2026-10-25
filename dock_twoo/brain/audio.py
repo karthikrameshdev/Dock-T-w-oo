@@ -101,6 +101,7 @@ def synthesize(
     path: Path | str,
     cancel: Optional[threading.Event] = None,
     voice_models=None,
+    voice_settings=None,
 ) -> SpeechClip:
     """Synthesize a local ONNX phrase, with platform speech while the model prepares."""
     if not isinstance(message, str) or not message.strip():
@@ -115,7 +116,10 @@ def synthesize(
     path_obj.parent.mkdir(parents=True, exist_ok=True)
 
     if voice_models is not None:
-        if voice_models.synthesize_wav(clean_msg, path_obj, cancel=cancel):
+        options={}
+        if voice_settings:
+            options={'voice':voice_settings.get('voice'),'speed':float(voice_settings.get('speed',1))/float(voice_settings.get('pitch',1))}
+        if voice_models.synthesize_wav(clean_msg, path_obj, cancel=cancel,**options):
             if cancel.is_set():
                 raise InterruptedError("Speech cancelled.")
             return SpeechClip.read(path_obj)
@@ -183,20 +187,23 @@ def system_is_macos() -> bool:
     return platform.system().lower() == "darwin"
 
 
-def synthesize_song(lyrics: str, path: Path | str, cancel: threading.Event) -> SpeechClip:
-    """Sing original lyrics with the installed macOS melodic novelty voice."""
-    if platform.system().lower() != 'darwin':
-        raise RuntimeError('The local singing voice is currently available on macOS only.')
-    path = Path(path)
-    process = subprocess.Popen(['say','-v','Good News','-o',str(path),
-        '--file-format=WAVE','--data-format=LEI16@22050','--',lyrics],
-        stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
-    deadline=time.monotonic()+20
-    while process.poll() is None:
-        if cancel.is_set() or time.monotonic()>deadline:
-            process.terminate()
-            raise InterruptedError('Song cancelled or timed out')
-        time.sleep(.025)
-    if process.returncode:
-        raise RuntimeError('The macOS singing voice is not available on this computer.')
-    return SpeechClip.read(path)
+def synthesize_song(lyrics: str, path: Path | str, cancel: threading.Event, voice_models=None, voice_settings=None) -> SpeechClip:
+    """A light robot melody over local speech, identical on every desktop OS.
+
+    This is speech prosody, not a separately trained singing model. The same
+    selected voice supplies the words; continuous pitch motion adds the melody.
+    """
+    import numpy as np
+    if voice_models is None:
+        from dock_twoo.brain.local_tts import get_local_tts
+        source = get_local_tts().clip(lyrics, cancel,voice=(voice_settings or {}).get('voice'),speed=(voice_settings or {}).get('speed'))
+    else:
+        source = synthesize(lyrics, path, cancel, voice_models,voice_settings)
+    samples = np.frombuffer(source.pcm, dtype='<i2').reshape(-1, source.channels)
+    if cancel.is_set():raise InterruptedError('Song stopped.')
+    time_axis = np.arange(len(samples)) / source.rate
+    semitones = 2.2 * np.sin(2 * np.pi * time_axis / 1.6) + .15 * np.sin(2 * np.pi * 4.8 * time_axis)
+    positions = np.cumsum(2 ** (semitones / 12)) - 1
+    positions = positions[positions < len(samples)]
+    output = np.stack([np.interp(positions, np.arange(len(samples)), samples[:, c]) for c in range(source.channels)], axis=1)
+    return SpeechClip.from_pcm(np.clip(output, -32768, 32767).astype('<i2').tobytes(), source.rate, source.channels)

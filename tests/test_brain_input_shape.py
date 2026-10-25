@@ -10,6 +10,23 @@ from dock_twoo.brain.input_shape import decode_shape, native_mask
 from tests.test_multi_brain import manager_at, inventory
 
 
+def test_native_pointer_gate_skips_a_destroyed_character(qapp):
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QWidget
+    from shiboken6 import delete
+    from dock_twoo.brain.native_input import NativeInputRouter
+    manager = QObject()
+    actor = QWidget()
+    manager.companions = {'removed': actor}
+    router = NativeInputRouter(manager)
+    router.timer.stop()
+    delete(actor)
+    router.enabled = True
+    router.sync(QPoint(10, 10), force=True)
+    assert router._states == {}
+    router.close()
+
+
 def payload(size, rects):
     stride=((size.width()+31)//32)*4
     bits=bytearray(stride*size.height())
@@ -76,10 +93,19 @@ def test_native_pointer_gate_preserves_gaps_and_drag_capture(qapp,tmp_path,monke
     calls=[]
     monkeypatch.setattr('dock_twoo.brain.mascot.mac_window',lambda _: (1,lambda *args:calls.append(args[-1][1])))
     router=manager.input_router;router.enabled=True
-    router.sync(QPoint(110,150));assert calls[-1] is True  # Empty canvas margin.
+    router.sync(QPoint(110,150), force=True);assert calls[-1] is True  # Refresh a possibly timer-cached margin.
     router.sync(QPoint(220,150));assert calls[-1] is False  # The head.
     router.sync(QPoint(220,250));assert calls[-1] is True  # Between the legs.
     before=len(calls);router.sync(QPoint(220,250));assert len(calls)==before
     actor.origin=QPoint();router.sync(QPoint(110,150));assert calls[-1] is False
     actor.origin=None;router.sync(QPoint(110,150));assert calls[-1] is True
     router.enabled=False;manager.shutdown()
+
+
+def test_scaling_a_loading_character_keeps_a_region_not_an_ambiguous_empty_polygon(qapp,tmp_path):
+    manager=manager_at(tmp_path,inventory()[:1]);actor=manager.companion
+    assert actor.input_region.isEmpty()
+    actor.set_character_scale(.5)
+    assert isinstance(actor.input_region,QRegion)
+    assert not actor.input_region.contains(QPoint(5,5))
+    manager.shutdown()

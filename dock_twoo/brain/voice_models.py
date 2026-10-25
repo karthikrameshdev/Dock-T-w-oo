@@ -220,10 +220,10 @@ class LocalVoiceModels:
             self.errors["recognizer"] = f"unavailable ({exc})"
             return ""
 
-    def synthesize_wav(self, message, path, speaker=None, *, cancel=None, budget=None):
+    def synthesize_wav(self, message, path, speaker=None, *, cancel=None, budget=None, voice=None, speed=None):
         if not self.local_tts.engine:
             return False
-        return self.local_tts.synthesize_wav(message, path, cancel or threading.Event())
+        return self.local_tts.synthesize_wav(message, path, cancel or threading.Event(),voice=voice,speed=speed)
 
     def speaker_embedding(self, pcm: bytes, sample_rate: int = 16000) -> Optional[list[float]]:
         """Extract a WavLM x-vector from a voice sample; audio never leaves this device."""

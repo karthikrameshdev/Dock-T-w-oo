@@ -167,9 +167,15 @@ class Companion(QWidget):
     Pinned on desktop to remain floating and never auto-hide when clicking outside.
     """
 
-    def __init__(self, manager: BrainManager, parent: Optional[QWidget] = None):
+    def __init__(self, manager: BrainManager, parent: Optional[QWidget] = None, *, character_id="default"):
         super().__init__(parent)
         self.manager = manager
+        from dock_twoo.brain.catalog import character, actions_for
+        self.character_id = character_id
+        self.character = character(character_id)
+        self.character_name = self.character["name"]
+        self.actions = actions_for(character_id)
+        self.playlist = tuple(self.actions)
         self.store = manager.store
         self.screen_id = "default"
         self.assigned_screen = None
@@ -183,7 +189,7 @@ class Companion(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
-        self.setWindowTitle("Brain Mini Agent")
+        self.setWindowTitle(f"{self.character_name} · Voice Assistant")
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
         self.origin: Optional[QPoint] = None
@@ -259,7 +265,7 @@ class Companion(QWidget):
         self.motion_timer.timeout.connect(self._advance_motion)
 
         self.roam_timer = QTimer(self)
-        self.roam_timer.setInterval(8500)  # Frequent omniverse roaming and exploring
+        self.roam_timer.setInterval(random.randint(6500, 10000))  # Frequent omniverse roaming and exploring
         self.roam_timer.timeout.connect(self._roam)
         self.roam_timer.start()
         self.follow_timer = QTimer(self)
@@ -268,7 +274,7 @@ class Companion(QWidget):
         if self.follow_cursor_enabled:
             self.follow_timer.start()
 
-        self.renderer_status = QLabel('Loading Brain 3D…', self)
+        self.renderer_status = QLabel(f'Loading {self.character_name}…', self)
         self.renderer_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.renderer_status.setGeometry(22, 110, 220, 48)
         self.renderer_status.setStyleSheet('color: #F0F0F5; background: rgba(28,29,34,235); border-radius: 12px; padding: 6px;')
@@ -298,7 +304,8 @@ class Companion(QWidget):
             return
         old_width, old_height = self.width(), self.height()
         self.resize(width, height)
-        self.input_region = QTransform().scale(width / old_width, height / old_height).map(self.input_region)
+        self.input_region = (QRegion(QTransform().scale(width / old_width, height / old_height).map(self.input_region))
+                             if not self.input_region.isEmpty() else QRegion())
         from dock_twoo.brain.input_shape import native_mask
         self.setMask(native_mask(self.input_region))
         if self.model_view:
@@ -318,7 +325,7 @@ class Companion(QWidget):
             self.setMask(native_mask(region))
             self.update()
         if hasattr(self.manager, 'input_router'):
-            self.manager.input_router.sync(force=True)
+            self.manager.input_router.sync()
 
     def body_region(self):
         from dock_twoo.brain.input_shape import provisional_body
@@ -498,7 +505,7 @@ class Companion(QWidget):
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.play_action(action, destination, duration, sequence=sequence, keep_orientation=keep_orientation))
             return
-        if action not in ACTIONS:
+        if action not in self.actions:
             return
         if action == 'parachute' and not self._parachute_prepared:
             self._prepare_parachute(destination, duration, sequence)
@@ -542,8 +549,10 @@ class Companion(QWidget):
 
         self.motion_start = self.pos()
         self.motion_started = time.monotonic()
+        self._last_motion_tick = self.motion_started
+        self._travelled = 0.0
         self._last_turn_update = self.motion_started
-        self.motion_duration = duration or ACTIONS[action][1]
+        self.motion_duration = duration or self.actions[action][1]
         if destination is not None and action in ("walk", "run", "dash", "walk_window", "chase_ball"):
             distance = math.hypot(destination.x() - self.x(), destination.y() - self.y())
             self.motion_duration = max(self.motion_duration, distance / (230 if action in ("run", "dash", "chase_ball") else 160))
@@ -582,7 +591,7 @@ class Companion(QWidget):
             self._parachute_prepared = True
             try:
                 self.play_action('parachute', destination=landing,
-                                 duration=max(duration or ACTIONS['parachute'][1], (ground_y-launch.y())/120),
+                                 duration=max(duration or self.actions['parachute'][1], (ground_y-launch.y())/120),
                                  sequence=sequence)
             finally:
                 self._parachute_prepared = False
@@ -617,7 +626,7 @@ class Companion(QWidget):
         self.animation_loop = True
         self.animation_index = 0
         self.animation_cycles = 0
-        self.play_action(PLAYLIST[0], sequence=True)
+        self.play_action(self.playlist[0], sequence=True)
 
     def _advance_motion(self) -> None:
         generation = self.motion_generation
@@ -647,7 +656,26 @@ class Companion(QWidget):
             end = self.destination or self.motion_start or self.pos()
             start_p = self.motion_start or self.pos()
             x, y = travel_point((start_p.x(), start_p.y()), (end.x(), end.y()), progress, self.action)
-            self.move(self._safe_position(QPoint(x, y)))
+            now = time.monotonic()
+            if self.destination is not None and self.action in ('walk','run','dash','walk_window','chase_ball'):
+                dt = min(.05, max(0, now-getattr(self, '_last_motion_tick', now)))
+                dx, dy = end.x()-self.x(), end.y()-self.y()
+                remaining = math.hypot(dx, dy)
+                speed = math.hypot(end.x()-start_p.x(), end.y()-start_p.y()) / max(.1, self.motion_duration)
+                stride = min(remaining, max(45, speed)*dt)
+                intended = QPoint(round(self.x()+dx*stride/max(1, remaining)), round(self.y()+dy*stride/max(1, remaining)))
+                position = self._safe_position(intended)
+                self._travelled = getattr(self, '_travelled', 0) + math.hypot(position.x()-self.x(), position.y()-self.y())
+                self.gait_distance = self._travelled
+                self.gait_blend = min(1, remaining/15) if position != self.pos() else 0
+                if remaining > 3:
+                    progress = min(progress, .99)
+                else:
+                    progress = 1
+                self.move(position)
+            else:
+                self.move(self._safe_position(QPoint(x, y)))
+            self._last_motion_tick = now
 
         self.update()
 
@@ -658,10 +686,10 @@ class Companion(QWidget):
             if arrived:
                 arrived()
             elif looping and self.animation_loop and self.activity == "idle":
-                self.animation_index = (self.animation_index + 1) % len(PLAYLIST)
+                self.animation_index = (self.animation_index + 1) % len(self.playlist)
                 if self.animation_index == 0:
                     self.animation_cycles += 1
-                self.play_action(PLAYLIST[self.animation_index], sequence=True)
+                self.play_action(self.playlist[self.animation_index], sequence=True)
 
     def _animate_activity(self) -> None:
         self._step_turn_progress()
@@ -673,20 +701,24 @@ class Companion(QWidget):
 
     def _safe_position(self, position: QPoint) -> QPoint:
         screen = self.assigned_screen
+        crossing_allowed = False
         if self.store.setting('brain_roam_all_screens', False):
             candidate = QApplication.screenAt(position + QPoint(self.width() // 2, self.height() // 2))
             entries = getattr(self.manager, '_all_display_entries', {})
             entry = next((e for e in entries.values() if e['screen'] == candidate), None)
-            if entry:
+            if entry and (not hasattr(self.manager, "character_on_screen") or
+                          not self.manager.character_on_screen(self.character_id, entry["id"], exclude=self)):
+                crossing_allowed = True
                 screen = self.assigned_screen = candidate
                 self.screen_id = entry['id']
         screen = screen or QApplication.screenAt(position + QPoint(self.width() // 2, self.height() // 2)) or self.screen() or QApplication.primaryScreen()
         if screen is None:
             return position
         area = screen.availableGeometry()
-        if self.store.setting('brain_roam_all_screens', False):
+        if crossing_allowed:
             for entry in getattr(self.manager, '_all_display_entries', {}).values():
-                area = area.united(entry['screen'].availableGeometry())
+                if not hasattr(self.manager, 'character_on_screen') or not self.manager.character_on_screen(self.character_id, entry['id'], exclude=self):
+                    area = area.united(entry['screen'].availableGeometry())
         bounds = self.body_region().boundingRect()
         point = QPoint(max(area.left() - bounds.left(), min(position.x(), area.right() - bounds.right())),
                        max(area.top() - bounds.top(), min(position.y(), area.bottom() - bounds.bottom())))
@@ -813,6 +845,7 @@ class Companion(QWidget):
             self.reduced_motion
             or not self.isVisible()
             or self.action
+            or self.on_turn_finished
             or self.activity != "idle"
             or (time.monotonic() - self.last_dragged < 12)
         ):
@@ -828,52 +861,24 @@ class Companion(QWidget):
         screen = self.assigned_screen or QApplication.screenAt(self.geometry().center()) or QApplication.primaryScreen()
         area = screen.availableGeometry()
 
-        choice = random.random()
-        if choice < 0.20:
-            # Stroll along open application window or text box roof
-            self.walk_window_surface()
+        # Each actor has its own timer, clock, rig and actual manifest clips.
+        species = [key for key, value in self.character['actions'].items()
+                   if value.get('category') == 'species']
+        gestures = species + [key for key in self.actions
+                              if key not in {'idle','listen','talk','sleep','parachute','land'}
+                              and self.character['actions'][key].get('category') in {'acting','species'}]
+        if random.random() < .45 and gestures:
+            self.play_action(random.choice(gestures))
             return
-        elif choice < 0.35:
-            # Play with toys/props (ball, hammer, parachute, balloon)
-            toy = random.choice(["ball", "hammer", "parachute", "balloon"])
-            self.play_with_prop(toy)
-            return
-        elif choice < 0.46:
-            # Ordinary roaming is visual only; window resizing requires a command.
-            self.play_action("inspect_window")
-            return
-        elif choice < 0.60:
-            # Go climb onto dock
-            target = self._get_dock_target(area)
-            action = "walk"
-            followup = lambda: self.play_action("climb_dock")
-        elif choice < 0.74:
-            # Grab and replace text playfully
-            target = QPoint(
-                random.randint(int(area.left()) + 60, max(int(area.left()) + 60, int(area.right()) - self.width() - 60)),
-                random.randint(int(area.top()) + 60, max(int(area.top()) + 60, int(area.bottom()) - self.height() - 60)),
-            )
-            action = "walk"
-            followup = lambda: self.play_action("replace_text")
-        else:
-            # Patrol omniverse with sensors, gestures, or standby pose
-            target = QPoint(
-                random.randint(int(area.left()) + 30, max(int(area.left()) + 30, int(area.right()) - self.width() - 30)),
-                random.randint(int(area.top()) + 30, max(int(area.top()) + 30, int(area.bottom()) - self.height() - 30)),
-            )
-            action = "walk"
-            followup = lambda: self.play_action(random.choice(["sensor_scan", "fold_arms", "wave", "camera", "nod", "whistle"]))
-
-        dist = math.hypot(target.x() - self.x(), target.y() - self.y())
-        if dist < 45:
-            if followup:
-                followup()
-            return
-
-        duration = max(1.4, min(4.2, dist / 160.0))
-        self.play_action(action, target, duration)
+        bounds = self.body_region().boundingRect()
+        target = QPoint(random.randint(area.left()-bounds.left(), max(area.left()-bounds.left(), area.right()-bounds.right())),
+                        random.randint(area.top()-bounds.top(), max(area.top()-bounds.top(), area.bottom()-bounds.bottom())))
+        action = random.choice([key for key in ('walk','walk','run') if key in self.actions])
+        distance = math.hypot(target.x()-self.x(), target.y()-self.y())
+        self.play_action(action, target, max(1.8, distance/120))
         self.roam_action = True
-        self.arrival = followup
+        if gestures:
+            self.arrival = lambda: self.play_action(random.choice(gestures))
 
     def call_out_idle_user(self) -> None:
         """Call out playfully to user if idle for an extended period (> 15 minutes)."""
@@ -1168,6 +1173,7 @@ class Companion(QWidget):
             self.reduced_motion
             or not self.isVisible()
             or self.action
+            or self.on_turn_finished
             or self.activity != "idle"
             or (time.monotonic() - self.last_dragged < 12)
         ):

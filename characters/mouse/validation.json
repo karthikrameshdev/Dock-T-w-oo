@@ -1,0 +1,27 @@
+{
+  "id": "mouse",
+  "source_sha256": "584ed2e0317aec61499ffb6212f50dc870f80a92b694cbe30b99b0b65406f948",
+  "asset_sha256": "6f86d17047d5f73944dbfc84170c850cd5a8cec6fab61b04f4864b94961078a9",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

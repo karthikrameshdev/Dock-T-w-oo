@@ -1,0 +1,27 @@
+{
+  "id": "siamese",
+  "source_sha256": "b66b54ffa02740951087d09a92841226c1c54feb5cb7bb7ea782b61d5de0e7bf",
+  "asset_sha256": "2ecb03ff826ab885307bca26b3d63aa2a5b1732644f3b362994045e349b5514d",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

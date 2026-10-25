@@ -221,9 +221,10 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
     explicit_animation = bool(re.match(r"^(?:please\s+)?(?:show|do|perform|play|start)\b", clean_text) or
                               re.search(r"\b(?:animation|gesture|motion)[.!?]*$", clean_text))
     new_gestures = {'magnifier','scan_code','drag','push','hover','land','type','greet','happy','sad','run','talk','listen'}
-    if requested in ACTIONS and (explicit_animation or requested in new_gestures):
+    available = getattr(companion, "actions", ACTIONS)
+    if requested in available and (explicit_animation or requested in new_gestures):
         companion.play_action(requested)
-        return f"Showing {ACTIONS[requested][0].lower()}."
+        return f"Showing {available[requested][0].lower()}."
 
     # 1. Window Top Border & Text Box Walking
     if re.search(r"\b(walk\s+on\s+(?:the\s+|top\s+of\s+(?:the\s+)?)?text\s*box|walk\s+on\s+(?:the\s+|top\s+of\s+(?:the\s+)?)?input\s*box)\b", clean_text):

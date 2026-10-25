@@ -285,10 +285,15 @@ plus an MP4 preview when `ffmpeg` is installed.
 
 ## Blender character and document reading
 
-The editable rig lives in [`character/Brain.blend`](character/Brain.blend).
+The editable rig lives in [`characters/default/default.blend`](characters/default/default.blend).
 Brain uses its exported GLB through a transparent local Qt/WebGL renderer. The same
 opaque meshes, white eyes, pupils, smile, gloves and boots appear at every angle.
-See [`character/README.md`](character/README.md) for rebuilding and animation validation.
+See [`characters/default/README.md`](characters/default/README.md) for rebuilding and animation validation.
+
+The [companion library](characters/README.md) contains 30 separate Blender projects,
+each with 136 animation clips and its own antenna. Browse the running app at
+`http://127.0.0.1:28842/brain3d/library.html` or open `characters/index.html` for the
+local catalog and source links. The original Brain remains the default.
 The interactive preview is at `/brain3d/index.html` on the local console server.
 
 Say **“Brain, go to top left”** in one statement. Capture waits for 1.5 seconds of
@@ -352,49 +357,76 @@ sudo apt-get install libpulse0 libasound2-dev
 
 Windows and macOS use Qt's native audio backend from the installed PySide6 wheels.
 
-### Displays and multiple Brains
+### Displays and named voice agents
 
-Use **Placement & Sizing → Show Dock on** to choose one display, all displays, or
-specific screens such as 1 and 4. Hardware identities retain the selection when
-screens are rearranged. Disconnected selections are remembered; if none are
-connected, Dock temporarily appears on the primary screen. All-screens mode also
-includes newly attached monitors. Mirrored displays follow the logical screens
-reported by the operating system.
+Use **Placement & Sizing → Show Dock on** to select one display, all displays, or
+specific screens such as 1 and 4. Disconnected selections are remembered. The dock
+falls back to the primary screen until a selected screen returns.
 
-Right-click the dock's Brain icon for **Add another Brain**, **Brains on this
-screen**, **Roam across all screens**, and **Play together**. Extra characters work
-on a single screen too. They roam and animate independently, avoid one another,
-and scale to fit a crowded display. Only one Brain owns the microphone; clicking
-another finishes the current capture before handing over listening. When two or more visible Brains share a screen, a yellow
-body glow identifies the voice-woken microphone owner. Clicking a Brain (including
-while following the cursor) or using push-to-talk lights only its yellow head;
-a lone Brain also uses only the head light. A wake word selects the visible Brain nearest the
-pointer, without making every character listen or speak.
+Right-click **Voice Assistant** for **Add assistant**, **Add all missing characters**,
+**Assistants on this screen**, and **Roam across all screens**. The 30-character
+catalog includes Brain, Orbit, Rio, Luma, Fable and the other supplied Blender
+characters. Say a character's name with an optional greeting, such as “Hey Rio,
+open my notes”. That character is summoned and receives the complete statement.
+There is at most one instance of a specific character on each screen. Views on
+separate screens share the same logical agent, memory and task lease.
 
-**Hide all Brains** retains every character; **Show all Brains** restores them.
-**Remove all secondary Brains** deletes the extra characters and their saved
-placements, including disconnected displays. Primary Brains cannot be removed.
-Accepted work and microphone ownership transfer to a primary if an extra is removed.
+Each character uses its own rig, animation clips, motion clock and walking route.
+They yield when paths meet and continue their original route. Local ONNX semantic
+ranking chooses varied idle actions without interrupting a playing action. There
+is no listening body aura. The live body silhouette controls clicks; transparent
+canvas space, effects and props allow clicks to reach the app underneath.
 
-Brain's native click area follows the live 3D body silhouette, including turns,
-hands and gaps between limbs. Transparent canvas space, light effects and toy
-props let clicks reach the app underneath. Collision checks use the same body
-shape, so transparent render canvases can overlap without keeping Brains apart.
-The visual layer remains complete while the input layer follows the outline.
+**Hide all assistants** retains placements; **Show all assistants** restores them.
+Only secondary instances can be removed. Busy characters retain their identity
+until their work is finished or stopped. The authored parachute action uses a
+matching descent path before landing and retracting its canopy.
 
-The parachute action first flies to altitude, opens the saved Blender canopy,
-descends with a gentle drift, and reaches the landing point before the canopy
-retracts. The desktop path shares the authored clip's progress clock.
+### Brain's agent ecosystem
 
-All characters share one FIFO agent and speech lane. A second request waits until
-the current request and spoken answer finish. Each turn retains its original cloud
-profile and credential even if the active profile changes while it is queued.
-**Stop** cancels current work and removes pending requests. Every request still has
-the same progress, call, token and time limits. Local playground animation creates
-no cloud calls. Profiles have isolated saved credentials; overall and per-profile
-usage dashboards retain counts even after a profile is deleted.
+Brain is the sole orchestrator and may assign independent work to the 29 other
+agents concurrently, collect their files and prepare a final document. Workers
+answer requests addressed to them using their own configured model; they cannot
+delegate. Each logical character holds one work lease at a time. Independent
+characters process concurrently; additional work for a busy character waits.
+Microphone capture and spoken replies are exclusive: one character listens or
+speaks at a time. Interrupting speech to ask a question preserves background work.
+Ask “Brain, what is the status?” while research runs: Brain reads live worker
+reports over authenticated loopback gRPC, without another model call. Completed
+answers wait for the shared speaker, and documents can be downloaded in the console.
+**Stop** cancels running and queued work.
+
+In **AI Voice Assistant → Agent Models**, configure API, explicit network/Ollama,
+or installed headless Gemini, Codex, Claude Code, Kilo and custom CLI profiles.
+Assign a profile per character; an unassigned character uses the active default.
+Accepted tasks retain their captured profile and credentials. Each CLI task gets
+an isolated temporary working directory and process, with cancellation propagated
+to its process tree. Generated outputs are copied to local document storage before
+the temporary project is removed. CLI native permissions still apply; temporary
+working directories do not provide an OS sandbox.
+
+Speech recognition, Kokoro speech synthesis, speaker tuning, species sound cues,
+semantic ranking, extractive memory compaction and failure review run locally.
+The configured API/CLI/network model performs reasoning. No local generative LLM
+server is installed. A shared quantized MiniLM transformer ranks evidence/actions;
+scoped memory learns workflows only from explicit, attributable feedback. Current
+instructions override preferences; repeated topic interest does not create one.
+
+Stable prompt templates are cached locally for every transport. Native provider
+prefix adapters support OpenAI and Claude; Gemini and other compatible providers
+use their supported implicit caching. Provider-side cache availability, minimums
+and hits remain provider-controlled. Local template reuse never claims a billed
+cache hit. No generated answer or desktop action is replayed from cache.
+
+Detailed activity expires after seven days; daily usage totals remain. Dashboards
+filter by date, profile and character, with overall totals. Only provider-reported
+input/output tokens are counted; unavailable CLI usage remains unknown. Native CLI
+usage and events reflect what that CLI exposes, rather than invented internal API
+calls. Progressive work has no default three-call stop. Repeated failures trigger
+local review and targeted Brain recovery, then a clear error if recovery fails.
+Optional call, token and time limits remain available in local agent settings.
 
 Head lights: **green** online/idle, **yellow** listening, **purple** processing,
 **cyan** responding, **orange** queued, **red** offline. Head effects respect reduced
-motion. Multi-screen behavior uses Qt on macOS, Windows and Linux; native window
-reading/automation availability still depends on the platform integration.
+motion. Desktop reading/automation availability depends on the platform adapter.
+See [the implementation and verification notes](docs/agent-ecosystem.md).

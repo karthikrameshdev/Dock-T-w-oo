@@ -239,7 +239,7 @@ function initForm(cfg) {
   // 6. Brain App Settings
   const brainCfg = cfg.app_settings.brain || {};
   if (brainWakeWordToggle) brainWakeWordToggle.checked = (brainCfg.wake_word_enabled !== false);
-  if (brainWakeWord) brainWakeWord.value = brainCfg.wake_word || 'Hey Brain';
+  if (brainWakeWord) brainWakeWord.value = 'Use each character’s name · Brain, Rio, Luma…';
   if (brainVoiceGender) brainVoiceGender.value = brainCfg.voice_gender || 'neutral';
   if (brainOrbTheme) brainOrbTheme.value = brainCfg.orb_theme || 'neon_cyan';
   if (brainSpeechRate) {
@@ -749,13 +749,6 @@ if (brainWakeWordToggle) {
   });
 }
 
-if (brainWakeWord) {
-  brainWakeWord.addEventListener('change', (e) => {
-    ensureAppSettings();
-    currentConfig.app_settings.brain.wake_word = e.target.value;
-    autoSave();
-  });
-}
 
 if (brainVoiceGender) {
   brainVoiceGender.addEventListener('change', (e) => {
@@ -1033,7 +1026,7 @@ async function initStorageConsole() {
   await loadStorageData();
 }
 
-// One cloud model, local voice and persistent desktop controls
+// Agent model profiles, shared local voice and persistent desktop controls
 async function initBrainConsole() {
   const byId = id => document.getElementById(id);
   window.BrainUsage?.mount(document.getElementById('cloudUsageDashboard'));
@@ -1052,16 +1045,26 @@ async function initBrainConsole() {
     button.classList.add('active');byId(button.dataset.tab)?.classList.add('active');
   }));
   let cloudProfiles=[],editingProfileId=null,newCloudProfile=false,activeCloudProfileId='';
+  function agentModelFields() {
+    const provider=byId('brainCloudProvider').value,cli=provider.endsWith('_cli');
+    byId('agentCliFields').hidden=!cli;
+    byId('brainCloudUrl').required=!cli;byId('brainCloudUrl').closest('.form-group').hidden=cli;
+    byId('brainCloudProtocol').disabled=cli;
+    byId('agentCliArguments').closest('.form-group').hidden=provider!=='custom_cli';
+    if(cli&&!byId('agentCliExecutable').value)byId('agentCliExecutable').value={gemini_cli:'gemini',codex_cli:'codex',claude_cli:'claude',kilo_cli:'kilo'}[provider]||'';
+  }
   function fillCloudProfile(config={}) {
     byId('brainCloudName').value=config.name||'';
     byId('brainCloudProvider').value=config.provider||'gemini';
     byId('brainCloudProtocol').value=config.protocol||'openai';
-    byId('brainCloudUrl').value=config.base_url||presets.gemini;
+    byId('brainCloudUrl').value=config.base_url||presets[config.provider||'gemini']||'';
+    byId('agentCliExecutable').value=config.executable||'';byId('agentCliArguments').value=JSON.stringify(config.arguments||[]);byId('agentCacheMode').value=config.cache_mode||'auto';
+    agentModelFields();
     byId('brainCloudModel').value=config.model||'';byId('brainCloudKey').value='';
     byId('brainCloudActivate').disabled=!config.id||config.id===activeCloudProfileId;
     byId('brainCloudDelete').disabled=!config.id;
     byId('brainCloudTest').disabled=!config.id||config.status!=='configured';
-    byId('brainCloudStatus').textContent=!config.id?'Enter a name, model and key, then save the new profile.':config.status==='not configured'?'Model is not configured. Enter a model ID and API key.':`${config.name} · ${config.model} · Key saved`;
+    byId('brainCloudStatus').textContent=!config.id?'Enter a name, model and key, then save the new profile.':config.status==='not configured'?'Model is not configured. Enter a model ID and API key.':`${config.name} · ${config.model} · ${config.kind==='cli'?'Installed CLI':config.kind==='network'?'Network endpoint':'Key saved'}`;
     initSearchableDropdowns();
   }
   async function modelForm(preferred=editingProfileId) {
@@ -1086,7 +1089,7 @@ async function initBrainConsole() {
     select.value='__new__';fillCloudProfile();byId('brainCloudName').focus();
   });
   byId('brainCloudActivate').addEventListener('click',async()=>{
-    try{await post('/api/brain/activate-profile',{profile_id:editingProfileId});await modelForm();showToast('Cloud profile switched.');}catch(error){report(error);}
+    try{await post('/api/brain/activate-profile',{profile_id:editingProfileId});await modelForm();showToast('Default agent model switched.');}catch(error){report(error);}
   });
   byId('brainCloudDelete').addEventListener('click',async()=>{
     if(!editingProfileId)return;
@@ -1096,14 +1099,14 @@ async function initBrainConsole() {
   byId('brainCloudProvider').addEventListener('change',()=>{
     const provider=byId('brainCloudProvider').value;
     byId('brainCloudUrl').value=presets[provider]||'';
-    byId('brainCloudProtocol').value=provider==='anthropic'?'anthropic':'openai';byId('brainCloudKey').value='';initSearchableDropdowns();
+    byId('brainCloudProtocol').value=provider==='anthropic'?'anthropic':'openai';byId('brainCloudKey').value='';byId('agentCliExecutable').value='';agentModelFields();initSearchableDropdowns();
   });
   byId('brainCloudForm').addEventListener('input',()=>{byId('brainCloudTest').disabled=true;});
   byId('brainCloudForm').addEventListener('submit',async event=>{
     event.preventDefault();
     try {
-      const result=await post(newCloudProfile?'/api/brain/profiles':'/api/brain/profile',{...(editingProfileId?{id:editingProfileId}:{}),name:byId('brainCloudName').value.trim(),provider:byId('brainCloudProvider').value,protocol:byId('brainCloudProtocol').value,base_url:byId('brainCloudUrl').value.trim(),model:byId('brainCloudModel').value.trim(),api_key:byId('brainCloudKey').value.trim()});
-      editingProfileId=result.profile.id;byId('brainCloudKey').value='';await modelForm();showToast('Cloud profile saved.');
+      const result=await post(newCloudProfile?'/api/brain/profiles':'/api/brain/profile',{...(editingProfileId?{id:editingProfileId}:{}),name:byId('brainCloudName').value.trim(),provider:byId('brainCloudProvider').value,protocol:byId('brainCloudProtocol').value,base_url:byId('brainCloudUrl').value.trim(),model:byId('brainCloudModel').value.trim(),api_key:byId('brainCloudKey').value.trim(),executable:byId('agentCliExecutable').value.trim(),arguments:JSON.parse(byId('agentCliArguments').value||'[]'),cache_mode:byId('agentCacheMode').value});
+      editingProfileId=result.profile.id;byId('brainCloudKey').value='';await modelForm();showToast('Agent model profile saved.');
     } catch(error){report(error);}
   });
   byId('brainCloudTest').addEventListener('click',async()=>{
@@ -1128,7 +1131,7 @@ async function initBrainConsole() {
   byId('brainCharacterPlay')?.addEventListener('click',()=>post('/api/brain/action',{action:'animation',name:select.value}).catch(report));
   async function save(settings){try{await post('/api/brain/settings',settings);}catch(error){report(error);}}
   for(const [id,key] of [['brainWakeWordToggle','wake_word_enabled'],['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.checked}));
-  for(const [id,key] of [['brainWakeWord','wake_word'],['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut'],['brainVoiceName','voice_name']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.value}));
+  for(const [id,key] of [['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut'],['brainVoiceName','voice_name']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.value}));
   byId('brainSpeechRate')?.addEventListener('input',event=>{const speed=Number(event.target.value)/100;byId('brainSpeechRateVal').textContent=speed.toFixed(1)+'x';save({speech_rate:speed});});
   byId('brainVoiceCheckBtn')?.addEventListener('click',()=>fetch('/api/brain/voice-check',{method:'POST',headers:{'X-Brain-Voice-Check':'local'}}).catch(report));
   byId('brainEnrollVoiceBtn')?.addEventListener('click',()=>post('/api/brain/enroll-owner').catch(report));
@@ -1144,7 +1147,7 @@ async function initBrainConsole() {
       byId('brainTalkBtn').textContent=diag.recording?'✓ Finish speaking':(diag.decoding?'Processing speech…':'🎤 Talk to Brain');
       byId('brainTalkBtn').disabled=Boolean(diag.decoding);
       const devices=diag.audio_devices||{};
-      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Cloud profile: ${data.active_profile?.name || model.name || "Default"} · ${model.model}.`)+` System defaults · Microphone: ${devices.input||diag.input_device||'unavailable'} · Speaker: ${devices.output||'unavailable'}.`;
+      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Agent model profile: ${data.active_profile?.name || model.name || "Default"} · ${model.model}.`)+` System defaults · Microphone: ${devices.input||diag.input_device||'unavailable'} · Speaker: ${devices.output||'unavailable'}.`;
       byId('brainWakeDiagnostics').textContent=`Wake ${input.wake_ready?'ready':'preparing'} · ${diag.recognizer_engine||'local speech'} · ${input.recognizer_ready?'ready':'preparing'} · ${diag.last_decision||''}`;
       byId('brainLocalSpeechStatus').textContent=`Local speech: ${data.local_speech?.engine||'Kokoro ONNX'} · ${data.local_speech?.state||'preparing'}${data.local_speech?.error?' · '+data.local_speech.error:''}`;
       byId('brainAgentProgress').textContent=(data.agent?.message && data.agent?.step>0?`Step ${data.agent.step||0} · ${data.agent.message}`:'')+(data.queue?.pending?.length?` · ${data.queue.pending.length} request${data.queue.pending.length===1?'':'s'} queued`:'');
@@ -1153,7 +1156,7 @@ async function initBrainConsole() {
       if(check.active || check.heard?.length)byId('brainVoiceCheckStatus').textContent=`${check.active?'Listening '+check.seconds_remaining+'s':'Check finished'} · ${(check.heard||[]).map(entry=>entry.heard).join(' · ')}`;
       const settings=data.settings||{};
       for(const [id,key] of [['brainWakeWordToggle','wake_word_enabled'],['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])if(byId(id))byId(id).checked=!!settings[key];
-      for(const [id,key] of [['brainWakeWord','wake_word'],['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut']])if(byId(id)&&document.activeElement!==byId(id))byId(id).value=settings[key]||'';
+      for(const [id,key] of [['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut']])if(byId(id)&&document.activeElement!==byId(id))byId(id).value=settings[key]||'';
       if(document.activeElement!==byId('brainSpeechRate')){byId('brainSpeechRate').value=Math.round((settings.speech_rate||1)*100);byId('brainSpeechRateVal').textContent=(settings.speech_rate||1).toFixed(1)+'x';}
       if(byId('brainReadingStatus'))byId('brainReadingStatus').textContent=data.reading?.error|| (data.reading?.active?`Reading ${data.reading.window||'text'} · page ${data.reading.pages_read||1}`:'Choose an existing selection or a document window to read.');
       if(document.activeElement!==byId('brainVoiceName'))byId('brainVoiceName').value=settings.voice_name in {af_heart:1,af_bella:1,am_adam:1,am_michael:1,bf_emma:1,bm_george:1}?settings.voice_name:'af_heart';

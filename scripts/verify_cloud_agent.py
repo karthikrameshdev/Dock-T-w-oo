@@ -49,17 +49,17 @@ with tempfile.TemporaryDirectory(prefix='brain-agent-fixture-') as folder:
         agent=BrainAgent(profiles,tools=LocalTools(driver=driver),client_factory=factory)
         reply=agent.run(request)
         run=agent.status()['run_id'];detail=agent.tracker.detail(run)
-        assert agent.status()['state']=='limited' and 'credits' in reply
-        assert len(detail['calls'])==3 and detail['calls'][1]['retry'] and detail['calls'][2]['retry']
-        assert sum(call['total_tokens'] for call in detail['calls'])==720
+        assert agent.status()['state']=='error' and 'try again' in reply
+        assert len(detail['calls'])==9 and detail['calls'][1]['retry'] and detail['calls'][2]['retry']
+        assert sum(call['total_tokens'] for call in detail['calls'])==2160
         assert 'fixture-key' not in json.dumps(detail)
-        results.append({'case':request,'cloud_calls':3,'stopped_without_extra_call':True,'provider_tokens':720})
-    profiles.store.set_setting('agent_max_steps',5);profiles.store.set_setting('agent_token_budget',64000)
+        results.append({'case':request,'cloud_calls':9,'local_reviews':2,'provider_tokens':2160})
+    profiles.store.set_setting('agent_task_call_limit',5);profiles.store.set_setting('agent_task_token_limit',64000)
     agent=BrainAgent(profiles,tools=LocalTools(),client_factory=factory)
     agent.run('progress-budget folder='+str(docs))
     assert agent.status()['state']=='limited' and agent.tracker.run_usage(agent.status()['run_id'])['calls']==5
     results.append({'case':'hard_call_budget','cloud_calls':5})
-    profiles.store.set_setting('agent_max_steps',8)
+    profiles.store.set_setting('agent_task_call_limit',0)
     denied=BrainAgent(profiles,tools=LocalTools(),client_factory=lambda config,key:factory(config,'invalid-fixture-key'))
     assert 'rejected the API key' in denied.run('Summarize folder='+str(docs))
     results.append({'case':'http_401','state':denied.status()['state']})

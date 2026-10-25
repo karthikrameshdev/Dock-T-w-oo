@@ -1,0 +1,306 @@
+{
+  "success": true,
+  "characters": [
+    {
+      "id": "default",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "7172101ec58aea9d9e8552aaf1a1fd978f4a635289af1825d8369bb497854248"
+    },
+    {
+      "id": "orbit",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "136a8cfe353ecb8f9bce56da009a570ac99aaf8fc6a8942b11c58ef8907b8bcf"
+    },
+    {
+      "id": "ember",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "d3e04d26595b9cd2efba0753e6f938eeb7211bfad0844e329a7d3c3bb5c18fea"
+    },
+    {
+      "id": "mint",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "673e53c3100d2b565e7a580b91d23378fa242d69ed884720f6688ed6066c6b92"
+    },
+    {
+      "id": "cosmo",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "4c9a44c911f7f3b72f926a48af136926f446398881cc389f52c1e7d61ed6744e"
+    },
+    {
+      "id": "pixel",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "d5a63bb713da70d6fc0ace6a6509e7030be684d1bfdfd82c92e971e4c3a4745e"
+    },
+    {
+      "id": "corgi",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "6951550d914f5bbe75c8e33e832a4be0e20d4fc7a071cb3ffaf3a1e2547028c3"
+    },
+    {
+      "id": "beagle",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "99bfc0682d0220260359f550663149c026229bf213cff8940c584ad5a0d02aed"
+    },
+    {
+      "id": "husky",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "94a561f36bb2692983a061dd138acb1d9d55d9cfd81c220a4b86d1b7a2e908b9"
+    },
+    {
+      "id": "tuxedo",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "397b9ffd42cb23088e8cc4fb6a2612267d057535e254bc3415a83a141f86195b"
+    },
+    {
+      "id": "calico",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "f91e483e076c4cc399b3e59f407e54e4e2c27f5e6b4c22edf3f4a0207881689c"
+    },
+    {
+      "id": "siamese",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "2ecb03ff826ab885307bca26b3d63aa2a5b1732644f3b362994045e349b5514d"
+    },
+    {
+      "id": "owl",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "e244cd7c8500463f2628ce2bccf4e5694d0967d915d1799e5d6a07c58db2b955"
+    },
+    {
+      "id": "parrot",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "b4838e47fa20d8ed8237210ba82ef47b09fa7936e26194a2452d79dfd074e71b"
+    },
+    {
+      "id": "robin",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "52958db367b4844ec8db2d9013c563259c23e9d5f0ff4a8fbeca5d5983d0f227"
+    },
+    {
+      "id": "rat",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "ba0d1724feeec362feafc8496d64939083dc77633bff3bde24dba9d32e85d204"
+    },
+    {
+      "id": "mouse",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "6f86d17047d5f73944dbfc84170c850cd5a8cec6fab61b04f4864b94961078a9"
+    },
+    {
+      "id": "lion",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "24f41aeb588a4cb18d668a2bf3935d915ab2b9aa87e20b1c43921823e8e8cb07"
+    },
+    {
+      "id": "tiger",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "5d75ac7b25aa45e5765d499a56f8a8e9124ad594f1e68ecb4aecc58c81df074d"
+    },
+    {
+      "id": "fox",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "d9daa4d65799d50194568211dfcb5654dd9c7f7b579449c9a5188aa5402643f0"
+    },
+    {
+      "id": "rabbit",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "be21420eae2d2a703d026216275f2a7113ace9951933dfbfe5053ea6c00c0aa2"
+    },
+    {
+      "id": "panda",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "bf05a015f30eaa2294e7283a01d0f38ce27a91b295b0bfd541d29559728615b0"
+    },
+    {
+      "id": "elephant",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "879d9d657f60dad376838b7a04efb6e473f874302b90e328c37122feaa32cddc"
+    },
+    {
+      "id": "red_panda",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "a477dfe56bfe04dfcbd7d315de94b333a7bca654b064320b5bd3583879f0762f"
+    },
+    {
+      "id": "astronaut",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "25b5ac3f062cb487a41d27e8011a3eeee673221d5157b82d45135f684c8c6425"
+    },
+    {
+      "id": "scientist",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "7fd178741e23d2938956bcecece569d6879460de414a21ce52ac301a0b9172b1"
+    },
+    {
+      "id": "artist",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "c9ec58c3f57d1cf345905878475f0ed7446b1218187f678ca59cb7c37e2eeea9"
+    },
+    {
+      "id": "chef",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "5d78fbc2849bcf55bbaefa0efb1d9de9063a926a4f101bb698ec1fd4db1ef764"
+    },
+    {
+      "id": "explorer",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "bd7bfaac6f040f7ab7b84d4aa03775c3781d6909ed5058c2a3ca34119c4902d2"
+    },
+    {
+      "id": "musician",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "1b89a12cfe3781144c42f6242d69e15728558c08b4c76666dc212e79f0940e53"
+    }
+  ],
+  "errors": []
+}

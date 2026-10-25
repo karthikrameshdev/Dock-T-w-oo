@@ -50,22 +50,24 @@ class LocalTts:
             except Exception as exc:
                 self.state='unavailable';self.error=f'{type(exc).__name__}: {exc}';return False
 
-    def clip(self,text,cancel):
+    def clip(self,text,cancel,*,voice=None,speed=None):
         if not self.engine:raise RuntimeError('The local Kokoro speech model is preparing. Check Voice status in Brain settings.')
         from dock_twoo.brain.audio import SpeechClip
         import numpy as np
         with self._synth_lock:
             if cancel.is_set():raise InterruptedError('Speech stopped.')
-            voice=self.voice if self.voice in VOICES else 'af_heart'
-            samples,rate=self.engine.create(text,voice=voice,speed=max(.6,min(2,self.speed)),
+            voice=voice or self.voice
+            voice=voice if voice in VOICES else 'af_heart'
+            selected_speed=self.speed if speed is None else speed
+            samples,rate=self.engine.create(text,voice=voice,speed=max(.6,min(2,selected_speed)),
                 lang='en-gb' if voice.startswith('b') else 'en-us',sentence_pause=.12,clause_pause=.06)
             if cancel.is_set():raise InterruptedError('Speech stopped.')
             pcm=(np.clip(samples,-1,1)*32767).astype('<i2').tobytes()
             if not pcm:raise RuntimeError('The local speech model returned no audio.')
             return SpeechClip.from_pcm(pcm,int(rate))
 
-    def synthesize_wav(self,text,path,cancel):
-        clip=self.clip(text,cancel)
+    def synthesize_wav(self,text,path,cancel,*,voice=None,speed=None):
+        clip=self.clip(text,cancel,voice=voice,speed=speed)
         with wave.open(str(path),'wb') as target:
             target.setnchannels(clip.channels);target.setsampwidth(2);target.setframerate(clip.rate);target.writeframes(clip.pcm)
         return True

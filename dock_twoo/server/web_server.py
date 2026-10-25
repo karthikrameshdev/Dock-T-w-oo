@@ -111,7 +111,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 query=parse_qs(urlsplit(self.path).query)
                 if path=='/api/activity':result=tracker.list(offset=query.get('offset',[0])[0])
                 elif path=='/api/usage':
-                    result=tracker.metrics(start=query.get('from',[None])[0],end=query.get('to',[None])[0],period=query.get('period',['month'])[0],profile_id=query.get('profile',[None])[0])
+                    result=tracker.metrics(start=query.get('from',[None])[0],end=query.get('to',[None])[0],period=query.get('period',['month'])[0],profile_id=query.get('profile',[None])[0],character_id=query.get('character',[None])[0])
                     options={p['id']:p for p in result['profile_options']}
                     for profile in _get_safe_profile_mgr().get_profiles():options[profile['id']]={'id':profile['id'],'name':profile['name'],'historical':False}
                     result['profile_options']=list(options.values())
@@ -121,12 +121,40 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 self._json(200,result)
             except (ValueError,TypeError) as exc:self._json(400,{'error':str(exc)})
             return
-        if path in ('/api/brain/model','/api/tasks','/api/keep-awake'):
+        if path=='/api/brain/artifact':
+            if not self._local_control() or self.headers.get('X-Brain-Request')!='local':
+                self._json(403,{'error':'Use the local application controls.'});return
+            try:
+                from urllib.parse import parse_qs,urlsplit,quote
+                from pathlib import Path
+                root=(_get_safe_profile_mgr().store.data_dir/'documents').resolve()
+                target=Path(parse_qs(urlsplit(self.path).query).get('path',[''])[0]).resolve(strict=True)
+                if not target.is_relative_to(root) or not target.is_file():raise ValueError('Choose a generated document.')
+                if target.stat().st_size>50000000:raise ValueError('The document exceeds the download limit.')
+                self.send_response(200);self.send_header('Content-Type','application/octet-stream')
+                self.send_header('Content-Disposition',"attachment; filename*=UTF-8''"+quote(target.name))
+                self.send_header('Content-Length',str(target.stat().st_size));self.send_header('Cache-Control','no-store');self.end_headers()
+                with target.open('rb') as source:
+                    while chunk:=source.read(65536):self.wfile.write(chunk)
+            except (BrokenPipeError,ConnectionResetError):pass
+            except Exception as exc:self._json(400,{'error':str(exc)})
+            return
+        if path in ('/api/brain/model','/api/brain/ecosystem','/api/tasks','/api/keep-awake'):
             if not self._local_control():
                 self._json(HTTPStatus.FORBIDDEN,{'success':False,'error':'Use the local application console.'});return
             try:
                 if path=='/api/brain/model':
-                    pm=_get_safe_profile_mgr();self._json(200,{'model':pm.get_active_profile(),'profiles':pm.get_profiles(),**pm.get_provider_catalog()})
+                    pm=_get_safe_profile_mgr()
+                    from dock_twoo.brain.catalog import characters
+                    from dock_twoo.brain.ecosystem.voices import tuning
+                    self._json(200,{'model':pm.get_active_profile(),'profiles':pm.get_profiles(),
+                        'characters':list(characters()),'bindings':pm.store.setting('character_profiles',{}),
+                        'voices':{c['id']:tuning(pm.store,c['id']) for c in characters()},**pm.get_provider_catalog()})
+                elif path=='/api/brain/ecosystem':
+                    from dock_twoo.brain.manager import BrainManager
+                    manager=BrainManager._instance
+                    if manager is None:raise ValueError('Start the desktop application first.')
+                    self._json(200,manager.coordinator.snapshot())
                 elif path=='/api/tasks':
                     from urllib.parse import parse_qs,urlsplit
                     from dock_twoo.tasks import TaskStore
@@ -304,7 +332,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
         if path in ('/api/brain/settings', '/api/brain/profile', '/api/brain/key', '/api/brain/activate-profile', '/api/brain/profile/delete', '/api/brain/profiles') and not self._local_control(write=True):
             self._json(403, {'success': False, 'error': 'Use the local application controls.'})
             return
-        if path in ('/api/brain/model','/api/brain/model/test','/api/brain/stop','/api/tasks','/api/keep-awake','/api/brain/profiles','/api/brain/profile','/api/brain/activate-profile','/api/brain/profile/delete'):
+        if path in ('/api/brain/model','/api/brain/model/test','/api/brain/stop','/api/tasks','/api/keep-awake','/api/brain/profiles','/api/brain/profile','/api/brain/activate-profile','/api/brain/profile/delete','/api/brain/character-profile','/api/brain/memory/forget'):
             if not self._local_control(write=True):
                 self._json(403,{'success':False,'error':'Use the local application controls.'});return
             try:
@@ -312,7 +340,30 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 if length>32000:raise ValueError('Request is too large.')
                 body=json.loads(self.rfile.read(length) or b'{}')
                 if not isinstance(body,dict):raise ValueError('Supply a JSON object.')
-                if path=='/api/brain/profiles':
+                if path=='/api/brain/memory/forget':
+                    from dock_twoo.brain.manager import BrainManager
+                    import threading
+                    manager=BrainManager._instance
+                    if manager is None:raise ValueError('Start the desktop application first.')
+                    ready=threading.Event();result={}
+                    def clear():
+                        try:manager.forget_character_memory(body.get('character_id'))
+                        except Exception as exc:result['error']=str(exc)
+                        finally:ready.set()
+                    manager.run_on_main_thread(clear)
+                    if not ready.wait(5):raise ValueError('The desktop is busy; try again after the current action.')
+                    if result.get('error'):raise ValueError(result['error'])
+                    self._json(200,{'success':True})
+                elif path=='/api/brain/character-profile':
+                    from dock_twoo.brain.catalog import character
+                    from dock_twoo.brain.ecosystem.voices import validate_tuning
+                    identity=body.get('character_id');character(identity)
+                    voice=validate_tuning(body['tuning']) if 'tuning' in body else None
+                    pm=_get_safe_profile_mgr();profile=pm.bind_character(identity,body.get('profile_id',''))
+                    if voice:
+                        voices=dict(pm.store.setting('character_voices',{}));voices[identity]=voice;pm.store.set_setting('character_voices',voices)
+                    self._json(200,{'success':True,'profile':profile})
+                elif path=='/api/brain/profiles':
                     self._json(200,{'success':True,'profile':_get_safe_profile_mgr().create_profile(body)})
                 elif path=='/api/brain/profile':
                     self._json(200,{'success':True,'profile':_get_safe_profile_mgr().save_profile(body)})
@@ -326,13 +377,24 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     pm=_get_safe_profile_mgr();model=pm.save_profile(body)
                     self._json(200,{'success':True,'model':model})
                 elif path=='/api/brain/model/test':
-                    from dock_twoo.brain.cloud import CloudClient
+                    from dock_twoo.brain.ecosystem.models import model_client
                     from dock_twoo.brain.agent_tools import TOOLS
                     pm=_get_safe_profile_mgr();config=pm.get_active_profile()
                     if body.get('profile_id'):
                         config=next((p for p in pm.get_profiles() if p['id']==body['profile_id']),None)
                         if config is None:raise ValueError('Cloud profile not found.')
-                    turn=CloudClient(config,pm.get_key(config['provider'],config.get('id'))).turn([{'role':'user','content':'Test connection. Use finish with text Ready.'}],[TOOLS[-1]])
+                    client=model_client(config,pm.get_key(config['provider'],config.get('id')))
+                    from dock_twoo.brain.activity import ActivityStore
+                    tracker=ActivityStore(pm.store.data_dir/'activity')
+                    run=tracker.start('Agent model connection test','connection_test')
+                    client.tracker=tracker;client.run_id=run
+                    try:
+                        turn=client.turn([{'role':'user','content':'Test connection. Use finish with text Ready.'}],[TOOLS[-1]])
+                        tracker.finish(run,'complete',turn.text or 'Ready')
+                    except Exception as exc:
+                        tracker.finish(run,'error',reason=str(exc));raise
+                    finally:
+                        if hasattr(client,'close'):client.close()
                     self._json(200,{'success':True,'message':'Connection successful. '+('Tool calling verified.' if turn.calls else 'Text response verified; tool calling was not exercised.')})
                 elif path=='/api/brain/stop':
                     from dock_twoo.brain.manager import BrainManager

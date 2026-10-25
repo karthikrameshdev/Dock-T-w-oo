@@ -1585,3 +1585,8 @@ body.theme-light .role-routing-item {
 }
 input[type="range"]::-webkit-slider-runnable-track { cursor: pointer !important; }
 input[type="range"]::-moz-range-track { cursor: pointer !important; }
+
+#agentTaskTrail summary { cursor: pointer; padding: 12px 0; border-bottom: 1px solid var(--border-color, #45454b); overflow-wrap: anywhere; }
+
+/* Dynamic transport fields must respect the HTML hidden state. */
+[hidden] { display: none !important; }

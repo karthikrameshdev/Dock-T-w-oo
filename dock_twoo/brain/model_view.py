@@ -4,22 +4,15 @@ from __future__ import annotations
 import json
 import time
 from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal, Slot, QFile, QIODevice, QPoint, QRect, QEvent
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEngineScript
 
 
 def listening_aura_allowed(companion):
-    """Only voice wake needs an aura to identify one listener among nearby peers."""
-    manager = getattr(companion, 'manager', None)
-    if (getattr(manager, '_listening_source', None) != 'voice' or
-            getattr(manager, '_listening_actor_id', None) != getattr(companion, 'actor_id', None)):
-        return False
-    actors = getattr(manager, 'companions', {})
-    display = getattr(companion, 'screen_id', None)
-    return sum(actor.isVisible() and getattr(actor, 'screen_id', None) == display
-               for actor in actors.values()) > 1
+    """Names identify the listener; status is shown only on its head light."""
+    return False
 
 
 class ModelBridge(QObject):
@@ -123,7 +116,7 @@ class CharacterView(QWebEngineView):
         from dock_twoo.config import ConfigManager
         self.attempts += 1
         port = ConfigManager().config.server_port
-        self.load(QUrl(f'http://127.0.0.1:{port}/brain3d/index.html?embedded'))
+        self.load(QUrl(f'http://127.0.0.1:{port}/brain3d/index.html?embedded&character={self.companion.character_id}'))
 
     def _loaded(self, ok):
         if not ok and self.attempts < 5:
@@ -136,7 +129,7 @@ class CharacterView(QWebEngineView):
     def _ready(self, version, asset_hash):
         self.version = version
         self.asset_hash = asset_hash
-        self.companion.setToolTip(f"Brain {version} · Glossy Blue")
+        self.companion.setToolTip(f"{self.companion.character_name} {version}")
         self.ready = True
         self.error = ''
         if self.companion.isVisible():
@@ -155,7 +148,7 @@ class CharacterView(QWebEngineView):
             self.show_visual()
         self.timer.stop()
         if hasattr(self.companion, 'set_renderer_status'):
-            self.companion.set_renderer_status('Brain 3D could not load.\nRestart Dock to retry.', error=True)
+            self.companion.set_renderer_status(f'{self.companion.character_name} 3D could not load.\nRestart Dock to retry.', error=True)
             self.companion.setToolTip(message)
         self.companion.update()
 
@@ -163,8 +156,11 @@ class CharacterView(QWebEngineView):
         c = self.companion
         if not c.isVisible():
             return
+        crowded=len(getattr(c.manager,'companions',{}))>6
+        nearby=c.geometry().adjusted(-20,-20,20,20).contains(QCursor.pos())
+        self.timer.setInterval(33 if c.action or c.activity!='idle' or nearby else 100 if crowded else 33)
         progress = min(1, max(0, (time.monotonic() - c.motion_started) / max(.01, c.motion_duration)))
-        state = dict(online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
+        state = dict(maxFps=60 if not crowded or nearby else 24, shapeFps=30 if nearby or not crowded else 10, online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
                      distance=c.gait_distance, blink=c.blink_amount,
                      mouth=c.mouth_level if c.activity == 'speaking' else 0,
                      gazeX=max(-1, min(1, c._gaze_offset.x() / .018)),

@@ -1,0 +1,27 @@
+{
+  "id": "red_panda",
+  "source_sha256": "45c039d490b16e87e32fcb8204c195b3695acdefa77ecb36c8d2840c1fda462b",
+  "asset_sha256": "a477dfe56bfe04dfcbd7d315de94b333a7bca654b064320b5bd3583879f0762f",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

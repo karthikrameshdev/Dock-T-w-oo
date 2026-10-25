@@ -98,7 +98,7 @@ class BrainAppWidget(BaseAttachedApp):
     """Brain voice-assisted desktop agent interface."""
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
-        super().__init__("brain", "Brain", config, parent)
+        super().__init__("brain", "Voice Assistant", config, parent)
         self._init_brain_ui()
 
     def _init_brain_ui(self) -> None:
@@ -160,7 +160,7 @@ class BrainAppWidget(BaseAttachedApp):
         prompt_row.setSpacing(8)
 
         self.prompt_input = QLineEdit(self)
-        self.prompt_input.setPlaceholderText("Ask Brain or type a command...")
+        self.prompt_input.setPlaceholderText("Ask your assistant or type a command...")
         self.prompt_input.setStyleSheet(
             f"""
             QLineEdit {{

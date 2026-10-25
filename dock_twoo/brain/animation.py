@@ -60,6 +60,9 @@ ACTIONS = {
     "chase_ball": ("Chase energy ball", 1.8),
 }
 
+from .library_actions import EXTRA_ACTIONS
+ACTIONS.update(EXTRA_ACTIONS)
+
 PLAYLIST = (
     "magnifier", "scan_code", "drag", "hover", "run",
     "climb_dock", "inspect_window", "replace_text", "fold_arms", "sensor_scan",

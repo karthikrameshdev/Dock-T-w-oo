@@ -1,6 +1,6 @@
 """Add contact-based toy performances to the saved Brain, preserving its design.
 
-blender --background character/Brain.blend --python scripts/blender/add_prop_actions.py
+blender --background characters/default/default.blend --python scripts/blender/add_prop_actions.py
 Run export_character.py afterward to publish the saved source to the application.
 """
 import ast
@@ -17,7 +17,7 @@ from mathutils.bvhtree import BVHTree
 
 ROOT = Path(__file__).resolve().parents[2]
 source_path = Path(bpy.data.filepath)
-assert source_path.name == 'Brain.blend', 'Open the renamed saved project first.'
+assert source_path.name == 'default.blend', 'Open the renamed saved project first.'
 backup_dir = Path(os.environ.get('BRAIN_CHARACTER_BACKUP_DIR', str(Path.home()/'.dock-twoo/character-backups')))
 backup_dir.mkdir(parents=True, exist_ok=True)
 backup = backup_dir/('Brain-'+hashlib.sha256(source_path.read_bytes()).hexdigest()[:12]+'.blend')
@@ -302,5 +302,5 @@ report = {'preserved_character_meshes': len(old_meshes), 'preserved_geometry_sha
           'bones': len(armature.bones), 'actions': len(bpy.data.actions),
           'ball_contact_frame': 42, 'ball_launch_frame': 43, 'ball_bounce_frames': bounces,
           'hammer_contact_frames': [45, 86], 'source': str(source_path.relative_to(ROOT))}
-(ROOT/'character/prop-animation-build.json').write_text(json.dumps(report, indent=2)+'\n')
+(ROOT/'characters/default/prop-animation-build.json').write_text(json.dumps(report, indent=2)+'\n')
 print('BRAIN_PROP_ACTIONS', json.dumps(report))

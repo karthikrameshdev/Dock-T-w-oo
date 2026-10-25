@@ -9,8 +9,8 @@ export class InputShape {
     this.material=new THREE.MeshBasicMaterial({color:0xffffff});
     this.lastTime=-Infinity;this.lastBits='';this.samples=0;this.elapsed=0;
   }
-  sample(scene,camera,model,width,height,time) {
-    if(time-this.lastTime<1/30)return null;
+  sample(scene,camera,model,width,height,time,fps=30) {
+    if(time-this.lastTime<1/Math.max(5,Math.min(30,fps)))return null;
     this.lastTime=time;
     width=Math.round(width);height=Math.round(height);
     if(width<1 || height<1 || width>1024 || height>1024)return null;

@@ -1,0 +1,837 @@
+{
+  "id": "husky",
+  "name": "Frost",
+  "family": "quadruped",
+  "species": "husky",
+  "main": "#708798",
+  "secondary": "#F2F4EF",
+  "accent": "#73DDFC",
+  "scale": 0.96,
+  "index": 8,
+  "version": "4.0.0",
+  "design": "Husky",
+  "source": "characters/husky/husky.blend",
+  "source_sha256": "a583ca0b1e59f770cd262391be69a47876006a829436d0f059ccf4d02d63c08b",
+  "asset": "husky.glb",
+  "asset_sha256": "94a561f36bb2692983a061dd138acb1d9d55d9cfd81c220a4b86d1b7a2e908b9",
+  "bones": 39,
+  "meshes": 97,
+  "actions": {
+    "air_spin": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Air Spin \u00b7 Frost"
+    },
+    "backstep": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Backstep \u00b7 Frost"
+    },
+    "balanced_pose": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Balanced Pose \u00b7 Frost"
+    },
+    "balloon": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Balloon \u00b7 Frost"
+    },
+    "bank_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Left \u00b7 Frost"
+    },
+    "bank_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Right \u00b7 Frost"
+    },
+    "beg": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Beg \u00b7 Frost"
+    },
+    "bow": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Bow \u00b7 Frost"
+    },
+    "brake": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Brake \u00b7 Frost"
+    },
+    "bury": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Bury \u00b7 Frost"
+    },
+    "camera": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Camera \u00b7 Frost"
+    },
+    "carry_box": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Carry Box \u00b7 Frost"
+    },
+    "catch": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Catch \u00b7 Frost"
+    },
+    "celebrate": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Celebrate \u00b7 Frost"
+    },
+    "charge": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Charge \u00b7 Frost"
+    },
+    "chase_ball": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Chase Ball \u00b7 Frost"
+    },
+    "chase_tail": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Chase Tail \u00b7 Frost"
+    },
+    "cheer_partner": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cheer Partner \u00b7 Frost"
+    },
+    "climb": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb \u00b7 Frost"
+    },
+    "climb_dock": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb Dock \u00b7 Frost"
+    },
+    "cook": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cook \u00b7 Frost"
+    },
+    "crawl": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crawl \u00b7 Frost"
+    },
+    "crouch": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crouch \u00b7 Frost"
+    },
+    "cry": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cry \u00b7 Frost"
+    },
+    "dance": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance \u00b7 Frost"
+    },
+    "dance_together": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance Together \u00b7 Frost"
+    },
+    "dash": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Dash \u00b7 Frost"
+    },
+    "dig": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Dig \u00b7 Frost"
+    },
+    "double_blink": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Double Blink \u00b7 Frost"
+    },
+    "drag": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Drag \u00b7 Frost"
+    },
+    "drink": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Drink \u00b7 Frost"
+    },
+    "ear_flick": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Ear Flick \u00b7 Frost"
+    },
+    "explore": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Explore \u00b7 Frost"
+    },
+    "fly": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Fly \u00b7 Frost"
+    },
+    "fold_arms": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Fold Arms \u00b7 Frost"
+    },
+    "glance_back": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Glance Back \u00b7 Frost"
+    },
+    "glide": {
+      "duration": 2.4,
+      "loop": true,
+      "category": "locomotion",
+      "description": "Glide \u00b7 Frost"
+    },
+    "greet": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Greet \u00b7 Frost"
+    },
+    "groom": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Groom \u00b7 Frost"
+    },
+    "hammer": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Hammer \u00b7 Frost"
+    },
+    "handshake": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Handshake \u00b7 Frost"
+    },
+    "happy": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Happy \u00b7 Frost"
+    },
+    "head_tilt": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Head Tilt \u00b7 Frost"
+    },
+    "hover": {
+      "duration": 3.1333,
+      "loop": true,
+      "category": "acting",
+      "description": "Hover \u00b7 Frost"
+    },
+    "howl": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Howl \u00b7 Frost"
+    },
+    "idle": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "acting",
+      "description": "Idle \u00b7 Frost"
+    },
+    "inspect_icon": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Icon \u00b7 Frost"
+    },
+    "inspect_window": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Window \u00b7 Frost"
+    },
+    "jump": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Jump \u00b7 Frost"
+    },
+    "kick_ball": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Kick Ball \u00b7 Frost"
+    },
+    "kneel": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Kneel \u00b7 Frost"
+    },
+    "land": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Land \u00b7 Frost"
+    },
+    "laugh": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Laugh \u00b7 Frost"
+    },
+    "lean_back": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Back \u00b7 Frost"
+    },
+    "lean_forward": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Forward \u00b7 Frost"
+    },
+    "lie_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Lie Down \u00b7 Frost"
+    },
+    "lift_object": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Lift Object \u00b7 Frost"
+    },
+    "listen": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Listen \u00b7 Frost"
+    },
+    "look_down": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Down \u00b7 Frost"
+    },
+    "look_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Left \u00b7 Frost"
+    },
+    "look_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Right \u00b7 Frost"
+    },
+    "look_up": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Up \u00b7 Frost"
+    },
+    "magnifier": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Magnifier \u00b7 Frost"
+    },
+    "nod": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Nod \u00b7 Frost"
+    },
+    "nuzzle": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Nuzzle \u00b7 Frost"
+    },
+    "paint": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Paint \u00b7 Frost"
+    },
+    "parachute": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Parachute \u00b7 Frost"
+    },
+    "paw_tap": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Paw Tap \u00b7 Frost"
+    },
+    "peek": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Peek \u00b7 Frost"
+    },
+    "play_bow": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Play Bow \u00b7 Frost"
+    },
+    "playful_spar": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Playful Spar \u00b7 Frost"
+    },
+    "point": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Point \u00b7 Frost"
+    },
+    "point_down": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Down \u00b7 Frost"
+    },
+    "point_up": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Up \u00b7 Frost"
+    },
+    "ponder": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Ponder \u00b7 Frost"
+    },
+    "pounce": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Pounce \u00b7 Frost"
+    },
+    "power_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Down \u00b7 Frost"
+    },
+    "power_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Up \u00b7 Frost"
+    },
+    "present_left": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Left \u00b7 Frost"
+    },
+    "present_right": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Right \u00b7 Frost"
+    },
+    "pull_scroll": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Pull Scroll \u00b7 Frost"
+    },
+    "push": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Push \u00b7 Frost"
+    },
+    "read": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Read \u00b7 Frost"
+    },
+    "replace_text": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Replace Text \u00b7 Frost"
+    },
+    "roar": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roar \u00b7 Frost"
+    },
+    "roll": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Roll \u00b7 Frost"
+    },
+    "roll_back": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roll Back \u00b7 Frost"
+    },
+    "run": {
+      "duration": 0.8,
+      "loop": true,
+      "category": "acting",
+      "description": "Run \u00b7 Frost"
+    },
+    "sad": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sad \u00b7 Frost"
+    },
+    "scan_code": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Code \u00b7 Frost"
+    },
+    "scan_screen": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Screen \u00b7 Frost"
+    },
+    "scratch_ear": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Scratch Ear \u00b7 Frost"
+    },
+    "search": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Search \u00b7 Frost"
+    },
+    "self_check": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Self Check \u00b7 Frost"
+    },
+    "sensor_scan": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Sensor Scan \u00b7 Frost"
+    },
+    "set_object_down": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Set Object Down \u00b7 Frost"
+    },
+    "shake_body": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Shake Body \u00b7 Frost"
+    },
+    "shake_head": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Shake Head \u00b7 Frost"
+    },
+    "shiver": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Shiver \u00b7 Frost"
+    },
+    "sidestep_left": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Left \u00b7 Frost"
+    },
+    "sidestep_right": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Right \u00b7 Frost"
+    },
+    "sit": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sit \u00b7 Frost"
+    },
+    "sleep": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sleep \u00b7 Frost"
+    },
+    "smell": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Smell \u00b7 Frost"
+    },
+    "sneak": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sneak \u00b7 Frost"
+    },
+    "sneeze": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Sneeze \u00b7 Frost"
+    },
+    "sniff_ground": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Sniff Ground \u00b7 Frost"
+    },
+    "snuggle": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Snuggle \u00b7 Frost"
+    },
+    "spin_left": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Left \u00b7 Frost"
+    },
+    "spin_right": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Right \u00b7 Frost"
+    },
+    "stand_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Stand Up \u00b7 Frost"
+    },
+    "stir": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stir \u00b7 Frost"
+    },
+    "stretch": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch \u00b7 Frost"
+    },
+    "stretch_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Left \u00b7 Frost"
+    },
+    "stretch_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Right \u00b7 Frost"
+    },
+    "stretch_spine": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Stretch Spine \u00b7 Frost"
+    },
+    "surprised": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Surprised \u00b7 Frost"
+    },
+    "tail_wag": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "species",
+      "description": "Tail Wag \u00b7 Frost"
+    },
+    "takeoff": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Takeoff \u00b7 Frost"
+    },
+    "talk": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Talk \u00b7 Frost"
+    },
+    "taste": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Taste \u00b7 Frost"
+    },
+    "throw": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Throw \u00b7 Frost"
+    },
+    "tiptoe": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Tiptoe \u00b7 Frost"
+    },
+    "touchdown": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Touchdown \u00b7 Frost"
+    },
+    "trip_recover": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Trip Recover \u00b7 Frost"
+    },
+    "turn_around": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Turn Around \u00b7 Frost"
+    },
+    "type": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Type \u00b7 Frost"
+    },
+    "victory_pose": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Victory Pose \u00b7 Frost"
+    },
+    "wake_up": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Wake Up \u00b7 Frost"
+    },
+    "walk": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk \u00b7 Frost"
+    },
+    "walk_window": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk Window \u00b7 Frost"
+    },
+    "water_plant": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Water Plant \u00b7 Frost"
+    },
+    "wave": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Wave \u00b7 Frost"
+    },
+    "whistle": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Whistle \u00b7 Frost"
+    },
+    "wink": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Wink \u00b7 Frost"
+    },
+    "yawn": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Yawn \u00b7 Frost"
+    }
+  }
+}

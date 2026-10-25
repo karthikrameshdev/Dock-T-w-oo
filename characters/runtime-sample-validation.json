@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "characters": [
+    {
+      "id": "owl",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "ac8e1a335ef9353edb487a5d705e204b9a9cbb17114cd20a2d85f1682a894251"
+    },
+    {
+      "id": "fox",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 11,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "d9daa4d65799d50194568211dfcb5654dd9c7f7b579449c9a5188aa5402643f0"
+    },
+    {
+      "id": "scientist",
+      "actions": 136,
+      "distinctMotions": 133,
+      "poseSamples": 816,
+      "loopChecks": 15,
+      "antenna": true,
+      "mouthSurfaces": 4,
+      "assetHash": "7fd178741e23d2938956bcecece569d6879460de414a21ce52ac301a0b9172b1"
+    }
+  ],
+  "errors": []
+}

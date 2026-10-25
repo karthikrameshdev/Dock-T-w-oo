@@ -408,3 +408,36 @@ def test_request_validates_target_display_before_dispatch(test_server,monkeypatc
         else:
             with pytest.raises(urllib.error.HTTPError):urllib.request.urlopen(request,timeout=3)
     assert calls==[('test turn','console','screen-1')]
+
+
+def test_agent_character_profiles_fallback_validation_and_generated_downloads(test_server,tmp_path,monkeypatch):
+    import sys
+    from dock_twoo.brain.profiles import ProfileManager
+    from dock_twoo.brain.storage import BrainStore
+    from dock_twoo.server import web_server as module
+    _,port,_=test_server;profiles=ProfileManager(BrainStore(tmp_path/'agent'))
+    monkeypatch.setattr(module,'_get_safe_profile_mgr',lambda:profiles)
+    root=f'http://127.0.0.1:{port}'
+    def request(path,body=None,origin=None):
+        headers={'X-Brain-Request':'local','Content-Type':'application/json'}
+        if origin:headers['Origin']=origin
+        req=urllib.request.Request(root+path,data=json.dumps(body).encode() if body is not None else None,headers=headers)
+        with urllib.request.urlopen(req,timeout=3) as response:return response.read()
+    default=profiles.create_profile({'name':'CLI','provider':'custom_cli','model':'fixture','executable':sys.executable,'arguments':['-c','print("Ready")']})
+    profiles.activate_profile(default['id'])
+    saved=json.loads(request('/api/brain/character-profile',{'character_id':'parrot','profile_id':'','tuning':{'voice':'am_adam','speed':1.1,'pitch':1.02}}))
+    assert saved['profile']['id']==default['id']
+    data=json.loads(request('/api/brain/model'))
+    assert len(data['characters'])==30 and data['voices']['parrot']['voice']=='am_adam'
+    for body in ({'character_id':'absent'},{'character_id':'parrot','profile_id':'missing'},{'character_id':'parrot','tuning':{'voice':'absent','speed':1,'pitch':1}}):
+        with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/character-profile',body)
+        assert error.value.code==400
+    with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/character-profile',{'character_id':'parrot'},'https://foreign.example')
+    assert error.value.code==403
+    assert profiles.store.setting('character_voices')['parrot']['voice']=='am_adam'
+    docs=profiles.store.data_dir/'documents';docs.mkdir();document=docs/'report.md';document.write_text('Verified local report')
+    from urllib.parse import quote
+    assert request('/api/brain/artifact?path='+quote(str(document)))==b'Verified local report'
+    other=tmp_path/'private.txt';other.write_text('Private')
+    with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/artifact?path='+quote(str(other)))
+    assert error.value.code==400

@@ -1,0 +1,27 @@
+{
+  "id": "cosmo",
+  "source_sha256": "fc1230da02a1b747c4f3821620e0bdec3e1b02181079dfd1bbf16c739b592c1c",
+  "asset_sha256": "4c9a44c911f7f3b72f926a48af136926f446398881cc389f52c1e7d61ed6744e",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

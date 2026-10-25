@@ -1,0 +1,27 @@
+{
+  "id": "orbit",
+  "source_sha256": "2892937b87346d667317462080c3027d145a582ca650a57140d71de8eeafef2f",
+  "asset_sha256": "136a8cfe353ecb8f9bce56da009a570ac99aaf8fc6a8942b11c58ef8907b8bcf",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

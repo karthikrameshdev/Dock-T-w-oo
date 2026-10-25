@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Brain local Activity Tracker and cloud usage",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "description": "Loopback and explicit local header required. Detailed traces expire after seven days; daily totals remain. No local STT/TTS tokens."
   },
   "paths": {
@@ -120,6 +120,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "character",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "all"
+            },
+            "description": "Catalog id or all; combines with profile/date filters."
           }
         ],
         "responses": {

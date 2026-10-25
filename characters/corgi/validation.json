@@ -1,0 +1,27 @@
+{
+  "id": "corgi",
+  "source_sha256": "5b54186e51dd27461686670d5a6213de26398a0018a023e731373c1343ff1a57",
+  "asset_sha256": "6951550d914f5bbe75c8e33e832a4be0e20d4fc7a071cb3ffaf3a1e2547028c3",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

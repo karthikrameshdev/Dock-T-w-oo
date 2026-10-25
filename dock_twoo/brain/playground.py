@@ -91,6 +91,18 @@ class Playground(QObject):
         for display_id, entry in self.manager._all_display_entries.items():
             actors = [c for c in self.manager.companions.values() if c.screen_id == display_id]
             area = entry['screen'].availableGeometry()
+            if len(actors) >= 10:
+                # Deterministic compact cells avoid fragmented greedy placement.
+                count = len(actors)
+                cols = max(range(1, count+1), key=lambda n:min(area.width()/(n*264), area.height()/(math.ceil(count/n)*268)))
+                rows = math.ceil(count/cols)
+                scale = min(1, area.width()/(cols*264), area.height()/(rows*268))*.95
+                for index, actor in enumerate(actors):
+                    actor.set_character_scale(scale)
+                    actor.move(round(area.left()+(index%cols+.5)*area.width()/cols-actor.width()/2),
+                               round(area.top()+(index//cols+.5)*area.height()/rows-actor.height()/2))
+                    self._last_positions[actor.actor_id] = actor.pos()
+                continue
             scale = fit_scale(area, len(actors), size=(132,225))
             occupied = []
             # Keep the microphone owner stationary if another character approaches.
@@ -130,11 +142,13 @@ class Playground(QObject):
             return point
         old = actor.pos()
         step = max(2, min(8, (point - old).manhattanLength()))
-        candidates = [old + QPoint(dx, dy) for dx, dy in ((step, 0), (-step, 0), (0, step), (0, -step))]
+        direction = 1 if sorted(self.manager.companions).index(actor.actor_id) % 2 else -1
+        candidates = [old + QPoint(0, direction*step), old + QPoint(step, direction*step),
+                      old + QPoint(-step, direction*step), old + QPoint(0, -direction*step)]
         if actor.assigned_screen:
             area = actor.assigned_screen.availableGeometry()
             candidates = [p for p in candidates if area.contains(self.bounds(actor,p))]
-        for candidate in sorted(candidates, key=lambda p: (p - point).manhattanLength()):
+        for candidate in candidates:
             if clear(candidate):
                 return candidate
         return old
@@ -170,20 +184,17 @@ class Playground(QObject):
                     self.arrange()
                     return
                 actor.move(point)
-                actor.stop_motion()
+                # Preserve the independent clip, route and arrival callback.
             occupied.append(self.region(actor))
             self._last_positions[actor.actor_id] = actor.pos()
         free = [c for c in actors if c.activity == 'idle' and not c.reduced_motion
                 and not c.origin and now > getattr(c, 'social_until', 0)]
         if not self.manager.store.setting('roaming', True):
             return
-        if now > self._next_social and len(free) > 1:
-            self._next_social = now + random.uniform(25, 40)
-            self.play(random.choice(list(GROUP_ACTIVITIES)), free[0].actor_id)
         if now > self._next_crossing and free and self.manager.store.setting('brain_roam_all_screens', False):
             self._next_crossing = now + random.uniform(25, 40)
             actor = random.choice(free)
-            destinations = [e for e in self.manager._all_display_entries.values() if e['id'] != actor.screen_id]
+            destinations = [e for e in self.manager._all_display_entries.values() if e['id'] != actor.screen_id and not self.manager.character_on_screen(actor.character_id, e['id'], exclude=actor)]
             if destinations:
                 entry = random.choice(destinations)
                 area = entry['screen'].availableGeometry()

@@ -233,12 +233,17 @@ dock_twoo/vault/touch_id_auth
 
 
 # Blender recovery files are retained locally
-character/*.blend[0-9]*
-character/*.pre-codex.blend
+characters/default/*.blend[0-9]*
+characters/default/*.pre-codex.blend
 
-character/*.before-*.blend
-character/previews/reel-frames/
+characters/default/*.before-*.blend
+characters/default/previews/reel-frames/
 
+# IDE
+.idea
 
+characters/default/previews/prop-reel/
 
-character/previews/prop-reel/
+# Reproducible character build logs and recovery files
+characters/build-logs/
+characters/*/*.blend[0-9]*
