@@ -186,3 +186,13 @@ def test_bluetooth_format_change_on_same_device_reopens_route(qapp,monkeypatch):
     route.devices.input.preferredFormat=lambda:audio_format(rate=16000,channels=1)
     route._refresh();assert calls==['input']
     route.close()
+
+
+def test_spoken_stop_remains_available_when_automatic_wake_is_disabled(qapp,tmp_path,monkeypatch):
+    store=BrainStore(tmp_path);store.set_setting('wake_word_enabled',False)
+    manager=BrainManager(store=store,start_services=False);started=[]
+    monkeypatch.setattr(manager.listener,'start',lambda:started.append(True))
+    manager._on_speech_activity('speaking')
+    assert started==[True] and manager.listener._passive_stop
+    assert not manager.listener.wake_detection_enabled
+    manager.shutdown()

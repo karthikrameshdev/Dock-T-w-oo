@@ -346,7 +346,7 @@ On Ubuntu/Debian, Qt audio also needs the native PulseAudio client library (this
 is used with PulseAudio or PipeWire's PulseAudio compatibility service):
 
 ```bash
-sudo apt-get install libpulse0 libasound2
+sudo apt-get install libpulse0 libasound2-dev
 ```
 
 Windows and macOS use Qt's native audio backend from the installed PySide6 wheels.

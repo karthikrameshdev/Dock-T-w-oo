@@ -260,6 +260,7 @@ class BrainManager(QObject):
     def _on_speech_activity(self, activity: str) -> None:
         active = activity in ("thinking", "speaking")
         if active:
+            self.listener.start()
             self.listener.cancel_recording()
         self.listener.set_output_active(active)
 
@@ -459,6 +460,7 @@ class BrainManager(QObject):
         self._agent_cancel.set()
         self._agent_cancel = threading.Event()
         agent_cancel = self._agent_cancel
+        self.listener.start()
         self.listener.cancel_recording()
         self.listener.set_output_active(True)
         self.activity_requested.emit("processing")
@@ -614,6 +616,7 @@ class BrainManager(QObject):
             return
         self._query_generation += 1
         self._publish_response('Reading supplied text.')
+        self.listener.start()
         self.reader.start_text(text)
 
     def start_reading(self, mode: str = "window") -> None:
@@ -622,6 +625,7 @@ class BrainManager(QObject):
             return
         self._query_generation += 1
         self._publish_response('Reading selected text.' if mode == 'selected' else 'Reading the active window.')
+        self.listener.start()
         self.reader.start(mode)
 
     @Slot()
