@@ -48,6 +48,7 @@ jobs:
             libxcb-shape0 \
             libxcb-xinerama0 \
             libxcb-xfixes0 \
+            libpulse0 \
             libasound2-dev \
             portaudio19-dev
 

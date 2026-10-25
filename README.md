@@ -341,3 +341,12 @@ During speech, thinking and reading, the local keyword model listens for **Stop*
 or **Brain Stop**. These controls cancel the agent and speech without a cloud
 request. A playback-reference echo suppressor reduces self-triggering; difficult
 room acoustics and overlapping voices still require real-device validation.
+
+On Ubuntu/Debian, Qt audio also needs the native PulseAudio client library (this
+is used with PulseAudio or PipeWire's PulseAudio compatibility service):
+
+```bash
+sudo apt-get install libpulse0 libasound2
+```
+
+Windows and macOS use Qt's native audio backend from the installed PySide6 wheels.
