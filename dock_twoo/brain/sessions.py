@@ -41,7 +41,9 @@ class BrainSessions:
         self._all_display_entries = {}
         self._ui_actor_id = 'default'
         self._listening_actor_id = None
+        self._listening_source = None
         self._pending_listener = None
+        self._pending_listener_source = None
         self._active_turn = None
         self._turn_queue = deque()
         self._worker_running = False
@@ -50,6 +52,7 @@ class BrainSessions:
         self._stopping = False
         self._histories = {}
         self._session_actor_id = None
+        self._session_source = None
 
     @property
     def companion(self):
@@ -167,16 +170,45 @@ class BrainSessions:
                 self.playground.arrange()
 
     def remove_brain(self, actor_id):
-        if not actor_id.startswith('extra-') or actor_id not in self.companions:
+        self._remove_secondary_brains({actor_id})
+
+    def remove_all_secondary_brains(self):
+        """Remove extras on every display, including saved disconnected displays."""
+        keys = set(self.companions)
+        keys.update(item.get('id') for item in self.store.setting('brain_instances', [])
+                    if isinstance(item, dict))
+        self._remove_secondary_brains(keys)
+
+    def _remove_secondary_brains(self, keys):
+        removed = {key for key in keys if isinstance(key, str) and key.startswith('extra-')}
+        primaries = [c for key, c in self.companions.items() if not key.startswith('extra-')]
+        if not removed or not primaries:
             return
-        fallback = next(key for key in self.companions if key != actor_id)
-        self._remap_actor(actor_id, fallback)
-        self.companions.pop(actor_id).dispose()
+        for key in removed:
+            actor = self.companions.get(key)
+            if actor:
+                fallback = next((c for c in primaries if c.screen_id == actor.screen_id), primaries[0])
+                # Preserve accepted work and the single microphone on a primary.
+                if key == self._session_actor_id or (self._active_turn and self._active_turn.actor_id == key):
+                    if key in self._histories:
+                        self._histories[fallback.actor_id] = self._histories[key]
+                self._remap_actor(key, fallback.actor_id)
+                actor.stop_motion()
+                self.companions.pop(key).dispose()
+            self._histories.pop(key, None)
         self.store.set_setting('brain_instances', [item for item in self.store.setting('brain_instances', [])
-                                                  if item.get('id') != actor_id])
+                                                  if isinstance(item, dict) and item.get('id') not in removed])
+        positions = self.store.setting('companion_positions', {})
+        self.store.set_setting('companion_positions', {key: value for key, value in positions.items() if key not in removed})
+        if self._listening_actor_id and (self.listener.is_recording or self.listener._decode_token is not None):
+            self.actor_for(self._listening_actor_id).show()
         self._refresh_actor_states()
         if hasattr(self, 'playground'):
+            for key in removed:
+                self.playground._last_positions.pop(key, None)
+                self.playground._groups.pop(key, None)
             self.playground.arrange()
+        self.visibility_changed.emit(self.is_mini_agent_visible())
 
     def _choose_voice_actor(self):
         """A wake word belongs to one visible Brain nearest the pointer."""
@@ -247,9 +279,11 @@ class BrainSessions:
         self.listener.set_output_active(False)
         if self.in_conversation_session:
             self._listening_actor_id = self._session_actor_id or self._ui_actor_id
+            self._listening_source = self._session_source
             self.listener.start_recording()
         else:
             self._listening_actor_id = None
+            self._listening_source = None
             self.listener.arm_wake()
         self._refresh_actor_states()
 
@@ -258,6 +292,8 @@ class BrainSessions:
             self.run_on_main_thread(lambda: self._set_active_activity(state))
             return
         if self._active_turn:
+            if state == 'idle' and self._worker_running and not self._stopping:
+                state = 'processing'
             self._active_turn.phase = state
             self._refresh_actor_states()
         else:
@@ -283,9 +319,11 @@ class BrainSessions:
 
     def _after_capture(self):
         self._listening_actor_id = None
+        self._listening_source = None
         if self._pending_listener:
             target, self._pending_listener = self._pending_listener, None
-            self._start_capture(target)
+            source, self._pending_listener_source = self._pending_listener_source, None
+            self._start_capture(target, source or 'click')
         elif self._deferred_reply:
             deliver, self._deferred_reply = self._deferred_reply, None
             deliver()
@@ -295,10 +333,12 @@ class BrainSessions:
             self._drain_turns()
         self._refresh_actor_states()
 
-    def _start_capture(self, actor_id):
+    def _start_capture(self, actor_id, source='click'):
         self._listening_actor_id = actor_id
+        self._listening_source = source
         self._ui_actor_id = actor_id
         self._session_actor_id = actor_id
+        self._session_source = source
         self.in_conversation_session = True
         self.session_timer.stop()
         self.listener.start()

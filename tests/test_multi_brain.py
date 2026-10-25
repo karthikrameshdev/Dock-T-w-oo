@@ -156,6 +156,7 @@ def test_microphone_handoff_finishes_old_turn_before_new_capture(qtbot,tmp_path,
     assert not listener.is_recording and manager._pending_listener==b.actor_id
     release.set();qtbot.waitUntil(lambda:listener.is_recording)
     assert manager._listening_actor_id==b.actor_id
+    assert manager._listening_source=='click' and manager._pending_listener_source is None
     assert b.activity=='listening' and a.activity!='listening'
     assert len([c for c in manager.companions.values() if c.activity=='listening'])==1
     manager.shutdown()
@@ -233,18 +234,110 @@ def test_passive_stop_and_speech_animation_dispatch_to_gui_thread(qtbot,tmp_path
     manager.shutdown()
 
 
-def test_listening_aura_counts_only_visible_brains_on_the_same_screen():
+def test_listening_aura_requires_voice_wake_owner_and_visible_peers_on_same_screen():
     from dock_twoo.brain.model_view import listening_aura_allowed
-    first=SimpleNamespace(screen_id='screen-1',isVisible=lambda:True)
-    other=SimpleNamespace(screen_id='screen-4',isVisible=lambda:True)
-    first.manager=SimpleNamespace(companions={'first':first})
+    first=SimpleNamespace(actor_id='first',screen_id='screen-1',isVisible=lambda:True)
+    other=SimpleNamespace(actor_id='other',screen_id='screen-4',isVisible=lambda:True)
+    manager=first.manager=other.manager=SimpleNamespace(companions={'first':first},_listening_actor_id='first',_listening_source='voice')
     assert not listening_aura_allowed(first)
     first.manager.companions['other']=other
     assert not listening_aura_allowed(first)  # One Brain per display.
     other.screen_id='screen-1'
     assert listening_aura_allowed(first)
+    assert not listening_aura_allowed(other)
+    for source in ('click','shortcut',None):
+        manager._listening_source=source
+        assert not listening_aura_allowed(first)
+    manager._listening_source='voice'
     other.isVisible=lambda:False
     assert not listening_aura_allowed(first)
     other.isVisible=lambda:True
     first.manager.companions.pop('other')
     assert not listening_aura_allowed(first)
+
+
+def test_idle_click_recovers_stale_microphone_owner_and_follow_cursor_stays_clickable(qtbot,tmp_path):
+    from PySide6.QtCore import Qt
+    manager=manager_at(tmp_path,inventory()[:1]);actor=manager.companion
+    actor.set_follow_cursor(True);actor.follow_timer.stop()
+    manager._listening_actor_id=actor.actor_id  # Completed/expired capture, no decoder.
+    assert not manager.listener.is_recording and manager.listener._decode_token is None
+    assert not actor.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    qtbot.mouseClick(actor,Qt.MouseButton.LeftButton,pos=actor.rect().center())
+    assert manager.listener.is_recording and actor.activity=='listening'
+    assert manager._listening_source=='click'
+    qtbot.mouseClick(actor,Qt.MouseButton.LeftButton,pos=actor.rect().center())
+    assert not manager.listener.is_recording  # Silent capture finishes without a model call.
+    manager.shutdown()
+
+
+def test_voice_wake_glows_only_one_actor_and_click_handoff_clears_aura(qapp,tmp_path):
+    from dock_twoo.brain.model_view import listening_aura_allowed
+    manager=manager_at(tmp_path,inventory()[:1]);first=manager.companion;second=manager.add_brain()
+    manager.listener.start_recording();manager._on_keyword_started()
+    owner=manager.actor_for(manager._listening_actor_id)
+    assert sum(c.activity=='listening' for c in manager.companions.values())==1
+    assert listening_aura_allowed(owner)
+    manager._session_actor_id=owner.actor_id
+    manager.listener.cancel_recording();manager._listening_actor_id=None
+    manager._resume_session()
+    assert manager.listener.is_recording and listening_aura_allowed(owner)
+    target=second if owner is first else first
+    manager.toggle_talking(target.actor_id)  # Silent handoff is immediate.
+    assert manager.listener.is_recording and manager._listening_actor_id==target.actor_id
+    assert target.activity=='listening' and owner.activity=='idle'
+    assert not any(listening_aura_allowed(c) for c in manager.companions.values())
+    manager.shutdown()
+
+
+def test_show_all_round_trip_and_bulk_remove_protects_every_primary(qapp,tmp_path):
+    manager=manager_at(tmp_path,inventory()[:2]);primaries=set(manager.companions)
+    extra=manager.add_brain();manager.add_brain()
+    manager.store.set_setting('brain_instances',[*manager.store.setting('brain_instances'),
+                                               {'id':'extra-disconnected','screen_id':'unplugged'}])
+    manager.store.set_setting('companion_positions',{key:[10,20] for key in [*primaries,extra.actor_id,'extra-disconnected']})
+    manager.hide_mini_agent()
+    assert not any(c.isVisible() for c in manager.companions.values())
+    menu=manager._build_context_menu()
+    next(a for a in menu.actions() if a.text()=='Show all Brains').trigger()
+    assert all(c.isVisible() for c in manager.companions.values())
+    assert manager.store.setting('companion_visible')
+    assert len(manager.store.setting('brain_instances'))==3  # Hide/show retains extras.
+    for key in primaries:manager.remove_brain(key)
+    assert primaries.issubset(manager.companions)
+    menu=manager._build_context_menu()
+    next(a for a in menu.actions() if a.text()=='Remove all secondary Brains').trigger()
+    assert set(manager.companions)==primaries and manager.store.setting('brain_instances')==[]
+    assert set(manager.store.setting('companion_positions'))==primaries
+    menu=manager._build_context_menu()
+    assert not next(a for a in menu.actions() if a.text()=='Remove all secondary Brains').isEnabled()
+    manager.configure_displays(list(manager._display_entries.values()))
+    assert set(manager.companions)==primaries  # Deleted extras cannot return on reconfigure.
+    manager.shutdown()
+
+
+def test_removing_secondary_transfers_capture_and_accepted_queue_to_primary(qapp,tmp_path):
+    from dock_twoo.brain.sessions import Turn
+    manager=manager_at(tmp_path,inventory()[:1]);primary=manager.companion;extra=manager.add_brain()
+    manager.start_talking(extra.actor_id)
+    manager._histories[extra.actor_id]=[{'role':'user','content':'Earlier context'}]
+    turn=Turn('Accepted request','voice',extra.actor_id,{},'')
+    manager._turn_queue.append(turn)
+    manager.remove_all_secondary_brains()
+    assert list(manager.companions)==[primary.actor_id]
+    assert manager.listener.is_recording and manager._listening_actor_id==primary.actor_id
+    assert manager._session_actor_id==primary.actor_id and manager._listening_source=='click'
+    assert turn.actor_id==primary.actor_id and primary.activity=='listening'
+    assert manager._histories[primary.actor_id][0]['content']=='Earlier context'
+    manager.shutdown()
+
+
+def test_speech_stop_cannot_turn_running_agent_green(qapp,tmp_path):
+    from dock_twoo.brain.sessions import Turn
+    manager=manager_at(tmp_path,inventory()[:1])
+    manager._active_turn=Turn('Request','console',manager.companion.actor_id,{},'')
+    manager._worker_running=True
+    manager.speech.stop()
+    assert manager.companion.activity=='processing' and manager._active_turn.phase=='processing'
+    manager._worker_running=False
+    manager.shutdown()

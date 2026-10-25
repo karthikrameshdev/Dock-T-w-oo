@@ -257,7 +257,7 @@ def test_follow_cursor_retargets_immediately_at_a_calm_speed(companion):
     assert companion.x() < first.x()
     assert companion.gait_distance > phase
     assert companion.destination.x() == companion.screen().availableGeometry().left()
-    assert companion.testAttribute(__import__('PySide6.QtCore', fromlist=['Qt']).Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    assert not companion.testAttribute(__import__('PySide6.QtCore', fromlist=['Qt']).Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     companion.set_follow_cursor(False)
     assert companion.action is None
 

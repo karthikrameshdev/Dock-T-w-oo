@@ -58,6 +58,8 @@ def step():
   manager.playground._groups.clear();manager.playground.arrange()
   name=checks[phase]
   if name in ('listening','queued','responding'):
+   manager._listening_actor_id=first.actor_id if name=='listening' else None
+   manager._listening_source='voice' if name=='listening' else None
    first.set_activity({'responding':'speaking'}.get(name,name));second.set_activity('idle')
   else:manager.playground.play(name,first.actor_id)
   phase_started=now;phase_captured=False

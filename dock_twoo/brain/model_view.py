@@ -11,8 +11,11 @@ from PySide6.QtWebEngineCore import QWebEngineScript
 
 
 def listening_aura_allowed(companion):
-    """An aura identifies the listener only among visible peers on its display."""
+    """Only voice wake needs an aura to identify one listener among nearby peers."""
     manager = getattr(companion, 'manager', None)
+    if (getattr(manager, '_listening_source', None) != 'voice' or
+            getattr(manager, '_listening_actor_id', None) != getattr(companion, 'actor_id', None)):
+        return False
     actors = getattr(manager, 'companions', {})
     display = getattr(companion, 'screen_id', None)
     return sum(actor.isVisible() and getattr(actor, 'screen_id', None) == display

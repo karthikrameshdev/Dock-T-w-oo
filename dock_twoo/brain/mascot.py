@@ -653,12 +653,12 @@ class Companion(QWidget):
             self.follow_timer.stop()
 
     def _apply_follow_input_mode(self) -> None:
-        # Cursor following must never steal a click intended for the app underneath.
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, self.follow_cursor_enabled)
+        # Following must remain clickable: a click explicitly selects this listener.
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         if platform.system() == "Darwin" and self.isVisible() and QApplication.platformName() != "offscreen":
             window, message = mac_window(self)
             if window and message:
-                message(None, window, "setIgnoresMouseEvents:", (ctypes.c_bool, self.follow_cursor_enabled))
+                message(None, window, "setIgnoresMouseEvents:", (ctypes.c_bool, False))
 
     def _follow_cursor_step(self, cursor: Optional[QPoint] = None, elapsed: Optional[float] = None) -> None:
         now = time.monotonic()
@@ -1124,7 +1124,7 @@ class Companion(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            if not self.moved and self.press_point:
+            if not self.moved and self.press_point is not None:
                 self.manager.toggle_talking(getattr(self, 'actor_id', self.screen_id))
             elif self.moved:
                 # Save new desktop placement

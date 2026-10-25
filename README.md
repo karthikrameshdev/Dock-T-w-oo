@@ -366,8 +366,15 @@ screen**, **Roam across all screens**, and **Play together**. Extra characters w
 on a single screen too. They roam and animate independently, avoid one another,
 and scale to fit a crowded display. Only one Brain owns the microphone; clicking
 another finishes the current capture before handing over listening. When two or more visible Brains share a screen, a yellow
-body glow marks its microphone owner. A lone Brain uses only the yellow head light. A wake word selects the visible Brain nearest the
+body glow identifies the voice-woken microphone owner. Clicking a Brain (including
+while following the cursor) or using push-to-talk lights only its yellow head;
+a lone Brain also uses only the head light. A wake word selects the visible Brain nearest the
 pointer, without making every character listen or speak.
+
+**Hide all Brains** retains every character; **Show all Brains** restores them.
+**Remove all secondary Brains** deletes the extra characters and their saved
+placements, including disconnected displays. Primary Brains cannot be removed.
+Accepted work and microphone ownership transfer to a primary if an extra is removed.
 
 All characters share one FIFO agent and speech lane. A second request waits until
 the current request and spoken answer finish. Each turn retains its original cloud
