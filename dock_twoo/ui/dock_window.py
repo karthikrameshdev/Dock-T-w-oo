@@ -257,6 +257,8 @@ class DockWindow(QWidget):
         self.on_config_updated(self.config_manager.config)
 
     def _refresh_app_data(self, ident):
+        if ident == 'scheduler' and ident in self.attached_window._apps:
+            self.attached_window._apps[ident].refresh()
         if ident == 'notes' and ident in self.attached_window._apps:
             widget = self.attached_window._apps[ident]
             if widget.stack.currentIndex() == 0:

@@ -189,6 +189,8 @@ class AudioListener(QObject):
         self._backup_ring = deque(maxlen=40)
         self._backup_voice_ring = deque(maxlen=40)
         self._backup_ticks = 0
+        self._backup_checked = False
+        self._backup_silence = 0.0
         self._endpoint = TurnEndpoint()
         self._wake_capture = False
         self._capture_revision = 0
@@ -381,6 +383,8 @@ class AudioListener(QObject):
         self._backup_ring.clear()
         self._backup_voice_ring.clear()
         self._backup_ticks = 0
+        self._backup_checked = False
+        self._backup_silence = 0.0
         self.ambient_speech_frames = []
         self.ambient_silence_count = 0
         self._audio_timeline.clear()
@@ -410,6 +414,8 @@ class AudioListener(QObject):
             self._backup_ring.clear()
             self._backup_voice_ring.clear()
             self._backup_ticks = 0
+            self._backup_checked = False
+            self._backup_silence = 0.0
             self.wake_detector.reset()
             self.endpoint_vad.reset()
 
@@ -555,7 +561,7 @@ class AudioListener(QObject):
                 self.has_spoken = self._endpoint.speech > 0
                 if not self._endpoint.overlong:
                     self.speech_frames.append(pcm)
-            if self._endpoint.complete or self._endpoint.idle_expired:
+            if self._endpoint.complete or self._endpoint.idle_expired or self._endpoint.overlong:
                 self._dispatch_capture()
             return
         if not self.wake_detection_enabled or (not self._wake_armed and not (self.named_characters and (self._output_active or self._passive_stop))):
@@ -573,16 +579,22 @@ class AudioListener(QObject):
         elif not self.models.recognizer.ready and self._sf_recognizer is None:
             self.last_wake_decision = "wake-model-" + self.wake_detector.state
             return
-        # A partial ASR window may activate listening, but never execute a command.
+        # One backup per utterance, not full Whisper every two seconds during
+        # background conversations/music. The streaming keyword detector above
+        # remains active on every frame, including quiet speech and long audio.
         self._backup_ring.append(pcm)
         self._backup_voice_ring.append(is_speech)
-        self._backup_ticks += 1
-        if self._backup_ticks >= 20:
-            self._backup_ticks = 0
-            if self.endpoint_vad.ready and sum(self._backup_voice_ring) < 2:
-                self.last_wake_decision = "ambient-no-speech"
-            else:
-                self._dispatch_wake_check(list(self._backup_ring))
+        self._backup_silence = 0.0 if is_speech else self._backup_silence+len(pcm)/32000
+        if is_speech or self._backup_ticks:self._backup_ticks += 1
+        voiced = sum(self._backup_voice_ring)
+        retry_without_kws = not self.wake_detector.ready and self._backup_ticks > 0 and self._backup_ticks % 20 == 0
+        if (not self._backup_checked or retry_without_kws) and voiced >= 2 and (self._backup_ticks >= 20 or self._backup_silence >= .4):
+            self._backup_checked = True
+            # A partial backup only activates capture; it never executes text.
+            self._dispatch_wake_check(list(self._backup_ring))
+        if self._backup_silence >= .8:
+            self._backup_ring.clear();self._backup_voice_ring.clear()
+            self._backup_ticks = 0;self._backup_checked = False
 
     def _dispatch_wake_check(self, frames: list[bytes]) -> None:
         if not frames:

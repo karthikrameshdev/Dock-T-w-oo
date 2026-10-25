@@ -190,10 +190,10 @@ class BrainAgent:
             if source not in ('delegated','review'):self.memory.feedback(scope,prompt,self._last_memory_runs.get(scope))
             workflow=self.memory.workflow(scope,prompt,run_id)
             identity='Your character name is '+character_name+'. The user addressed you by this name.'
-            if character_id=='default' and coordinator:
-                identity+=' You are Brain, the sole orchestrator. For large independent multi-part tasks use delegate_tasks, inspect child results and synthesize the final document. Available workers: '+json.dumps([{k:c[k] for k in ('id','name','species')} for c in characters() if c['id']!='default'])
-            elif character_id!='default':
-                identity+=' You are a worker agent. Do not delegate or impersonate Brain. Complete your assigned work and report verified results.'
+            if coordinator:
+                identity+=' All agents are equal peers. For independent multi-part tasks use delegate_tasks, inspect child results and synthesize the final answer. Background agents have no character window, microphone or speaker. Never assign a task to yourself, a busy agent or an ancestor awaiting you. A completed peer can be reused in a later batch. Available peers: '+json.dumps([{k:c[k] for k in ('id','name','species')} for c in characters() if c['id']!=character_id])
+            if source=='delegated':
+                identity+=' This is a background subtask assigned by your parent agent. Return verified results and artifacts to that parent; do not initiate speech or foreground animation.'
             stages=[{'role':'system','content':SYSTEM_PROMPT+'\nPrompt version: '+VERSION},
                     {'role':'system','content':identity}]
             template,cache=self.prompt_cache.prepare(config,character_id,key,stages,available_tools)
@@ -267,7 +267,7 @@ class BrainAgent:
                                 if not args['text'].strip():raise ValueError('The spoken answer is empty.')
                                 final=AgentReply(**args,reading_started=reading);result={'ok':True,'finished':True}
                             elif name=='delegate_tasks':
-                                if character_id!='default' or coordinator is None:raise PermissionError('Only Brain can orchestrate worker agents.')
+                                if coordinator is None:raise RuntimeError('Agent orchestration is unavailable.')
                                 if hasattr(self.manager,'release_desktop'):self.manager.release_desktop()
                                 output=coordinator.delegate(character_id,task_id,args['tasks'],token)
                                 result={'ok':True,'result':output};progress=True

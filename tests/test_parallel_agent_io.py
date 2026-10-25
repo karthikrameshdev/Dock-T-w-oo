@@ -51,14 +51,14 @@ print(json.dumps({'text':'Completed '+name,'calls':[]}))
         gate.touch()
         qtbot.waitUntil(lambda: len(spoken) == 2 and not manager._worker_running, timeout=8000)
         # The second model result waits until the first result has finished speaking.
-        assert len(manager._reply_queue) == 1
+        qtbot.waitUntil(lambda:not manager._reply_queue)
+        assert len(manager.companions)==1
         assert all(not p.exists() for p in workspaces)
         assert len(list((manager.store.data_dir / 'documents').rglob('result.md'))) == 2
         assert not list((manager.store.data_dir / 'documents').rglob('task.json'))
         manager._on_speech_finished()
-        qtbot.waitUntil(lambda: len(spoken) == 3)
-        assert {identity for identity, _ in spoken[1:]} == {'orbit', 'parrot'}
-        manager._on_speech_finished()
+        assert len(spoken)==2 and spoken[-1][0]=='orbit'
+        assert 'Completed rio-work' in manager.coordinator.describe_status('parrot')
         assert not manager._active_turn
     finally:
         gate.touch()
@@ -69,7 +69,7 @@ def test_brain_status_reports_owned_downstream_progress_without_new_lease(qapp, 
     manager = manager_at(tmp_path, inventory()[:1])
     cancel = threading.Event()
     root, root_path = manager.coordinator.begin('default', 'Research quantum computing', {}, cancel)
-    child, child_path = manager.coordinator.begin('orbit', 'Research quantum interference', {}, cancel, root)
+    child, child_path = manager.coordinator.begin('orbit', 'Research quantum interference', {}, cancel, root,assigning_identity='default')
     try:
         manager.coordinator.publish('orbit', child, 'progress', {'tool': 'read_webpage', 'message': 'Checking two source papers'})
         status = manager.coordinator.describe_status('default')
@@ -105,3 +105,36 @@ def test_stop_cancels_parallel_cli_processes_and_removes_workspaces(qtbot,tmp_pa
         assert all(job['state']=='cancelled' for job in manager.coordinator.snapshot()['jobs'])
         assert not manager._reply_queue and not manager._turn_queue
     finally:manager.shutdown()
+
+
+def test_all_29_background_peers_run_without_creating_views_and_are_reusable(qtbot,tmp_path,monkeypatch):
+    from dock_twoo.brain.agent import BrainAgent
+    from dock_twoo.brain.catalog import characters
+    manager=manager_at(tmp_path,inventory()[:1]);manager.choose_assistant('orbit')
+    actor=manager.companion;cancel=threading.Event();gate=threading.Event();lock=threading.Lock()
+    running=set();peak=[0];outcome=[]
+    def run(agent,prompt,**kwargs):
+        with lock:
+            running.add(kwargs['character_id']);peak[0]=max(peak[0],len(running))
+        gate.wait(5)
+        with lock:running.remove(kwargs['character_id'])
+        agent._update(state='complete')
+        return AgentReply('Verified '+prompt)
+    monkeypatch.setattr(BrainAgent,'run',run)
+    root,_=manager.coordinator.begin('orbit','All peers',{},cancel)
+    tasks=[{'character_id':c['id'],'request':'Research '+c['name']} for c in characters() if c['id']!='orbit']
+    thread=threading.Thread(target=lambda:outcome.append(manager.coordinator.delegate('orbit',root,tasks,cancel)))
+    try:
+        thread.start();qtbot.waitUntil(lambda:len(running)==29,timeout=8000)
+        assert len(manager.companions)==1 and manager.companion is actor and actor.character_id=='orbit'
+        assert not manager.listener.is_recording and not manager.speech.playing
+        gate.set();qtbot.waitUntil(lambda:bool(outcome),timeout=8000)
+        assert peak[0]==29 and all(c['state']=='complete' for c in outcome[0]['children'])
+        again=manager.coordinator.delegate('orbit',root,[{'character_id':'default','request':'Fifth task'}],cancel)
+        assert again['children'][0]['state']=='complete'
+        assert len([j for j in manager.coordinator.snapshot()['jobs'] if j['character_id']=='default'])==2
+        manager.coordinator.complete('orbit',root,'Finished')
+        assert not manager.coordinator.workspaces
+        assert len(manager.notifications.lines)<=3
+    finally:
+        gate.set();thread.join(10);manager.shutdown()

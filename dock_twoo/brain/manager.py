@@ -77,14 +77,18 @@ class BrainManager(QObject, BrainSessions):
         self.activity_cleanup = QTimer(self)
         self.activity_cleanup.setInterval(60*60*1000)
         self.activity_cleanup.timeout.connect(self.activity.prune)
-        if start_services:self.activity_cleanup.start()
+        # ResourceKeeper performs disk pruning away from the GUI thread.
         from dock_twoo.brain.audio_devices import DefaultAudioDevices
         self.audio_devices = DefaultAudioDevices(self)
         self.speech = SpeechPlayback(self, audio_devices=self.audio_devices)
         self.speech.store = self.store
 
         self._init_sessions()
-        actor = Companion(self)
+        from dock_twoo.brain.catalog import character
+        selected = self.store.setting('active_character', 'default')
+        try:character(selected)
+        except ValueError:selected = 'default'
+        actor = Companion(self, character_id=selected)
         actor.actor_id = 'default'
         self.companions['default'] = actor
         self.speech.activity.connect(self._set_active_activity)
@@ -163,6 +167,8 @@ class BrainManager(QObject, BrainSessions):
         if start_services:self.semantic_model.start()
         self.agent = BrainAgent(self.profile_mgr, self, tracker=self.activity)
         from dock_twoo.brain.ecosystem.coordinator import Coordinator
+        from dock_twoo.brain.agent_notifications import AgentNotifications
+        self.notifications = AgentNotifications(self)
         self.coordinator=Coordinator(self)
         self.agent.coordinator=self.coordinator
         if start_services:self.coordinator.start()
@@ -170,6 +176,10 @@ class BrainManager(QObject, BrainSessions):
         from dock_twoo.brain.ecosystem.animation import EcologyDirector
         self.ecology=EcologyDirector(self)
         if not start_services:self.ecology.timer.stop()
+        from dock_twoo.brain.resources import ResourceKeeper
+        self.resources = ResourceKeeper(self, enabled=start_services)
+        from dock_twoo.brain.reminders import ReminderService
+        self.reminders = ReminderService(self, enabled=start_services)
         self.reader.failed.connect(self._on_reading_failed)
         self.reader.finished.connect(self._on_reading_finished)
         self.speech.progress.connect(lambda value: self.companion.reading_progress(value))
@@ -197,7 +207,13 @@ class BrainManager(QObject, BrainSessions):
         if action_name == "loop":
             self.companion.start_animation_loop()
         else:
-            self.companion.play_action(action_name)
+            self.play_user_action(self.companion, action_name)
+
+    def play_user_action(self, actor, action):
+        actor.resource_active_until = time.monotonic()+min(20,actor.actions.get(action,('',5))[1]+1)
+        actor.resource_resting=False
+        if actor.model_view:actor.model_view.set_parked(False)
+        actor.play_action(action)
 
     def is_mini_agent_visible(self) -> bool:
         return any(actor.isVisible() for actor in self.companions.values())
@@ -443,7 +459,7 @@ class BrainManager(QObject, BrainSessions):
     def forget_character_memory(self, character_id):
         from dock_twoo.brain.catalog import character
         character(character_id)
-        if any(self.actor_busy(actor) for actor in self.companions.values() if actor.character_id==character_id):
+        if self.coordinator.agent_states.get(character_id) in ('processing','queued') or any(item['turn'].character_id == character_id for item in self._processing_turns.values()) or any(self.actor_busy(actor) for actor in self.companions.values() if actor.character_id==character_id):
             raise ValueError('Finish or stop this character’s task and listening before clearing its memory.')
         self.memory.forget_character(character_id)
         self._character_histories.pop(character_id,None)
@@ -465,10 +481,11 @@ class BrainManager(QObject, BrainSessions):
             target = screen_id
             if character_id is not None:
                 display_id = self.actor_for(screen_id).screen_id
-                target = self.add_brain(display_id, character_id).actor_id
+                self.choose_assistant(character_id)
+                target = self.select_character(character_id, display_id).actor_id
             self._queue_turn(command if character_id is not None and command else text, source, target,
                              kind='greeting' if character_id is not None and not command else 'request',
-                             profile_snapshot=(profile, key))
+                             profile_snapshot=(profile, key), character_id=identity)
         self.run_on_main_thread(accept)
 
     def _do_turn_complete(self, user_text: str, source='voice', screen_id=None) -> None:
@@ -576,7 +593,10 @@ class BrainManager(QObject, BrainSessions):
                     history = self._character_histories.setdefault(identity, [])
                     history.append({'role': 'assistant', 'content': str(reply)})
                     del history[:-12]
-                    self._reply_queue.append((turn, reply))
+                    if self.companion.character_id == identity:
+                        self._reply_queue.append((turn, reply))
+                    else:
+                        self.notifications.show(f'{turn.character_name} finished. Select {turn.character_name} and ask for its status.')
                 self._drain_turns()
             self.run_on_main_thread(completed)
         self._active_query_thread = threading.Thread(target=run_turn, daemon=True, name='agent-' + identity)
@@ -708,6 +728,9 @@ class BrainManager(QObject, BrainSessions):
     def shutdown(self):
         self.stop_talking()
         self.input_router.close()
+        self.reminders.close()
+        self.resources.close()
+        self.notifications.close()
         self.ecology.close()
         self.coordinator.close()
         self._stopping = True
@@ -853,7 +876,7 @@ class BrainManager(QObject, BrainSessions):
         anim_menu.addSeparator()
         for action_key, (action_lbl, _) in actor.actions.items():
             a_act = anim_menu.addAction(
-                action_lbl, lambda checked=False, k=action_key: actor.play_action(k)
+                action_lbl, lambda checked=False, k=action_key: self.play_user_action(actor,k)
             )
             a_act.setEnabled(not actor.reduced_motion)
 
@@ -874,33 +897,19 @@ class BrainManager(QObject, BrainSessions):
         all_screens.setChecked(bool(self.store.setting('brain_roam_all_screens', False)))
         all_screens.toggled.connect(self.set_roam_all_screens)
         from dock_twoo.brain.catalog import characters as character_catalog
-        add_menu = menu.addMenu('Add assistant')
+        choose = menu.addMenu('Choose assistant')
         for entry in character_catalog():
-            existing = self.character_on_screen(entry['id'], actor.screen_id)
-            choice = add_menu.addAction(entry['name'] + (' · on this screen' if existing else ''),
-                lambda checked=False, key=entry['id']: self.add_brain(actor.screen_id, key))
-            choice.setEnabled(existing is None)
-        add_menu.addSeparator()
-        add_menu.addAction('Add all missing characters', lambda: self.add_all_characters(actor.actor_id))
-        on_screen = menu.addMenu('Assistants on this screen')
-        for other in self.companions.values():
-            if other.screen_id != actor.screen_id:
-                continue
-            on_screen.addAction(f'Talk to {other.character_name}', lambda checked=False, key=other.actor_id: self.toggle_talking(key))
-            if other.actor_id.startswith('extra-'):
-                remove=on_screen.addAction(f'Remove {other.character_name}', lambda checked=False, key=other.actor_id: self.remove_brain(key))
-                remove.setEnabled(not self.actor_busy(other))
-        if actor.actor_id.startswith('extra-'):
-            remove=menu.addAction(f'Remove {actor.character_name}', lambda: self.remove_brain(actor.actor_id))
-            remove.setEnabled(not self.actor_busy(actor))
-        remove_extras = menu.addAction('Remove all secondary assistants', self.remove_all_secondary_brains)
-        remove_extras.setEnabled(any(key.startswith('extra-') for key in self.companions) or
-                                 bool(self.store.setting('brain_instances', [])))
-        together = menu.addMenu("Play together")
-        from dock_twoo.brain.playground import GROUP_ACTIVITIES
-        for key, label in GROUP_ACTIVITIES.items():
-            choice = together.addAction(label, lambda checked=False, kind=key: self.playground.play(kind, actor.actor_id))
-            choice.setEnabled(hasattr(self, 'playground') and len(self.companions) > 1)
+            option = choose.addAction(entry['name'],
+                lambda checked=False, key=entry['id']: self.choose_assistant(key))
+            option.setCheckable(True)
+            option.setChecked(entry['id'] == actor.character_id)
+        if len(self._all_display_entries) > 1:
+            screens = menu.addMenu('Move assistant to screen')
+            for key, entry in self._all_display_entries.items():
+                option = screens.addAction(entry.get('name', key),
+                    lambda checked=False, display=key: self.select_character(actor.character_id, display))
+                option.setCheckable(True)
+                option.setChecked(key == actor.screen_id)
 
         # 5. Speak Replies Toggle
         voice_act = menu.addAction("🔊 Speak Replies")
@@ -921,9 +930,9 @@ class BrainManager(QObject, BrainSessions):
 
         # 8. Close / Hide Mini Agent Option
         menu.addSeparator()
-        show_all = menu.addAction("Show all assistants", self.show_mini_agent)
+        show_all = menu.addAction("Show assistant", self.show_mini_agent)
         show_all.setEnabled(any(not c.isVisible() for c in self.companions.values()))
-        hide_all = menu.addAction("✕ Hide all assistants and stop requests", self.hide_mini_agent)
+        hide_all = menu.addAction("✕ Hide assistant and stop requests", self.hide_mini_agent)
         hide_all.setEnabled(self.is_mini_agent_visible())
 
         return menu
@@ -982,6 +991,7 @@ class BrainManager(QObject, BrainSessions):
             "agent": self.agent.status(),
             "local_speech": get_local_tts().status(),
             "local_policy": self.semantic_model.status(),
+            "resources": dict(self.resources.stats),
             "ecosystem": {"agents":30,"grpc_ready":self.coordinator.bus.port is not None,"agent_states":dict(self.coordinator.agent_states)},
             "animation": dict(self.animation_director.last_decision),
             "last_response": dict(self.last_response),

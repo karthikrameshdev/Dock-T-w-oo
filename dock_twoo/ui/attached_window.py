@@ -20,6 +20,7 @@ from dock_twoo.ui.apps import (
     BrainAppWidget,
     NotesAppWidget,
     TasksAppWidget,
+    SchedulerAppWidget,
     DashboardAppWidget,
     VaultAppWidget,
 )
@@ -66,6 +67,7 @@ class AttachedWindow(QWidget):
         app_classes = {
             "notes": NotesAppWidget,
             "tasks": TasksAppWidget,
+            "scheduler": SchedulerAppWidget,
             "dashboard": DashboardAppWidget,
             "vault": VaultAppWidget,
             "brain": BrainAppWidget,

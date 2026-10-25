@@ -1,4 +1,4 @@
-"""Native crowd soak: real renderers and OS clicks, isolated data/no mic or provider.
+"""Native single-assistant soak: character switching and OS clicks, isolated data/no mic or provider.
 
 Run with --seconds 600. The production app should be stopped to avoid testing
 against a second dock. Writes bounded evidence in the OS temporary directory.
@@ -23,6 +23,8 @@ from dock_twoo.os_integration.margin_manager import DesktopMarginManager
 parser=argparse.ArgumentParser();parser.add_argument('--seconds',type=int,default=600)
 parser.add_argument('--interval',type=int,default=45)
 parser.add_argument('--output',type=Path,default=Path(tempfile.gettempdir())/'dock-resident-stability.json')
+parser.add_argument('--resource-budget',action='store_true')
+parser.add_argument('--characters',type=int,default=30)
 parser.add_argument('--keep-on-failure',action='store_true');args=parser.parse_args()
 args.output.parent.mkdir(parents=True,exist_ok=True)
 QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
@@ -38,10 +40,13 @@ config.config.reserve_screen_space=False;config.config.theme_mode='dark'
 # No desktop icon repositioning or external app resizing in this fixture.
 DesktopMarginManager.start=lambda self:None
 config_module.ConfigManager=lambda:config
-manager=BrainManager(store=BrainStore(root/'brain'),start_services=False);BrainManager._instance=manager
+manager=BrainManager(store=BrainStore(config.config.get_brain_dir()),start_services=False);BrainManager._instance=manager
 manager.store.update_settings({'roaming':False,'wake_word_enabled':False,'voice_reply':False,'character_sounds':False})
 manager.listener.start=lambda:None
-entries=display_inventory();manager.configure_displays(entries[:1],entries);manager.add_all_characters()
+entries=display_inventory();manager.configure_displays(entries[:1],entries)
+from dock_twoo.brain.catalog import characters
+switch_ids=[c['id'] for c in characters()[:args.characters]]+['default']
+switched=[];switch_ready=0.0
 from dock_twoo.ui.dock_window import DockWindow
 dock=DockWindow(config,screen_id=entries[0]['id']);dock.show()
 for actor in manager.companions.values():actor.roam_timer.stop()
@@ -91,10 +96,10 @@ def finish():
  global finished
  if finished:return
  finished=True;timer.stop()
- result={'success':not errors,'seconds':round(time.monotonic()-(ready_at or started),1),'characters':len(actors),
+ result={'success':not errors,'seconds':round(time.monotonic()-(ready_at or started),1),'characters':len(actors),'identities_verified':switched,
          'native_click_cycles':cycles,'input': 'OS mouse events' if sys.platform=='darwin' else 'Qt mouse events',
          'max_event_loop_delay_ms':round(max(lags or [0])*1000,1),'renderer_samples':samples[-90:],
-         'hidden_freeze_checked':hidden_test,'renderer_restart_checked':crash_test,'errors':errors,'cloud_calls':0,'microphone_opened':False}
+         'hidden_freeze_checked':hidden_test,'renderer_restart_checked':crash_test,'errors':errors,'cloud_calls':0,'microphone_opened':False,'resource_budget':dict(manager.resources.stats) if args.resource_budget else None}
  args.output.write_text(json.dumps(result,indent=2));print(json.dumps({k:v for k,v in result.items() if k!='renderer_samples'}),flush=True)
  dock.close();manager.shutdown();server.shutdown();gc.stop(restore=False);app.exit(1 if errors else 0)
 
@@ -115,21 +120,28 @@ def click(widget,point=None,done=None):
 def interaction_cycle():
  global testing
  testing=True;manager.stop_talking();brain.stop_motion()
+ app_id='scheduler' if cycles%2 else 'tasks'
  for a in actors:a.last_dragged=time.monotonic()
  def opened():
-  if not dock.attached_window.is_showing_app('tasks'):return fail('Native dock click did not open Tasks')
+  if app_id=='scheduler':dock.attached_window.grab().save(str(args.output.parent/'dock-scheduler-preview.png'))
+  if not dock.attached_window.is_showing_app(app_id):return fail('Native dock click did not open Tasks')
   # Deliberately put a character's head behind the close control. Native mask
   # changes must never promote that invisible body above the interactive drawer.
-  blocker=next(a for a in actors if a.character_id=='pixel')
+  blocker=next((a for a in actors if a.character_id=='pixel'),actors[-1])
   blocker.stop_motion()
-  head=blocker.input_region.boundingRect().center()
-  if not blocker.input_region.contains(head):return fail('Blocker fixture has no central body pixel')
-  target=dock.attached_window._apps['tasks'].close_btn.mapToGlobal(dock.attached_window._apps['tasks'].close_btn.rect().center())
+  region=blocker.input_region;bounds=region.boundingRect()
+  head=QPoint(bounds.center().x(),bounds.top()+bounds.height()//3)
+  if not region.contains(head):
+   pixels=[QPoint(x,y) for y in range(bounds.top(),bounds.bottom()+1) for x in range(bounds.left(),bounds.right()+1) if region.contains(QPoint(x,y))]
+   if not pixels:return fail('Blocker fixture has no body pixels')
+   head=min(pixels,key=lambda p:(p-head).manhattanLength())
+  target=dock.attached_window._apps[app_id].close_btn.mapToGlobal(dock.attached_window._apps[app_id].close_btn.rect().center())
   blocker.move(target-head)
   if blocker.input_hit_region().contains(target-blocker.pos()):return fail('Character intercepts an open control surface')
-  click(dock.attached_window._apps['tasks'].close_btn,done=closed)
+  click(dock.attached_window._apps[app_id].close_btn,done=closed)
  def closed():
   if dock.attached_window.isVisible():return fail('Native Tasks close click was swallowed')
+  brain.move(brain.assigned_screen.availableGeometry().center()-brain.rect().center())
   bounds=brain.input_region.boundingRect()
   points=[QPoint(x,y) for y in range(bounds.top(),bounds.bottom()+1) for x in range(bounds.left(),bounds.right()+1) if brain.input_region.contains(QPoint(x,y))]
   if not points:return fail('Brain has no clickable body')
@@ -147,7 +159,7 @@ def interaction_cycle():
   manager.stop_talking();cycles+=1;testing=False
   print(f'PASS native input cycle {cycles}, elapsed {time.monotonic()-ready_at:.1f}s',flush=True)
  if dock.attached_window.isVisible():dock.attached_window.hide_window()
- click(dock._icon_buttons['tasks'],done=opened)
+ click(dock._icon_buttons[app_id],done=opened)
 
 def diagnostics(actor,label='sample',done=None):
  def receive(raw):
@@ -159,52 +171,69 @@ def diagnostics(actor,label='sample',done=None):
  actor.model_view.page().runJavaScript('JSON.stringify({frames:window.brainDiagnostics?.renderedFrames,active:window.brainDiagnostics?.activeActions,cached:window.brainDiagnostics?.cachedActions})',receive)
 
 def tick():
- global ready_at,last_tick,last_cycle,last_action,hidden_test,crash_test,testing
+ global ready_at,last_tick,last_cycle,last_action,hidden_test,crash_test,testing,switch_ready
  now=time.monotonic();lag=now-last_tick-.05;last_tick=now
  if ready_at is None:
   if all(a.model_view.ready and a.has_input_shape and not a.input_region.isEmpty() for a in actors):
-   ready_at=now;manager.playground.arrange();print('30 real renderers ready',flush=True)
-  elif now-started>150:fail('Renderer startup timed out')
+   if not switch_ready:switch_ready=now
+   if now-switch_ready<.5:return
+   assert len(manager.companions)==1 and manager.companion is brain
+   assert brain.model_view.asset_hash==brain.character['asset_sha256']
+   switched.append(brain.character_id)
+   print(f'PASS single renderer: {brain.character_name}',flush=True)
+   if switch_ids:
+    identity=switch_ids.pop(0);manager.choose_assistant(identity);switch_ready=0;return
+   ready_at=now;print('All character selections ready with one view',flush=True)
+   if args.resource_budget:manager.resources.timer.start()
+  elif now-started>240:fail('Renderer startup timed out')
   return
  lags.append(max(0,lag))
  elapsed=now-ready_at
- if elapsed>=args.seconds and not testing:return finish()
+ if elapsed>args.seconds+75:return fail('Native recovery callback timed out')
+ if elapsed>=args.seconds and not testing:
+  brain.model_view.grab().save(str(args.output.parent/'dock-single-character-preview.png'))
+  return finish()
  if not testing and now-last_cycle>=args.interval:
   last_cycle=now;interaction_cycle();return
  if not testing and now-last_action>=4:
   last_action=now
   for actor in actors:
+   if args.resource_budget and actor.resource_resting:continue
    choices=[k for k in actor.actions if k in ('wave','walk','run','dance','nod','clap','stretch','kick_ball','hammer')]
    actor.play_action(random.choice(choices))
-  diagnostics(random.choice(actors))
+  active=[a for a in actors if not a.model_view.parked]
+  if active:diagnostics(random.choice(active))
  if not testing and elapsed>args.seconds*.4 and not hidden_test:
-  testing=True;target=actors[-1]
+  testing=True;target=actors[-1];target.set_activity('processing');target.resource_active_until=time.monotonic()+30;target.model_view.set_parked(False)
   def before(value):
    hidden_frames.update(value);target.hide()
    def check():
     if target.model_view.timer.isActive():return fail('Hidden view still sends updates')
     from PySide6.QtWebEngineCore import QWebEnginePage
-    if target.model_view.page().lifecycleState()!=QWebEnginePage.LifecycleState.Frozen:return fail('Hidden page was not frozen')
+    expected=QWebEnginePage.LifecycleState.Discarded if args.resource_budget else QWebEnginePage.LifecycleState.Frozen
+    if target.model_view.page().lifecycleState()!=expected:return fail('Hidden page did not release its resources')
+    target.resource_active_until=time.monotonic()+20
     target.show()
     def resumed():
      if not target.model_view.ready:return fail('Shown character did not resume')
      def verify(value):
       global testing,hidden_test
-      if value.get('frames',0)<=hidden_frames.get('frames',0):return fail('Shown character stopped drawing')
-      hidden_test=True;testing=False;print('PASS hidden freeze/resume',flush=True)
+      baseline=0 if args.resource_budget else hidden_frames.get('frames',0)
+      if value.get('frames',0)<=baseline:return fail('Shown character stopped drawing')
+      hidden_test=True;testing=False;target.set_activity('idle');print('PASS hidden freeze/resume',flush=True)
      diagnostics(target,'after_show',verify)
-    QTimer.singleShot(1200,resumed)
-   QTimer.singleShot(2500,check)
+    QTimer.singleShot(8000 if args.resource_budget else 1200,resumed)
+   QTimer.singleShot(47000 if args.resource_budget else 2500,check)
   diagnostics(target,'before_hide',before)
  if not testing and elapsed>args.seconds*.65 and not crash_test and sys.platform!='win32':
-  testing=True;target=actors[-1];pid=target.model_view.page().renderProcessPid()
+  testing=True;target=actors[-1];target.set_activity('processing');target.resource_active_until=time.monotonic()+30;target.model_view.set_parked(False);pid=target.model_view.page().renderProcessPid()
   if pid<=0 or pid==os.getpid():return fail('No isolated test renderer process to terminate')
   os.kill(pid,9)
   def recovered():
    global testing,crash_test
    if not target.model_view.ready or target.model_view.error or target.input_region.isEmpty():return fail('Crashed renderer did not recover')
    if target.model_view.page().renderProcessPid()==pid:return fail('Renderer process was not replaced')
-   crash_test=True;testing=False;print('PASS isolated renderer recovery',flush=True)
+   crash_test=True;testing=False;target.set_activity('idle');print('PASS isolated renderer recovery',flush=True)
   QTimer.singleShot(18000,recovered)
 timer=QTimer();timer.timeout.connect(tick);timer.start(50)
 exit_code=app.exec();folder.cleanup();sys.exit(exit_code)

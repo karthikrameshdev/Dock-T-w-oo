@@ -15,8 +15,8 @@ def test_default_config_properties():
     assert cfg.dock_height_mode == "fill"
     assert cfg.theme_mode == "system"
     assert cfg.server_port == 28842
-    assert len(cfg.apps) == 9
-    assert [a.id for a in cfg.apps] == ["tasks", "notes", "vault", "div_settings", "keep_awake", "dashboard", "settings", "div_brain", "brain"]
+    assert len(cfg.apps) == 10
+    assert [a.id for a in cfg.apps] == ["scheduler", "tasks", "notes", "vault", "div_settings", "keep_awake", "dashboard", "settings", "div_brain", "brain"]
 
 
 def test_config_serialization():

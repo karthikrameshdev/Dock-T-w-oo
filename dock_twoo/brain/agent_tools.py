@@ -41,24 +41,30 @@ TOOLS=[
  tool('system_status','Read the current local time, OS, and battery status.'),
  tool('character_action','Play a local character gesture or move to a corner using walk, run, jump, fly or roll.',{'action':{'type':'string','enum':sorted({key for entry in characters() for key in character(entry['id'])['actions']})+['follow_cursor','stop_follow_cursor']},'destination':{'type':'string','enum':['top_left','top_right','bottom_left','bottom_right','center']}},['action']),
  tool('read_aloud','Immediately start local continuous reading of selected text, the active window, or supplied text.',{'source':{'type':'string','enum':['selected','window','text']},'text':S},['source']),
+ tool('create_reminder','Create a local reminder. Resolve relative dates using system_status first; ask if the time is ambiguous. when is the full ISO date and local time, timezone is an IANA zone. Alerts appear 5 minutes before, 1 minute before and at the due time while Dock runs; overdue reminders catch up after sleep/restart. Defaults to this character.',{'title':S,'when':S,'timezone':S,'repeat':{'type':'string','enum':['once','daily','weekdays','weekly','monthly']}},['title','when']),
+ tool('list_reminders','List saved reminders, their ids, dates, recurrence and enabled state.'),
+ tool('delete_reminder','Delete a reminder using its id from list_reminders.',{'id':S},['id']),
+ tool('set_reminder_enabled','Pause or resume a reminder by id.',{'id':S,'enabled':{'type':'boolean'}},['id','enabled']),
  tool('add_task','Record a work item in the persistent Tasks app. Repeated identical items on the same day are deduplicated.',{'title':S,'details':S,'date':S,'status':{'type':'string','enum':['todo','in_progress','done']}},['title']),
  tool('list_tasks','Query the work log by ISO date or date range; the final answer is also displayed in Tasks. Use current local date for today/yesterday and include the year for specific dates. Paginate before claiming a complete summary.',{'date':S,'start':S,'end':S,'query':S,'offset':I,'status':{'type':'string','enum':['todo','in_progress','done']}}),
  tool('update_task','Change a recorded task by its returned id.',{'id':S,'title':S,'details':S,'status':S,'day':S},['id']),
  tool('add_note','Create a note in the existing Notes application.',{'title':S,'body':S},['title','body']),
  tool('list_notes','Read existing Notes, optionally filtering by text.',{'query':S}),
  tool('keep_awake','Enable or disable prevention of idle display/system sleep. Manual locks remain possible.',{'enabled':{'type':'boolean'}},['enabled']),
- tool('open_dock_app','Open Dock Notes, Tasks, Vault, Dashboard, or its Settings/Control console.',{'app':{'type':'string','enum':['notes','tasks','vault','settings','brain','dashboard']}},['app']),
+ tool('open_dock_app','Open Dock Notes, Tasks, Vault, Dashboard, or its Settings/Control console.',{'app':{'type':'string','enum':['notes','tasks','scheduler','vault','settings','brain','dashboard']}},['app']),
  tool('finish','Finish the task with the spoken answer and an appropriate reaction. Only claim actions confirmed by tool results.',
       {'text':S,'emotion':{'type':'string','enum':['neutral','happy','excited','curious','concerned','calm']},
        'gesture':{'type':'string','enum':['none','nod','wave','handshake','celebrate','whistle','think','read']},
        'delivery':{'type':'string','enum':['speak','sing']}},['text'])]
-DELEGATE_TOOL=tool('delegate_tasks','Brain only: delegate independent research or document subtasks to distinct available characters. Waits for their verified results. Workers cannot delegate.',
-    {'tasks':{'type':'array','minItems':1,'maxItems':29,'items':{'type':'object','properties':{'character_id':{'type':'string','enum':[c['id'] for c in characters() if c['id']!='default']},'request':{'type':'string'}},'required':['character_id','request'],'additionalProperties':False}}},['tasks'])
+DELEGATE_TOOL=tool('delegate_tasks','Delegate independent subtasks to available peer agents in the background and wait for verified results. Never delegate to yourself or an ancestor. Busy agents cannot accept another task; reuse them after completion.',
+    {'tasks':{'type':'array','minItems':1,'maxItems':29,'items':{'type':'object','properties':{'character_id':{'type':'string','enum':[c['id'] for c in characters()]},'request':{'type':'string'}},'required':['character_id','request'],'additionalProperties':False}}},['tasks'])
 
 def tools_for(character_id):
     import copy
     tools = copy.deepcopy(TOOLS)
-    if character_id=="default":tools.append(copy.deepcopy(DELEGATE_TOOL))
+    delegation = copy.deepcopy(DELEGATE_TOOL)
+    delegation['function']['parameters']['properties']['tasks']['items']['properties']['character_id']['enum'] = [c['id'] for c in characters() if c['id'] != character_id]
+    tools.append(delegation)
     for item in tools:
         if item['function']['name']=='character_action':
             item['function']['parameters']['properties']['action']['enum']=sorted(character(character_id)['actions'])+['follow_cursor','stop_follow_cursor']
@@ -139,7 +145,7 @@ class LocalTools:
         if hasattr(self.manager,'acquire_desktop'):
             from dock_twoo.brain.ecosystem.coordinator import DESKTOP_TOOLS
             if name in DESKTOP_TOOLS:self.manager.acquire_desktop()
-            if name=='read_aloud' and not self.manager.foreground:raise ValueError('Background workers return results to Brain; spoken output belongs to the addressed foreground agent.')
+            if name=='read_aloud' and not self.manager.foreground:raise ValueError('Background workers return results to their parent; spoken output belongs to the addressed foreground agent.')
         if name in ('web_search','read_webpage'):
             from dock_twoo.brain.ecosystem.web import PublicWeb
             web=getattr(self,'web_client',None) or getattr(self.manager,'research_client',None) or PublicWeb()
@@ -216,6 +222,18 @@ class LocalTools:
             path=self.file_path(args['path']);path.parent.mkdir(parents=True,exist_ok=True)
             with path.open('x',encoding='utf-8') as target:target.write(args['text'])
             return {'created':str(path),'verified':path.read_text()==args['text']}
+        if name in ('create_reminder','list_reminders','delete_reminder','set_reminder_enabled'):
+            if self.manager is None:raise RuntimeError('Dock must be running to manage reminders.')
+            store=self.manager.reminders.store
+            if name=='create_reminder':
+                identity=getattr(self.manager,'identity',None)
+                if identity is None:identity=self.on_main(lambda:self.manager.companion.character_id,cancel)
+                result=store.add(**args,character_id=identity)
+            elif name=='list_reminders':result={'reminders':store.list()}
+            elif name=='delete_reminder':result=store.delete(**args)
+            else:result=store.set_enabled(**args)
+            self.manager.app_data_changed.emit('scheduler')
+            return result
         if name in ('add_task','list_tasks','update_task','add_note','list_notes'):
             from dock_twoo.tasks import TaskStore,NotesService
             root=self.manager.store.data_dir.parent if self.manager else None
@@ -237,7 +255,7 @@ class LocalTools:
             return {'requested_app':args['app']}
         if name=='open_app':
             target=args['name'].lower().strip()
-            if target in ('settings','control','dock settings','brain settings','notes','tasks','vault','dashboard'):
+            if target in ('settings','control','dock settings','brain settings','notes','tasks','scheduler','vault','dashboard'):
                 return self.execute('open_dock_app',{'app':'settings' if target in ('settings','control','dock settings','brain settings') else target},cancel)
             if target in ('mac settings','macos settings','system settings'):args={**args,'name':'System Settings'}
             if target=='windows settings':
@@ -270,7 +288,8 @@ class LocalTools:
             return describe_active_window(cancel)
         if name=='system_status':
             from dock_twoo.brain.providers import get_system_summary
-            return {'time':datetime.now().astimezone().isoformat(),'system':get_system_summary()}
+            from dock_twoo.scheduler import local_zone
+            return {'time':datetime.now().astimezone().isoformat(),'timezone':local_zone(),'system':get_system_summary()}
         if name in ('read_aloud','character_action'):
             if self.manager is None:raise RuntimeError('The desktop application is not running.')
             if name=='read_aloud':
@@ -280,6 +299,8 @@ class LocalTools:
                 else:
                     self.on_main(lambda:self.manager._read_text_now(args['text']) if args['source']=='text' else self.manager._start_reading_now(args['source']),cancel)
                 return {'started_reading':args['source']}
+            if hasattr(self.manager,'foreground') and (not self.manager.foreground or self.manager.base.companion.character_id != self.manager.identity):
+                return {'animation_suppressed':True,'reason':'Background workers return their results without taking foreground UI control.'}
             action=args['action']
             from dock_twoo.brain.animation import ACTIONS
             if action=='follow_cursor':

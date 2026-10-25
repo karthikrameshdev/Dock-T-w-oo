@@ -103,7 +103,7 @@ def test_gui_gc_uses_young_generation_until_old_collection_due(qapp,monkeypatch)
 def test_finishing_load_while_hidden_freezes_page(qapp):
     from PySide6.QtWebEngineCore import QWebEnginePage
     states=[]
-    actor=NS(isVisible=lambda:False,character_name='Brain',setToolTip=lambda _:None,update=lambda:None)
+    actor=NS(isVisible=lambda:False,character_name='Brain',character={'asset_sha256':'hash'},setToolTip=lambda _:None,update=lambda:None)
     page=NS(setVisible=lambda value:states.append(value),setLifecycleState=lambda value:states.append(value))
     view=NS(companion=actor,page=lambda:page)
     CharacterView._ready(view,'1','hash')

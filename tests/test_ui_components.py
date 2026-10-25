@@ -105,7 +105,8 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
     assert "vault" in dock._icon_buttons
     assert "settings" in dock._icon_buttons
     assert "brain" in dock._icon_buttons
-    assert len(dock._icon_buttons) == 7
+    assert "scheduler" in dock._icon_buttons
+    assert len(dock._icon_buttons) == 8
     assert "tasks" in dock._icon_buttons and "keep_awake" in dock._icon_buttons
 
     # Simulate clicking notes icon

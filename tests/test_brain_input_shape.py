@@ -73,18 +73,6 @@ def test_resize_keeps_a_scaled_outline_and_rejects_old_frames(qapp,tmp_path):
     manager.shutdown()
 
 
-def test_overlapping_canvases_allow_nearby_bodies_but_prevent_body_overlap(qapp,tmp_path):
-    manager=manager_at(tmp_path,inventory()[:1]);first=manager.companion;second=manager.add_brain()
-    for actor in (first,second):actor.set_input_shape(payload(actor.size(),[QRect(80,20,80,220)]))
-    first.move(100,100);second.move(200,100)
-    assert first.geometry().intersects(second.geometry())
-    assert not manager.playground.region(first).intersects(manager.playground.region(second))
-    assert manager.playground.constrain_step(first,QPoint(110,100))==QPoint(110,100)
-    stopped=manager.playground.constrain_step(first,QPoint(190,100))
-    assert not manager.playground.region(first,stopped).intersects(manager.playground.region(second))
-    second.move(first.pos());manager.playground.step()
-    assert not manager.playground.region(first).intersects(manager.playground.region(second))
-    manager.shutdown()
 
 
 def test_native_pointer_gate_preserves_gaps_and_drag_capture(qapp,tmp_path,monkeypatch):

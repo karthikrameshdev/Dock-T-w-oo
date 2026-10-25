@@ -48,7 +48,7 @@ def migrate_storage_data(old_root: Path, new_root: Path) -> Dict[str, Any]:
     new_path.mkdir(parents=True, exist_ok=True)
 
     # Ensure all target subsystem subdirectories exist
-    for sub in ("notes", "tasks", "vault", "models", "brain"):
+    for sub in ("notes", "tasks", "scheduler", "vault", "models", "brain"):
         (new_path / sub).mkdir(parents=True, exist_ok=True)
 
     migrated_items = []
@@ -156,6 +156,7 @@ class DockAppItem:
 def get_default_apps() -> List[DockAppItem]:
     """Default dock app items: Notes and Vault at top, Settings and Brain at bottom with 3-dot dividers."""
     return [
+        DockAppItem(id="scheduler",name="Scheduler",icon="scheduler",tooltip="Scheduler"),
         DockAppItem(id="tasks",name="Tasks",icon="tasks",tooltip="Daily Tasks"),
         DockAppItem(
             id="notes",
@@ -468,7 +469,7 @@ class ConfigManager(QObject):
                     # Add new apps without resetting the user's order or settings.
                     app_ids = {a.id for a in self._config.apps}
                     for addition in get_default_apps():
-                        if addition.id in ('tasks','keep_awake','dashboard') and addition.id not in app_ids:
+                        if addition.id in ('tasks','scheduler','keep_awake','dashboard') and addition.id not in app_ids:
                             index = next((i for i,a in enumerate(self._config.apps) if a.id == ('settings' if addition.id in ('keep_awake','dashboard') else 'vault')),len(self._config.apps))
                             if addition.id=='dashboard':
                                 settings_index=next((i for i,a in enumerate(self._config.apps) if a.id=='settings'),index)

@@ -5,6 +5,7 @@ import json
 import time
 from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal, Slot, QFile, QIODevice, QPoint, QRect, QEvent
 from PySide6.QtGui import QColor, QCursor
+from PySide6.QtWidgets import QLabel
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEngineScript, QWebEnginePage
@@ -46,6 +47,10 @@ class CharacterView(QWebEngineView):
     def __init__(self, companion):
         super().__init__(companion)
         self.companion = companion
+        self.parked = False
+        self.snapshot = None
+        self._hidden_since = 0.0
+        self._discarded = False
         from dock_twoo.brain.connectivity import Connectivity
         self.connectivity = Connectivity(self)
         self.ready = False
@@ -90,7 +95,7 @@ class CharacterView(QWebEngineView):
         self.bridge.loaded.connect(self._ready)
         self.bridge.error.connect(self._error)
         if self.detached:
-            self.bridge.shape.connect(companion.set_input_shape)
+            self.bridge.shape.connect(self._shape)
         self.loadFinished.connect(self._loaded)
         self.renderProcessTerminated.connect(self._renderer_terminated)
         self.timer = QTimer(self)
@@ -99,11 +104,79 @@ class CharacterView(QWebEngineView):
         self.hide()
         QTimer.singleShot(800, self, self._load)
 
+    def _shape(self, payload):
+        if not self.ready:
+            return
+        try:
+            if json.loads(payload).get('characterId') != self.companion.character_id:
+                return
+        except (ValueError, TypeError):
+            return
+        self.companion.set_input_shape(payload)
+
+    def change_character(self):
+        # Navigate the same page, disposing the old WebGL scene and its assets.
+        self.timer.stop()
+        self.stop()
+        self.hide()
+        if self.snapshot:
+            self.snapshot.hide()
+            self.snapshot.clear()
+        self.parked = self._discarded = self._loading = self.ready = False
+        self._epoch += 1
+        self._sync_pending = False
+        self._recoveries = self.attempts = 0
+        self.error = self.version = self.asset_hash = ''
+        self.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        self._load()
+
+    def set_parked(self, parked):
+        parked = bool(parked and self.ready and self.companion.isVisible())
+        if parked == self.parked:return
+        self.parked = parked
+        if parked:
+            if self.snapshot is None:
+                self.snapshot = QLabel(self.companion)
+                self.snapshot.setWindowFlags(self.windowFlags())
+                self.snapshot.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                self.snapshot.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+                self.snapshot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                self.snapshot.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.snapshot.setPixmap(self.grab())
+            self.snapshot.setGeometry(self.geometry())
+            self.snapshot.show()
+            from dock_twoo.brain.mascot import pin_native
+            pin_native(self.snapshot)
+            self.timer.stop(); self._epoch += 1; self._sync_pending = False
+            self.hide(); self.page().setVisible(False)
+            self.page().setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
+        else:
+            if self.snapshot:self.snapshot.hide()
+            if self.companion.isVisible():self.show_visual()
+
     def sync_geometry(self):
         c = self.companion
         self.setGeometry(QRect(c.mapToGlobal(QPoint()), c.size()) if self.detached else c.rect())
+        if self.snapshot:self.snapshot.setGeometry(self.geometry())
+
+    def release_hidden_page(self, now):
+        if self.companion.isVisible() or not self.ready or not self._hidden_since or now-self._hidden_since<45:return
+        self.page().setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
+        self.ready=False;self._loading=False;self._discarded=True
+        self._epoch+=1;self._sync_pending=False
+        if self.snapshot:self.snapshot.clear()
+        self.parked=False
 
     def show_visual(self):
+        self._hidden_since = 0.0
+        if getattr(self, '_discarded', False):
+            self._discarded=False;self._loading=True;self.attempts+=1
+            attempt=self.attempts
+            QTimer.singleShot(12000,self,lambda:self._check_ready(attempt))
+        if getattr(self, "parked", False):
+            self.sync_geometry()
+            if self.snapshot:self.snapshot.show()
+            return
         self.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
         self.sync_geometry()
         self.show()
@@ -129,6 +202,8 @@ class CharacterView(QWebEngineView):
             if event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
                 self.sync_geometry()
             elif event.type() == QEvent.Type.Hide:
+                self._hidden_since = time.monotonic()
+                if self.snapshot:self.snapshot.hide()
                 self.timer.stop()
                 self._epoch += 1
                 self._sync_pending = False
@@ -168,6 +243,9 @@ class CharacterView(QWebEngineView):
             self._error(self.error or "The 3D renderer did not become ready; restart Dock to retry.")
 
     def _ready(self, version, asset_hash):
+        expected = self.companion.character.get('asset_sha256', '')
+        if expected and asset_hash != expected:
+            return
         self.version = version
         self.asset_hash = asset_hash
         self.companion.setToolTip(f"{self.companion.character_name} {version}")
@@ -204,6 +282,7 @@ class CharacterView(QWebEngineView):
         self._recover_renderer('The character renderer stopped.')
 
     def _recover_renderer(self, reason):
+        if getattr(self, "parked", False):self.set_parked(False)
         # Fail open: a stalled renderer must never leave a stale invisible hit
         # rectangle above the desktop. Rebuild only this character, not the app.
         self._epoch += 1
@@ -217,7 +296,7 @@ class CharacterView(QWebEngineView):
 
     def _sync(self):
         c = self.companion
-        if not c.isVisible():
+        if not c.isVisible() or getattr(self, "parked", False):
             return
         if self._healthy_since and time.monotonic()-self._healthy_since > 60:
             # Bound a crash storm, not the number of recoveries over days of use.
@@ -229,6 +308,9 @@ class CharacterView(QWebEngineView):
         count=sum(actor.isVisible() for actor in getattr(c.manager,'companions',{}).values())
         nearby=c.geometry().adjusted(-20,-20,20,20).contains(QCursor.pos())
         budget=render_budget(count, nearby or c.activity!='idle')
+        budget['maxFps'] = min(budget['maxFps'], getattr(c, 'render_fps', 18))
+        budget['shapeFps'] = min(budget['shapeFps'], 8 if nearby else 3)
+        budget['pixelRatio'] = 1
         self.timer.setInterval(round(1000/budget['maxFps']))
         progress = min(1, max(0, (time.monotonic() - c.motion_started) / max(.01, c.motion_duration)))
         state = dict(**budget, visible=True, online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,

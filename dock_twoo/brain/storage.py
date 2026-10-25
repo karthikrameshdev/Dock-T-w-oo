@@ -37,6 +37,8 @@ class BrainStore:
             "companion_position": None,
             "companion_positions": {},
             "brain_instances": [],
+            "active_character": "default",
+            "assistant_display": "",
             "brain_roam_all_screens": False,
             "mascot_pose": "stand",
             "mascot_corner": "bottom_right",

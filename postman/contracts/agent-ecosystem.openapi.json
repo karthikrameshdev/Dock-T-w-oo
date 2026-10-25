@@ -2,13 +2,13 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Named agent ecosystem controls",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "One logical agent per catalog identity, parallel independent work, one microphone and one speaker. Authenticated gRPC schema is dock_twoo/brain/ecosystem/agents.proto."
   },
   "paths": {
     "/api/brain/ecosystem": {
       "get": {
-        "description": "Live job registry and bounded seven-day trail. Jobs include parent id, character, profile, state, latest progress, last_reported and generated artifacts. Brain-only delegation is enforced by gRPC credentials.",
+        "description": "Live job registry and bounded seven-day trail. Jobs include parent id, character, profile, state, latest progress, last_reported and generated artifacts. All agents can delegate using their owned running parent task; self, ancestor and busy assignments are rejected. Only one character is rendered.",
         "parameters": [
           {
             "name": "X-Brain-Request",

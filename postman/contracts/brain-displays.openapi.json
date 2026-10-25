@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Dock displays and shared Brain queue",
-    "version": "1.1.0",
-    "description": "Qt display inventory is captured on the GUI thread. Stable display ids select single, all or a subset of extended displays. One shared FIFO agent, microphone and speech output serve all characters. Each enqueued turn freezes its cloud profile. Stop clears pending turns and cancels the current turn without starting another worker until it exits. Named companions are unique per screen. Status characters include character_id and name. Each queued turn freezes character_id, character_name and cloud profile. Calling a name summons that companion and takes the one shared microphone, including during another companion's processing. No body aura is shown. Roaming uses each manifest's own clips and yields on body contact without cancelling its route."
+    "version": "2.0.0",
+    "description": "Qt display inventory uses stable ids for single, all or selected docks. Exactly one assistant renderer serves the entire app and can move between screens. Selecting or calling a name changes that view. Accepted turns freeze character and profile identity; background logical peers process in parallel without windows or audio. One shared microphone/speaker lane belongs to the selected character. Stop cancels queued/running jobs and descendants. Status includes one displayed character plus logical task states."
   },
   "paths": {
     "/api/displays": {

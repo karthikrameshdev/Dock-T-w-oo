@@ -27,7 +27,7 @@ def deserialize(raw):
 
 
 class AgentBus:
-    """Brain owns the registry. Thirty identities, at most one live task each."""
+    """Thirty equal peers; each identity owns at most one live task."""
     def __init__(self, root):
         self.root = Path(root); self.root.mkdir(parents=True, exist_ok=True); self.root.chmod(0o700)
         self.path = self.root / 'ecosystem.sqlite3'
@@ -97,11 +97,6 @@ class AgentBus:
                 context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
         return invoke
 
-    @staticmethod
-    def _brain(identity):
-        if identity != 'default':
-            raise PermissionError('Only Brain can assign or cancel other agents.')
-
     def _event(self, db, identity, task_id, kind, payload):
         encoded = json.dumps(payload, ensure_ascii=False)
         if len(encoded.encode()) > 200_000:
@@ -112,7 +107,6 @@ class AgentBus:
         self.condition.notify_all()
 
     def _assign(self, identity, data):
-        self._brain(identity)
         target = data.get('character_id')
         if target not in self.credentials:
             raise ValueError('Choose one of the 30 catalog agents.')
@@ -120,12 +114,23 @@ class AgentBus:
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 100_000:
             raise ValueError('Supply a nonempty bounded task prompt.')
         with self.db() as db:
-            busy = db.execute("SELECT id FROM jobs WHERE character_id=? AND state NOT IN ('complete','failed','cancelled','interrupted')", (target,)).fetchone()
+            parent = data.get('parent_id', '')
+            if parent:
+                owner = self._owned(db, identity, parent)
+                if owner['state'] != 'running':
+                    raise ValueError('Delegation requires a running parent task.')
+                ancestors = {row[0] for row in db.execute(
+                    'WITH RECURSIVE lineage(id,parent_id,character_id) AS '
+                    '(SELECT id,parent_id,character_id FROM jobs WHERE id=? UNION ALL '
+                    'SELECT j.id,j.parent_id,j.character_id FROM jobs j JOIN lineage l ON j.id=l.parent_id) '
+                    'SELECT character_id FROM lineage', (parent,))}
+                if target in ancestors:
+                    raise ValueError('Cannot delegate to yourself or an ancestor waiting for this task.')
+            elif target != identity:
+                raise PermissionError('Start your own task before delegating to another agent.')
+            busy = db.execute("SELECT id FROM jobs WHERE character_id=? AND state IN ('running','cancelling')", (target,)).fetchone()
             if busy:
                 return {'accepted': False, 'busy_task': busy['id']}
-            parent = data.get('parent_id', '')
-            if parent and not db.execute('SELECT 1 FROM jobs WHERE id=?', (parent,)).fetchone():
-                raise ValueError('Parent task does not exist.')
             ident = uuid.uuid4().hex
             db.execute('INSERT INTO jobs(id,parent_id,character_id,prompt,profile_id,state,workspace,started) VALUES(?,?,?,?,?,?,?,?)', (ident,parent,target,prompt,data.get('profile_id',''),'running',data.get('workspace',''),time.time()))
             self._event(db,target,ident,'task_started',{'parent_id':parent,'profile_id':data.get('profile_id','')})
@@ -167,14 +172,14 @@ class AgentBus:
         return {'published':True}
 
     def _cancel(self, identity, data):
-        self._brain(identity)
         with self.db() as db:
             root = data.get('task_id','')
+            self._owned(db, identity, root)
             ids = [row[0] for row in db.execute('WITH RECURSIVE tree(id) AS (SELECT id FROM jobs WHERE id=? UNION ALL SELECT jobs.id FROM jobs JOIN tree ON jobs.parent_id=tree.id) SELECT id FROM tree', (root,))]
             for ident in ids:
                 # Keep the lease until the worker acknowledges termination.
                 db.execute("UPDATE jobs SET state='cancelling' WHERE id=? AND state NOT IN ('complete','failed','cancelled','interrupted')", (ident,))
-            self._event(db,'default',root,'cancellation_requested',{'tasks':ids})
+            self._event(db,identity,root,'cancellation_requested',{'tasks':ids})
         return {'task_ids':ids}
 
     def _snapshot(self, identity, data):
@@ -196,7 +201,7 @@ class AgentBus:
         for row in events:
             value=json.loads(row['payload'])
             row['payload']=value if len(row['payload'])<4000 else {'preview':row['payload'][:3500],'truncated':True}
-        result = {'jobs':jobs,'events':events,'agents':[{**entry,'role':'orchestrator' if entry['id']=='default' else 'worker'} for entry in characters()]}
+        result = {'jobs':jobs,'events':events,'agents':[{**entry,'role':'agent'} for entry in characters()]}
         while len(json.dumps(result,ensure_ascii=False).encode())>1_500_000:
             if len(events)>1:events.pop(-1 if 'after' in data else 0)
             else:

@@ -67,23 +67,26 @@ filter and overall aggregate endpoint.
 
 Display selection and the shared execution queue are specified in
 `contracts/brain-displays.openapi.json`. `tests/test_multi_brain.py` exercises a
-four-display inventory, screens 1 and 4, hot-plug fallback/reconnection, one-screen
-crowds, non-overlap, queued profile snapshots, per-character work leases, parallel agents, Stop, and microphone
-handoff. Real local HTTP tests reject invalid/unselected screen ids and foreign
-origins. No live cloud calls are used for these checks.
-
-`QT_QPA_PLATFORM=offscreen python scripts/verify_multi_brain_queue.py` runs the real
-local request endpoint, Qt FIFO, two simulated display targets, both cloud API
-formats and the durable ledger together. It verifies four HTTP model calls,
-separate 480/620-token profile totals, and 1,100 tokens overall while switching
-profiles before the queued request starts. All model traffic stays on loopback.
-
+four-display inventory, screens 1 and 4, hot-plug fallback/reconnection, one
+renderer across all docks, character switching, profile snapshots, Stop and the
+shared microphone. Real local HTTP tests reject invalid/unselected screen ids
+and foreign origins. No live cloud calls are used for these checks.
 
 Named ecosystem controls are specified in `contracts/agent-ecosystem.openapi.json`.
-`verify_agent_ecosystem.py` runs Brain plus three concurrent research workers over
+`verify_agent_ecosystem.py` runs Orbit with Brain/Fox peers, Owl nested under Fox, and Brain reused later over
 real local gRPC and Postman HTTP, producing four generated documents with durable
 per-character/profile accounting. `verify_named_agent.py` tests named routing via
 the actual local HTTP endpoint. `test_parallel_agent_io.py` runs real CLI processes
 in separate temporary projects and verifies live status, default-profile fallback,
-workspace cleanup and sequential speech while internal work continues in parallel.
+workspace cleanup, 29 simultaneous background peers and selected-agent speech while internal work continues in parallel.
 The simulation uses synthetic sources; it does not establish live research quality.
+
+With the primary simulation on port 24930, run
+`QT_QPA_PLATFORM=offscreen python scripts/verify_reminder_agent.py` for the full
+named request → model tool call → durable reminder → onscreen notification →
+shared speech-queue path. The clock is advanced locally and speech is intercepted;
+no microphone or live provider is used. Reminder schemas live in `agent_tools.py`
+because these are agent tools, not new public REST endpoints. The ecosystem verifier
+also asserts that only one character view exists and all task projects are released
+after nested and reused workers complete. Manual Scheduler add/search/pause/delete and durable
+alert timing are covered by the native Qt/SQLite tests.

@@ -20,7 +20,7 @@ def describe_image(path,cancel):
             truststore.inject_into_ssl()
             root=Path(snapshot_download(MODEL,revision=REVISION,cache_dir=Path.home()/'.cache/huggingface/hub',
                 allow_patterns=['*.json','vocab.json','merges.txt','onnx/encoder_model_quantized.onnx','onnx/decoder_model_quantized.onnx']))
-            options=ort.SessionOptions();options.intra_op_num_threads=2;options.inter_op_num_threads=1
+            options=ort.SessionOptions();options.intra_op_num_threads=1;options.inter_op_num_threads=1
             encoder=ort.InferenceSession(str(root/'onnx/encoder_model_quantized.onnx'),sess_options=options,providers=['CPUExecutionProvider'])
             decoder=ort.InferenceSession(str(root/'onnx/decoder_model_quantized.onnx'),sess_options=options,providers=['CPUExecutionProvider'])
             _engine=encoder,decoder,Tokenizer.from_file(str(root/'tokenizer.json'))

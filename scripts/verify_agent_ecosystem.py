@@ -1,4 +1,4 @@
-"""Real Qt → Brain → gRPC → parallel workers → Postman HTTP → documents/ledger.
+"""Real Qt → Orbit → gRPC → parallel/nested/reused peers → Postman HTTP → documents/ledger.
 
 Requires the repository's cloud simulation on 24930. No microphone, physical
 input or live provider is opened. The source pages are clearly synthetic fixtures.
@@ -21,11 +21,11 @@ screen=SimpleNamespace(availableGeometry=lambda:QRect(0,0,1440,900),geometry=lam
 manager.configure_displays([{'id':'fixture-screen','screen':screen}])
 a=manager.profile_mgr.save_profile({'name':'Primary fixture','provider':'custom','model':'fixture','base_url':'https://fixture.example/v1','api_key':'fixture-key'})
 b=manager.profile_mgr.create_profile({'name':'Rio fixture','provider':'custom','protocol':'anthropic','model':'fixture','base_url':'https://fixture.example/v1','api_key':'fixture-key'})
-manager.profile_mgr.activate_profile(a['id']);manager.profile_mgr.bind_character('parrot',b['id'])
+manager.profile_mgr.activate_profile(a['id']);manager.profile_mgr.bind_character('default',b['id'])
 manager.agent.client_factory=lambda config,key:CloudClient({**config,'base_url':'http://127.0.0.1:24930/cloud'},key,allow_test_endpoint=True,timeout=10)
 manager.research_client=PublicWeb(search_url='http://127.0.0.1:24930/cloud/sources/search?q=',allow_test_endpoint=True)
 started=time.monotonic();peak=0;result={};finished=False
-manager.submit_request('Hey Brain, hierarchy-research','console','fixture-screen')
+manager.submit_request('Hey Orbit, peer-research','console','fixture-screen')
 def tick():
  global peak,finished
  peak=max(peak,len(manager.coordinator.workers))
@@ -34,20 +34,22 @@ def tick():
   result.update(success=False,error='Ecosystem verification timed out',agent=manager.agent.status());finish();return
  if manager.last_response['generation'] and not manager._active_turn and not manager._worker_running:
   try:
-   jobs=manager.coordinator.snapshot()['jobs'];assert len(jobs)==4,jobs
-   assert {job['character_id'] for job in jobs}=={'default','parrot','fox','siamese'}
+   jobs=manager.coordinator.snapshot()['jobs'];assert len(jobs)==5,jobs
+   assert {job['character_id'] for job in jobs}=={'orbit','default','fox','owl'}
    assert all(job['state']=='complete' for job in jobs),jobs
    assert peak>=2,peak
-   metrics=manager.activity.metrics();assert metrics['summary']['calls']==15,metrics['summary']
-   assert metrics['summary']['total_tokens']==3880,metrics['summary']
-   assert manager.activity.metrics(character_id='parrot')['summary']['total_tokens']==1240
-   assert manager.activity.metrics(profile_id=a['id'])['summary']['total_tokens']==2640
-   assert sum(row['total_tokens'] for row in metrics['characters'])==3880
+   metrics=manager.activity.metrics();assert metrics['summary']['calls']==18,metrics['summary']
+   assert metrics['summary']['total_tokens']==4880,metrics['summary']
+   assert manager.activity.metrics(character_id='default')['summary']['total_tokens']==2480
+   assert manager.activity.metrics(profile_id=a['id'])['summary']['total_tokens']==2400
+   assert sum(row['total_tokens'] for row in metrics['characters'])==4880
    outputs=list((root/'brain/documents').rglob('*.md'));assert len(outputs)==4,outputs
    assert all(path.stat().st_size>40 for path in outputs)
-   assert any(path.name=='quantum-report.md' for path in outputs)
-   events=manager.coordinator.snapshot()['events'];assert sum(e['kind']=='task_started' for e in events)==4
-   result.update(success=True,agents=4,concurrent_workers=peak,model_calls=15,reported_tokens=3880,documents=len(outputs),grpc_events=len(events),live_provider_calls=0)
+   assert any(path.name=='peer-report.md' for path in outputs)
+   events=manager.coordinator.snapshot()['events'];assert sum(e['kind']=='task_started' for e in events)==5
+   assert len(manager.companions)==1 and manager.companion.character_id=='orbit'
+   assert not manager.coordinator.workspaces
+   result.update(success=True,agents=4,jobs=5,concurrent_workers=peak,model_calls=18,reported_tokens=4880,documents=len(outputs),grpc_events=len(events),single_visible_character=True,workspaces_released=True,live_provider_calls=0)
   except Exception as exc:result.update(success=False,error=repr(exc),agent=manager.agent.status())
   finish()
 def finish():

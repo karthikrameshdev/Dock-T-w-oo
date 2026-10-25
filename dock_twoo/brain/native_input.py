@@ -27,7 +27,7 @@ class NativeInputRouter(QObject):
         self._last_verified = 0.0
         self._release_checks = set()
         self.timer = QTimer(self)
-        self.timer.setInterval(16)
+        self.timer.setInterval(50)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self.sync)
         if self.enabled:
@@ -102,10 +102,11 @@ class NativeInputRouter(QObject):
                 message(None, window, 'setIgnoresMouseEvents:', (ctypes.c_bool, ignored))
                 self._states[key] = ignored
             view = getattr(actor, 'model_view', None)
-            if verify and view is not None and isValid(view) and view.isVisible():
-                window, message = mac_window(view)
-                if window and message:
-                    message(None, window, 'setIgnoresMouseEvents:', (ctypes.c_bool, True))
+            for visual in (view, getattr(view, 'snapshot', None)):
+                if verify and visual is not None and isValid(visual) and visual.isVisible():
+                    window, message = mac_window(visual)
+                    if window and message:
+                        message(None, window, 'setIgnoresMouseEvents:', (ctypes.c_bool, True))
         self._states = {key: value for key, value in self._states.items() if key in known}
 
     def _recover_release(self, actor):

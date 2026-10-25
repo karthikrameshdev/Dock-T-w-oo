@@ -516,7 +516,7 @@
                   <span>✨ Summon Mini Agent</span>
                 </button>
                 <button type="button" id="brainTalkBtn" class="btn btn-secondary">
-                  <span>🎤 Talk to Brain</span>
+                  <span>🎤 Talk to assistant</span>
                 </button>
                 <button type="button" id="brainLoopAnimBtn" class="btn btn-secondary">
                   <span>🎭 Play Animations</span>
@@ -527,15 +527,15 @@
               </div>
               <form id="brainRequestForm" class="form-row" style="margin-top: 16px;">
                 <div class="form-group flex-1">
-                  <label for="brainRequestText">Ask Brain</label>
+                  <label for="brainRequestText">Ask the selected assistant</label>
                   <input id="brainRequestText" class="text-input" type="text" maxlength="2000" placeholder="Sing a song, open Cursor, or ask a question" autocomplete="off">
                 </div>
-                <button type="submit" class="btn btn-primary" id="brainRequestSend">Send to Brain</button>
+                <button type="submit" class="btn btn-primary" id="brainRequestSend">Send to assistant</button>
               </form>
               <div class="action-btn-row"><button type="button" class="btn btn-secondary" id="brainStopAgent">Stop request</button><button type="button" class="btn btn-secondary" data-reader="read_selected">Read Selected Text</button><button type="button" class="btn btn-secondary" data-reader="read_window">Read Active Window</button><button type="button" class="btn btn-secondary" data-reader="stop_reading">Stop Reading</button></div>
               <p class="field-desc" id="brainAgentProgress" role="status"></p>
               <p class="field-desc" id="brainLocalSpeechStatus" role="status"></p>
-              <p id="brainRequestStatus" class="field-desc" role="status">Type a request here or speak to Brain. Both use the same assistant.</p>
+              <p id="brainRequestStatus" class="field-desc" role="status">Type a request or speak to the selected assistant. Start with a character name to switch.</p>
             </div>
 
             <!-- Hands-Free Wake Word -->
@@ -618,7 +618,7 @@
           <div class="brain-tab-panel" id="brain-tab-profiles">
             <div class="settings-card">
               <h3>Agent model profiles</h3>
-              <p class="field-desc">Configure API, network, Ollama or installed CLI models. Assign a profile to each character below. Brain can orchestrate the 29 workers; speech stays local.</p>
+              <p class="field-desc">Configure API, network, Ollama or installed CLI models. Assign a profile to each character below. Any agent can delegate to available peers. One selected character appears on screen; all workers run in the background. Speech stays local.</p>
               <div class="form-row">
                 <div class="form-group flex-1"><label for="brainCloudProfile">Agent model profile</label><select id="brainCloudProfile" class="select-input"></select></div>
                 <button type="button" id="brainCloudNew" class="btn btn-secondary">New profile</button>
@@ -652,7 +652,7 @@
               <div class="action-btn-row"><button id="agentCharacterForget" class="btn btn-secondary" type="button">Clear character memory</button>
               <button id="agentCharacterSave" class="btn btn-primary" type="button">Save character settings</button></div><p id="agentCharacterStatus" class="field-desc" role="status"></p>
             </div>
-            <div class="settings-card"><h3>Live agent activity</h3><p class="field-desc">Brain's gRPC task trail. Detailed events are retained for 7 days; usage totals remain available.</p><div id="agentDocumentOutputs"></div><div id="agentTaskTrail" aria-live="polite"></div></div>
+            <div class="settings-card"><h3>Live agent activity</h3><p class="field-desc">Shared gRPC task trail for all agents. Detailed events are retained for 7 days; usage totals remain available.</p><div id="agentDocumentOutputs"></div><div id="agentTaskTrail" aria-live="polite"></div></div>
           </div>
 
           <!-- Tab 3: Robot Companion & Motions -->

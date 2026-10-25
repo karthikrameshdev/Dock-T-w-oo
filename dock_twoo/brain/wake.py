@@ -86,7 +86,7 @@ class WakeDetector:
             spotter = sherpa_onnx.KeywordSpotter(
                 tokens=str(folder / "tokens.txt"), encoder=str(folder / self.ENCODER),
                 decoder=str(folder / self.DECODER), joiner=str(folder / self.JOINER),
-                keywords_file=str(keywords_path), num_threads=2, provider="cpu",
+                keywords_file=str(keywords_path), num_threads=1, provider="cpu",
                 keywords_score=1.0, keywords_threshold=.45 if self.keywords else .25, num_trailing_blanks=1,
             )
             with self._lock:

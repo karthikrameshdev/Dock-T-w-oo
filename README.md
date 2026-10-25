@@ -225,6 +225,30 @@ entries on the same day are deduplicated. Notes use the existing Notes drawer.
 System Settings. Windows Settings requires Windows; the desktop CUA and full
 window reader currently support macOS Accessibility apps.
 
+**Scheduler** has its own dock drawer. Add, search, pause, resume or delete
+one-time, daily, weekday, weekly and monthly reminders. Say “Rio, remind me
+tomorrow at 11 am about the meeting” or “Brain, every day at 10 am remind me to
+review my tasks.” The agent saves the reminder locally with its character and
+time zone. Notifications appear five minutes before, one minute before and at
+the scheduled time. Spoken reminders use local TTS and wait for the shared audio
+lane. Keep Dock running and the computer awake for timely alerts; after sleep or
+restart, it delivers one catch-up alert instead of replaying stale warnings.
+
+Right-click the Voice Assistant icon and choose **Choose assistant** to switch
+between the 30 characters. Only one character window exists across all displays.
+Every agent can delegate to available peers; background workers have no character
+renderer, microphone or audio output. Brief top-of-screen toasts report assignment
+and completion. Completed work and live progress remain in the console task trail.
+
+Dock samples its own process tree every two seconds and cooperatively targets
+20% CPU, where 100% means one CPU core. Under load it reduces frame/readback rates
+and lets the idle assistant rest in its current rendered pose when necessary. Clicking or addressing a character resumes it. Hidden
+character pages are discarded after 45 seconds and reload when shown. This is
+not a hard OS quota: startup, local speech inference, active interactions and
+external model CLIs can exceed the target. Housekeeping removes completed worker
+projects, retired view state and expired activity traces; it does not kill other
+applications, clear user documents or repeatedly unload active speech models.
+
 The **Keep Awake** coffee icon above Settings toggles idle system/display sleep
 prevention (`caffeinate -d -i` on macOS). It releases its own assertion when disabled
 or when Dock exits. It does not disable manual locks or managed security policies.
@@ -365,38 +389,37 @@ Use **Placement & Sizing → Show Dock on** to select one display, all displays,
 specific screens such as 1 and 4. Disconnected selections are remembered. The dock
 falls back to the primary screen until a selected screen returns.
 
-Right-click **Voice Assistant** for **Add assistant**, **Add all missing characters**,
-**Assistants on this screen**, and **Roam across all screens**. The 30-character
-catalog includes Brain, Orbit, Rio, Luma, Fable and the other supplied Blender
-characters. Say a character's name with an optional greeting, such as “Hey Rio,
-open my notes”. That character is summoned and receives the complete statement.
-There is at most one instance of a specific character on each screen. Views on
-separate screens share the same logical agent, memory and task lease.
+Right-click **Voice Assistant → Choose assistant** to select Brain, Orbit, Rio,
+Luma, Fable or another supplied Blender character. A named wake such as “Hey Rio,
+open my notes” changes the same renderer to Rio and routes the complete statement
+to that identity. The selected character is remembered. **Move assistant to
+screen** and **Roam across all screens** control the one assistant independently
+of the dock's multi-display placement. Old saved crowds migrate to one window;
+model bindings, memory, task history and documents remain intact.
 
-Each character uses its own rig, animation clips, motion clock and walking route.
-They yield when paths meet and continue their original route. Local ONNX semantic
-ranking chooses varied idle actions without interrupting a playing action. There
-is no listening body aura. The live body silhouette controls clicks; transparent
-canvas space, effects and props allow clicks to reach the app underneath.
+The selected character uses its own rig and animation library. Local ONNX semantic
+ranking varies idle actions. There is no listening body aura; the head light shows
+state. The live body silhouette controls clicks, leaving transparent margins,
+effects and props click-through. **Hide assistant** and **Show assistant** control
+that single window. The parachute action includes descent, landing and retraction.
 
-**Hide all assistants** retains placements; **Show all assistants** restores them.
-Only secondary instances can be removed. Busy characters retain their identity
-until their work is finished or stopped. The authored parachute action uses a
-matching descent path before landing and retracting its canopy.
+### Peer agent ecosystem
 
-### Brain's agent ecosystem
+All 30 agents have equal delegation capabilities. Orbit can assign Brain and Owl
+independent work, collect their artifacts and prepare a final document; Brain can
+do the same. Each logical identity owns at most one live job. Completed agents can
+be reused in a later batch, and workers can delegate further. Busy, self and ancestor
+assignments are rejected promptly, so a dependency cycle cannot deadlock the pool.
+Up to 29 background workers can process concurrently, with one shared desktop-input
+lease for CUA operations. They never create hidden windows or audio services.
 
-Brain is the sole orchestrator and may assign independent work to the 29 other
-agents concurrently, collect their files and prepare a final document. Workers
-answer requests addressed to them using their own configured model; they cannot
-delegate. Each logical character holds one work lease at a time. Independent
-characters process concurrently; additional work for a busy character waits.
-Microphone capture and spoken replies are exclusive: one character listens or
-speaks at a time. Interrupting speech to ask a question preserves background work.
-Ask “Brain, what is the status?” while research runs: Brain reads live worker
-reports over authenticated loopback gRPC, without another model call. Completed
-answers wait for the shared speaker, and documents can be downloaded in the console.
-**Stop** cancels running and queued work.
+Only the selected agent listens or speaks. Selecting another character ends the
+old audio session without cancelling background jobs. Inactive agents' finished
+jobs produce a brief toast, retain their results and can be queried later; they do
+not interrupt the selected agent. Ask “Orbit, what is the status?” to hear its live
+worker reports over authenticated gRPC without another model call. The console
+provides the durable task trail and downloadable outputs. **Stop** cancels running
+and queued work, including descendants.
 
 In **AI Voice Assistant → Agent Models**, configure API, explicit network/Ollama,
 or installed headless Gemini, Codex, Claude Code, Kilo and custom CLI profiles.

@@ -68,7 +68,7 @@ def test_streaming_keyword_bypasses_the_voice_gate():
     assert woken == [True]
 
 
-def test_dictation_backup_runs_when_ready_keyword_model_misses():
+def test_dictation_backup_checks_voiced_utterance_when_keyword_model_misses():
     listener = AudioListener()
     listener.wake_detector = SimpleNamespace(ready=True, feed=lambda _pcm: '', reset=lambda: None)
     listener._vad = SimpleNamespace(is_speech=lambda _pcm, _rate: False)
@@ -76,7 +76,11 @@ def test_dictation_backup_runs_when_ready_keyword_model_misses():
     listener._dispatch_wake_check = lambda frames: windows.append(frames)
     for _ in range(60):
         listener._handle_pcm_frame(b'\x64\x00' * 1600)
-    assert [len(frames) for frames in windows] == [20, 40, 40]
+    assert not windows  # Non-speech must not run full ASR every two seconds.
+    listener._vad = SimpleNamespace(is_speech=lambda _pcm, _rate: True)
+    for _ in range(60):
+        listener._handle_pcm_frame(b'\x64\x00' * 1600)
+    assert [len(frames) for frames in windows] == [20]
 
 
 def test_playback_echo_and_its_tail_cannot_wake_the_agent(monkeypatch):

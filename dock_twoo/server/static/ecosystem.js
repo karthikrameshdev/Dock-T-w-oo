@@ -13,7 +13,7 @@
     profile.value=bindings[id]||'';
     const tuning=voices[id]||{voice:'af_heart',speed:1,pitch:1};
     voice.value=tuning.voice;byId('agentCharacterSpeed').value=Number(tuning.speed.toFixed(3));byId('agentCharacterPitch').value=Number(tuning.pitch.toFixed(3));
-    byId('agentCharacterRole').textContent=`${entry.name} · ${entry.species.replaceAll('_',' ')} · ${id==='default'?'Super agent and sole orchestrator':'Worker agent · reports to Brain'}`;
+    byId('agentCharacterRole').textContent=`${entry.name} · ${entry.species.replaceAll('_',' ')} · Peer agent · can delegate to available agents`;
     window.ConsoleControls?.enhance(root);dirty=false;
   }
   async function refresh(){

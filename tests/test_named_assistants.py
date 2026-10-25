@@ -19,24 +19,6 @@ def test_each_name_has_exact_anchored_wake_and_own_actions(entry):
     assert named_prefix(entry['name']+'s are here')[0] is None
 
 
-def test_all_thirty_on_one_screen_deduplicate_and_restore(qapp,tmp_path):
-    entries=inventory()[:1]; manager=manager_at(tmp_path,entries)
-    shared=(manager.listener,manager.speech,manager.agent,manager.audio_devices)
-    manager.add_all_characters()
-    assert len(manager.companions)==30
-    for entry in characters():
-        a=manager.add_brain(entries[0]['id'],entry['id'])
-        assert a.character_id==entry['id'] and a.character_name==entry['name']
-        assert len(a.actions)==136 and not listening_aura_allowed(a)
-    assert len(manager.companions)==30
-    actors=list(manager.companions.values())
-    for i,a in enumerate(actors):
-        assert all(not manager.playground.region(a).intersects(manager.playground.region(b)) for b in actors[i+1:])
-    assert shared==(manager.listener,manager.speech,manager.agent,manager.audio_devices)
-    saved=manager.store.setting('brain_instances'); manager.shutdown()
-    manager=manager_at(tmp_path,entries)
-    assert len(manager.companions)==30 and manager.store.setting('brain_instances')==saved
-    manager.shutdown()
 
 
 def test_named_summon_queue_and_single_mic(qapp,tmp_path,monkeypatch):
@@ -53,10 +35,10 @@ def test_named_summon_queue_and_single_mic(qapp,tmp_path,monkeypatch):
     manager._on_named_turn_completed('parrot','open Cursor and type hello world',listener.last_completed_transcript,False)
     turn=manager._turn_queue[0]
     assert turn.character_name=='Rio' and turn.text=='open Cursor and type hello world'
-    assert rio.activity=='processing' and brain is not rio
+    assert rio.activity=='processing' and brain is rio
     listener._begin_wake_capture([], 'default')
     assert manager._listening_actor_id==brain.actor_id
-    assert brain.activity=='listening' and rio.activity=='processing'
+    assert brain.activity=='listening' and brain.character_id=='default'
     assert not any(listening_aura_allowed(a) for a in manager.companions.values())
     manager._worker_running=False;manager.shutdown()
 
@@ -74,34 +56,8 @@ def test_followup_prefix_routes_to_named_character_without_chopping_request(qapp
     manager._worker_running=False;manager.shutdown()
 
 
-def test_collision_keeps_clip_route_and_callback_and_resumes(qapp,tmp_path):
-    manager=manager_at(tmp_path,inventory()[:1]);a=manager.companion;b=manager.add_brain(character_id='parrot')
-    area=a.assigned_screen.availableGeometry();a.move(area.topLeft()+QPoint(150,200));b.move(a.pos()+QPoint(300,0))
-    destination=b.pos()+QPoint(150,0);a.play_action('walk',destination,duration=2)
-    marker=lambda:None;a.arrival=marker
-    # Advancing shapes can cause contact even while the route is clear.
-    b.move(a.pos());manager.playground.step()
-    assert a.action=='walk' and a.destination==destination and a.arrival is marker
-    assert not manager.playground.region(a).intersects(manager.playground.region(b))
-    start=QPoint(a.pos());a._last_motion_tick=time.monotonic()-.05;a._advance_motion()
-    assert a.action=='walk' and a.pos()!=start
-    manager.shutdown()
 
 
-def test_roaming_uses_species_clip_independently(qapp,tmp_path,monkeypatch):
-    manager=manager_at(tmp_path,inventory()[:1]);a=manager.companion;b=manager.add_brain(character_id='parrot')
-    manager.store.set_setting('roaming',True)
-    monkeypatch.setattr(random,'random',lambda:0)
-    monkeypatch.setattr(random,'choice',lambda values:values[0])
-    for actor in (a,b):
-        actor.last_dragged=0;actor._roam()
-        assert actor.action in actor.actions
-    assert b.character['actions'][b.action]['category']=='species'
-    action,start=b.action,b.motion_started
-    a.play_action('dance')
-    manager.playground._next_social=0;manager.playground.step()
-    assert b.action==action and b.motion_started==start
-    manager.shutdown()
 
 
 def test_acoustic_greeting_alias_and_short_noise_rejection():
@@ -116,11 +72,44 @@ def test_acoustic_greeting_alias_and_short_noise_rejection():
 def test_running_character_keeps_identity_when_its_display_disconnects(qapp,tmp_path):
     from dock_twoo.brain.sessions import Turn
     entries=inventory()[:2];manager=manager_at(tmp_path,entries)
-    rio=manager.add_brain(entries[1]['id'],'parrot')
+    rio=manager.select_character('parrot',entries[1]['id'])
     turn=Turn('Research','console',rio.actor_id,{},'',run_id='fixture',character_id='parrot',character_name='Rio')
     manager._processing_turns[turn.run_id]={'turn':turn,'cancel':threading.Event(),'agent':manager.agent}
     manager.configure_displays(entries[:1],entries[:1])
     replacement=manager.actor_for(turn.actor_id)
     assert replacement.character_id=='parrot' and replacement.screen_id==entries[0]['id']
-    assert turn.character_id=='parrot' and rio.actor_id not in manager.companions
+    assert turn.character_id=='parrot' and rio.actor_id in manager.companions and len(manager.companions)==1
     manager._processing_turns.clear();manager.shutdown()
+
+def test_selected_species_uses_its_own_animation_library(qapp,tmp_path,monkeypatch):
+    manager=manager_at(tmp_path,inventory()[:1]);manager.store.set_setting('roaming',True)
+    monkeypatch.setattr(random,'random',lambda:0)
+    monkeypatch.setattr(random,'choice',lambda values:values[0])
+    for identity in ('default','parrot','owl','fox'):
+        actor=manager.choose_assistant(identity)
+        actor.last_dragged=0;actor._roam()
+        assert actor.action in actor.actions
+        assert len(manager.companions)==1
+    manager.shutdown()
+
+
+def test_delayed_animation_policy_cannot_animate_replacement_character(qapp,tmp_path):
+    from concurrent.futures import Future
+    manager=manager_at(tmp_path,inventory()[:1]);actor=manager.companion
+    manager.store.set_setting('roaming',True)
+    result=Future();result.set_result('wave')
+    manager.ecology.pending.add(actor.actor_id)
+    manager.choose_assistant('parrot')
+    manager.ecology.apply(actor,actor.actor_id,result,'default')
+    assert actor.action is None and actor.actor_id not in manager.ecology.pending
+    manager.shutdown()
+
+
+def test_delayed_reply_gesture_does_not_follow_character_switch(qtbot,tmp_path):
+    from dock_twoo.brain.agent import AgentReply
+    manager=manager_at(tmp_path,inventory()[:1])
+    manager.animation_director.respond(AgentReply('Hello',gesture='wave'))
+    manager.choose_assistant('owl')
+    qtbot.wait(220)
+    assert manager.companion.character_id=='owl' and manager.companion.action is None
+    manager.shutdown()

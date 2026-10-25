@@ -9,3 +9,6 @@ truststore>=0.10.0
 webrtcvad-wheels>=2.0.14
 pytest>=8.0.0
 pytest-qt>=4.4.0
+
+psutil>=6,<8
+tzdata>=2025.1

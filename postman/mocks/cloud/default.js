@@ -25,7 +25,17 @@ http.createServer((req,res)=>{
   const make=(name,args)=>({id:'call_'+responses.length+'_'+calls.length,name,arguments:args});
   const systemText=typeof data.system==='string'?data.system:Array.isArray(data.system)?data.system.map(b=>b.text).join(' '):data.messages.filter(m=>m.role==='system').map(m=>m.content).join(' ');
   const work=systemText.match(/Task workspace: ([^\n]+)/)?.[1];
-  if(text.includes('hierarchy-research')){
+  if(text.includes('peer-research')){
+    if(!responses.length)calls.push(make('delegate_tasks',{tasks:[{character_id:'default',request:'research-child entanglement'},{character_id:'fox',request:'peer-nested'}]}));
+    else if(responses.length===1)calls.push(make('delegate_tasks',{tasks:[{character_id:'default',request:'research-child synthesis'}]}));
+    else if(responses.length===2)calls.push(make('write_file',{path:work+'/peer-report.md',text:'# Verified peer report\n\n'+JSON.stringify(responses)}));
+    else calls.push(make('finish',{text:'Created the peer research report from reused and nested workers.',emotion:'happy'}));
+  }
+  else if(text.includes('peer-nested')){
+    if(!responses.length)calls.push(make('delegate_tasks',{tasks:[{character_id:'owl',request:'research-child interference'}]}));
+    else calls.push(make('finish',{text:'Verified nested section: '+JSON.stringify(responses[0].result)}));
+  }
+  else if(text.includes('hierarchy-research')){
     if(!responses.length)calls.push(make('delegate_tasks',{tasks:[{character_id:'parrot',request:'research-child entanglement'},{character_id:'fox',request:'research-child superposition'},{character_id:'siamese',request:'research-child interference'}]}));
     else if(responses.length===1)calls.push(make('write_file',{path:work+'/quantum-report.md',text:'# Verified synthetic report\n\n'+JSON.stringify(responses[0].result)}));
     else calls.push(make('finish',{text:'Created the final synthetic research document.',emotion:'happy'}));
@@ -50,6 +60,8 @@ http.createServer((req,res)=>{
   else if(text.includes('open-and-type'))calls.push(make('finish',{text:'Opened Cursor and verified hello world.',emotion:'happy'}));
   else if(text.includes('invalid-arguments') && !responses.length)calls.push(make('read_file',{wrong:'bad'}));
   else if(text.includes('invalid-arguments'))calls.push(make('finish',{text:'The invalid tool was rejected and reported correctly.',emotion:'concerned'}));
+  else if(text.includes('reminder-fixture') && !responses.length)calls.push(make('create_reminder',{title:'Synthetic meeting',when:'2099-10-26T10:00:00',timezone:'Asia/Kolkata',repeat:'daily'}));
+  else if(text.includes('reminder-fixture'))calls.push(make('finish',{text:'Saved your daily reminder with five-minute, one-minute and on-time alerts.',emotion:'happy'}));
   else if(text.includes('record-work') && !responses.length)calls.push(make('add_task',{title:'Implemented cloud agent',date:'2026-01-05',status:'done'}));
   else if(text.includes('recall-work') && !responses.length)calls.push(make('list_tasks',{date:'2026-01-05'}));
   else if(text.includes('record-work')||text.includes('recall-work'))calls.push(make('finish',{text:JSON.stringify(responses[0].result),emotion:'happy',gesture:'nod'}));

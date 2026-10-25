@@ -27,6 +27,7 @@ class EcologyDirector(QObject):
                 self.manager.speech.sound(actor.character_id)
         for actor in list(self.manager.companions.values()):
             actor.roam_timer.stop()
+            if getattr(actor, 'resource_resting', False):continue
             if actor.actor_id in self.pending or now<self.next.get(actor.actor_id,0):continue
             if not actor.isVisible() or actor.activity!='idle' or actor.action or actor.on_turn_finished or actor.origin or actor.reduced_motion or actor.follow_cursor_enabled or now-actor.last_dragged<12:continue
             identity=actor.actor_id;self.pending.add(identity)
@@ -37,7 +38,7 @@ class EcologyDirector(QObject):
             if not candidates:candidates=['walk']
             context=f"A friendly {actor.character['species']} exploring the desktop, curious, playful, relaxed and moving naturally."
             future=self.pool.submit(self.choose,model,context,candidates,list(self.recent.get(identity,[])))
-            future.add_done_callback(lambda result,a=actor,key=identity:self.manager.run_on_main_thread(lambda:self.apply(a,key,result)))
+            future.add_done_callback(lambda result,a=actor,key=identity,char=actor.character_id:self.manager.run_on_main_thread(lambda:self.apply(a,key,result,char)))
 
     @staticmethod
     def choose(model,context,candidates,recent):
@@ -46,12 +47,14 @@ class EcologyDirector(QObject):
         weights=np.exp((scores-scores.max())/.22);weights/=weights.sum()
         return str(np.random.default_rng().choice(candidates,p=weights))
 
-    def apply(self,actor,identity,future):
+    def apply(self,actor,identity,future,character_id=None):
         self.pending.discard(identity)
         if self.closed or actor not in self.manager.companions.values():return
+        if character_id is not None and actor.character_id != character_id:return
         self.next[identity]=time.monotonic()+random.uniform(2,7)
         try:action=future.result()
         except Exception:return
+        if getattr(actor,'resource_resting',False):return
         if actor.activity!='idle' or actor.action or actor.on_turn_finished or actor.origin or actor.reduced_motion or not actor.isVisible() or not self.manager.store.setting('roaming',True):return
         self.recent[identity]=[*self.recent.get(identity,[]),action][-5:]
         if action in LOCOMOTION and actor.assigned_screen:

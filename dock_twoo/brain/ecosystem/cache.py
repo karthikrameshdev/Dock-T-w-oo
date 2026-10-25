@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import time
 
-VERSION='agent-stages-v1'
+VERSION='agent-stages-v2-peers'
 
 
 class PromptCache:

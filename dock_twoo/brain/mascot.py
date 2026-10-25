@@ -263,7 +263,7 @@ class Companion(QWidget):
         self.activity_timer.start()
 
         self.motion_timer = QTimer(self)
-        self.motion_timer.setInterval(16)
+        self.motion_timer.setInterval(33)
         self.motion_timer.timeout.connect(self._advance_motion)
 
         self.roam_timer = QTimer(self)
@@ -290,6 +290,35 @@ class Companion(QWidget):
 
         # Restore saved desktop placement
         self._restore_placement()
+
+    def switch_character(self, identity):
+        if identity == self.character_id:
+            return
+        from dock_twoo.brain.catalog import character, actions_for
+        entry = character(identity)
+        if hasattr(self.manager, 'animation_director'):self.manager.animation_director.cancel()
+        self.stop_motion()
+        self.character_id, self.character = identity, entry
+        self.character_name = entry['name']
+        self.actions = actions_for(identity)
+        self.playlist = tuple(self.actions)
+        self.action = None
+        self.animation_loop = False
+        self.animation_index = self.animation_cycles = 0
+        self._yaw = self.turn_progress = self.turn_target = 0.0
+        self.gait_distance = self.gait_blend = self.mouth_level = 0.0
+        self._gaze_offset = QPointF()
+        self.resource_resting = False
+        if hasattr(self.manager, 'ecology'):
+            self.manager.ecology.next.pop(self.actor_id, None)
+            self.manager.ecology.recent.pop(self.actor_id, None)
+        self.input_region = QRegion()
+        self.has_input_shape = False
+        self.apply_input_mask()
+        self.setWindowTitle(f"{self.character_name} · Voice Assistant")
+        self.set_renderer_status(f'Loading {self.character_name}…')
+        if self.model_view:
+            self.model_view.change_character()
 
     def assign_display(self, screen_id, screen):
         changed = self.screen_id != screen_id or self.assigned_screen != screen
@@ -436,6 +465,10 @@ class Companion(QWidget):
             return
         prev = self.activity
         self.activity = state
+        if state != prev and state != 'idle' and getattr(self, 'model_view', None) is not None:
+            self.resource_resting = False
+            self.resource_active_until = time.monotonic()+1
+            self.model_view.set_parked(False)
         if state != prev:
             self.processing_started = time.monotonic()
             if state in ('listening', 'thinking', 'processing') and prev in ('idle', 'queued'):
@@ -552,7 +585,7 @@ class Companion(QWidget):
         if action in ("climb", "climb_dock") and destination is None:
             destination = self.pos() - QPoint(0, 60)
         if destination is not None:
-            destination = self._safe_position(destination)
+            destination = self._safe_position(destination, steer=False)
         self.destination = destination
         if destination is not None and not keep_orientation:
             if destination.x() > self.x() + 8:
@@ -688,7 +721,7 @@ class Companion(QWidget):
                 dx, dy = end.x()-self.x(), end.y()-self.y()
                 remaining = math.hypot(dx, dy)
                 speed = math.hypot(end.x()-start_p.x(), end.y()-start_p.y()) / max(.1, self.motion_duration)
-                stride = min(remaining, max(45, speed)*dt)
+                stride = min(remaining, max(1.5, max(45, speed)*dt))
                 intended = QPoint(round(self.x()+dx*stride/max(1, remaining)), round(self.y()+dy*stride/max(1, remaining)))
                 position = self._safe_position(intended)
                 self._travelled = getattr(self, '_travelled', 0) + math.hypot(position.x()-self.x(), position.y()-self.y())
@@ -727,7 +760,7 @@ class Companion(QWidget):
             self.blink_amount = math.sin(math.pi * min(1.0, (time.monotonic() - self._blink_started) / 0.17))
         self.update()
 
-    def _safe_position(self, position: QPoint) -> QPoint:
+    def _safe_position(self, position: QPoint, *, steer=True) -> QPoint:
         screen = self.assigned_screen
         crossing_allowed = False
         if self.store.setting('brain_roam_all_screens', False):
@@ -751,7 +784,7 @@ class Companion(QWidget):
         point = QPoint(max(area.left() - bounds.left(), min(position.x(), area.right() - bounds.right())),
                        max(area.top() - bounds.top(), min(position.y(), area.bottom() - bounds.bottom())))
         playground = getattr(self.manager, 'playground', None)
-        return playground.constrain_step(self, point) if playground and self.isVisible() else point
+        return playground.constrain_step(self, point) if steer and playground and self.isVisible() else point
 
     def _update_gaze(self, now: float, cursor: QPoint) -> None:
         if (cursor - self._cursor_seen).manhattanLength() > 5:
@@ -818,7 +851,7 @@ class Companion(QWidget):
             if self._following_motion:
                 self.stop_motion()
             return
-        target = self._safe_position(cursor - QPoint(self.width() // 2, 224))
+        target = self._safe_position(cursor - QPoint(self.width() // 2, 224), steer=False)
         if not self._following_motion:
             self._follow_position = QPointF(self.pos())
         delta = QPointF(target) - self._follow_position
@@ -862,6 +895,7 @@ class Companion(QWidget):
             self.blink_timer.start(random.randint(2800, 5600))
 
     def _roam(self) -> None:
+        if getattr(self, 'resource_resting', False):return
         if time.monotonic() < getattr(self, 'social_until', 0):
             return
         if self.follow_cursor_enabled:

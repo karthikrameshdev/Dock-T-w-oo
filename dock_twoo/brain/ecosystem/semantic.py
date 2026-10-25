@@ -32,7 +32,7 @@ class SemanticModel:
                 folder=Path(snapshot_download(self.MODEL,revision=self.REVISION,cache_dir=self.root/'huggingface'/'hub',allow_patterns=list(self.FILES),local_files_only=not allow_download))
                 tokenizer=Tokenizer.from_file(str(folder/'tokenizer.json'))
                 tokenizer.enable_truncation(max_length=256);tokenizer.enable_padding()
-                options=ort.SessionOptions();options.intra_op_num_threads=2;options.inter_op_num_threads=1
+                options=ort.SessionOptions();options.intra_op_num_threads=1;options.inter_op_num_threads=1
                 session=ort.InferenceSession(str(folder/'onnx/model_quantized.onnx'),sess_options=options,providers=['CPUExecutionProvider'])
                 self.tokenizer=tokenizer;self.session=session;self.state='ready';self.error='';return True
             except Exception as exc:self.state='unavailable';self.error=f'{type(exc).__name__}: {exc}';return False

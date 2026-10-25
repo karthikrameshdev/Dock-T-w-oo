@@ -42,7 +42,7 @@ class LocalTts:
                     temporary=voice_cache.with_suffix('.tmp.npz')
                     np.savez(temporary,**{name:np.fromfile(folder/'voices'/f'{name}.bin',dtype=np.float32).reshape(-1,1,256) for name in VOICES})
                     temporary.replace(voice_cache)
-                options=ort.SessionOptions();options.intra_op_num_threads=2;options.inter_op_num_threads=1
+                options=ort.SessionOptions();options.intra_op_num_threads=1;options.inter_op_num_threads=1
                 session=ort.InferenceSession(str(folder/'onnx/model_quantized.onnx'),sess_options=options,providers=['CPUExecutionProvider'])
                 self.engine=Kokoro.from_session(session,str(voice_cache))
                 self.speakers={name:index for index,name in enumerate(VOICES)}

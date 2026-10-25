@@ -161,7 +161,7 @@ function frame(){
   renderer.render(scene,camera);
   if(bridge?.silhouette) {
     const shape=inputShape.sample(scene,camera,model,innerWidth,innerHeight,previewTime,state.shapeFps||30);
-    if(shape)bridge.silhouette(JSON.stringify(shape));
+    if(shape)bridge.silhouette(JSON.stringify({...shape,characterId}));
     window.brainDiagnostics.inputShapeSamples=inputShape.samples;
     window.brainDiagnostics.inputShapeMilliseconds=inputShape.elapsed/Math.max(1,inputShape.samples);
   }

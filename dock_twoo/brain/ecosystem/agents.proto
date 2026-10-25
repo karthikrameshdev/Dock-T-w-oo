@@ -2,7 +2,8 @@ syntax = "proto3";
 package dock.agents.v1;
 import "google/protobuf/struct.proto";
 // Loopback only. Each logical character receives an in-memory bearer credential.
-// Assign and Cancel require Brain's credential. Report/Publish require ownership.
+// Assign requires self or owned live parent; cycles and busy peers are rejected.
+// Report, Publish and Cancel require task ownership. All agents are equal.
 // Struct fields are validated by the server; no credentials appear in events.
 service AgentBus {
   rpc Assign(google.protobuf.Struct) returns (google.protobuf.Struct);
