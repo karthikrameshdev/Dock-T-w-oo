@@ -10,7 +10,7 @@ if (embedded) document.querySelector('#controls').style.display = 'none';
 else document.body.classList.add('preview');
 let bridge, model, mixer, current, clips = {}, bones = {}, mouth, mouthIndex, bulb, face, speech, flash, release, indicator;
 const mouthMeshes=[];
-let state = {online:embedded?null:true, action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
+let state = {online:embedded?null:true, listeningAuraAllowed:false, action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
 const scene = new THREE.Scene();
 // A single microphone owner gets a soft yellow aura behind the entire body.
 const auraCanvas=document.createElement('canvas');auraCanvas.width=auraCanvas.height=128;
@@ -106,7 +106,7 @@ function frame(){
   if(flash)flash.emissiveIntensity=name==='camera' ? 1+14*Math.exp(-(((progress-.58)/.025)**2)) : 1;
 
   window.brainDiagnostics.indicator=indicator?.update(state,previewTime);
-  listeningAura.visible=state.activity==='listening';
+  listeningAura.visible=state.activity==='listening' && state.listeningAuraAllowed===true;
   listeningAura.material.opacity=state.reducedMotion?.8:.75+.2*Math.sin(previewTime*2)**2;
   window.brainDiagnostics.listeningAura=listeningAura.visible;
   window.brainDiagnostics.renderedFrames++;
@@ -120,6 +120,7 @@ function frame(){
   window.brainDiagnostics.propScales=Object.fromEntries(['propmagnifier','propcamera','proptablet','propscan','jetL','jetR','propball','prophammer','propanvil','proptether','propballoon','propparachute'].map(key=>[key,bones[key]?.scale.x ?? 0]));
   window.brainDiagnostics.poseSignature=Object.values(bones).flatMap(bone=>[...bone.position.toArray(),...bone.quaternion.toArray(),...bone.scale.toArray()]);
   window.brainDiagnostics.handPositions = ['handL','handR'].map(name=>bones[name]?.getWorldPosition(new THREE.Vector3()).toArray());
+  window.brainDiagnostics.armPoseSignature = Object.values(bones).filter(bone=>/^(upper_arm|forearm|hand|digit|thumb)/.test(bone.name)).flatMap(bone=>[...bone.position.toArray(),...bone.quaternion.toArray(),...bone.scale.toArray()]);
   model.traverse(node=>{if(node.isMesh && !node.userData.statusEffect){if(node.material.opacity<1 || node.material.transparent)window.brainDiagnostics.translucent=true;}if(node.isBone && ![...node.position.toArray(),...node.quaternion.toArray(),...node.scale.toArray()].every(Number.isFinite))window.brainDiagnostics.nonFinite=true;});
   renderer.render(scene,camera);
 }

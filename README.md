@@ -364,8 +364,8 @@ Right-click the dock's Brain icon for **Add another Brain**, **Brains on this
 screen**, **Roam across all screens**, and **Play together**. Extra characters work
 on a single screen too. They roam and animate independently, avoid one another,
 and scale to fit a crowded display. Only one Brain owns the microphone; clicking
-another finishes the current capture before handing over listening. The yellow
-body glow marks that owner. A wake word selects the visible Brain nearest the
+another finishes the current capture before handing over listening. When two or more visible Brains share a screen, a yellow
+body glow marks its microphone owner. A lone Brain uses only the yellow head light. A wake word selects the visible Brain nearest the
 pointer, without making every character listen or speak.
 
 All characters share one FIFO agent and speech lane. A second request waits until

@@ -42,7 +42,8 @@ editable in Blender. Authored facial animation plays outside live speech.
 
 The head indicator shows online green, offline red, listening yellow, and thinking
 purple, responding cyan, and queued orange, with corresponding glow and motion.
-Only the microphone owner has a yellow aura behind its body. Reduced motion freezes body acting.
+Only the microphone owner has a yellow aura behind its body, and only while
+another visible Brain shares that display. A lone Brain uses only its head light. Reduced motion freezes body acting.
 
 ## Contact-based toys
 

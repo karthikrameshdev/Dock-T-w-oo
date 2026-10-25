@@ -231,3 +231,20 @@ def test_passive_stop_and_speech_animation_dispatch_to_gui_thread(qtbot,tmp_path
     assert stops==[manager.thread()] and manager.last_response['text']=='Stopped.'
     assert actor.activity=='idle'
     manager.shutdown()
+
+
+def test_listening_aura_counts_only_visible_brains_on_the_same_screen():
+    from dock_twoo.brain.model_view import listening_aura_allowed
+    first=SimpleNamespace(screen_id='screen-1',isVisible=lambda:True)
+    other=SimpleNamespace(screen_id='screen-4',isVisible=lambda:True)
+    first.manager=SimpleNamespace(companions={'first':first})
+    assert not listening_aura_allowed(first)
+    first.manager.companions['other']=other
+    assert not listening_aura_allowed(first)  # One Brain per display.
+    other.screen_id='screen-1'
+    assert listening_aura_allowed(first)
+    other.isVisible=lambda:False
+    assert not listening_aura_allowed(first)
+    other.isVisible=lambda:True
+    first.manager.companions.pop('other')
+    assert not listening_aura_allowed(first)

@@ -98,6 +98,10 @@ def tick():
     widget.gait_distance += 1.6
     widget.motion_started = phase_start
     widget.motion_duration = 1.6
+    if action in ('handshake', 'wave', 'pull_scroll'):
+        # Hold two distinct authored poses for asynchronous GPU readback. A
+        # wall-clock sample can otherwise compare the same gesture hold twice.
+        widget.motion_started = now - (.25 if phase_probe is None else .5625) * widget.motion_duration
     widget.blink_amount = 1.0 if label == 'blink_closed' else 0.0
     widget.activity = {'speech':'speaking','listening':'listening','thinking':'thinking','responding':'speaking','queued':'queued'}.get(label,'idle')
     view.connectivity.online = label != 'offline'
@@ -134,7 +138,7 @@ def tick():
             if expected_label in ('online','offline','listening','thinking','responding','queued'):
                 expected_colors={'online':0x22c55e,'offline':0xef4444,'listening':0xfacc15,'thinking':0xa855f7,'responding':0x22d3ee,'queued':0xfb923c}
                 assert runtime['indicator']['name']==expected_label
-                assert runtime['listeningAura']==(expected_label=='listening')
+                assert not runtime['listeningAura'], 'A single Brain must use only its head light'
                 assert runtime['indicator']['color']==expected_colors[expected_label], f'{expected_label}: incorrect antenna color'
             if expected_label in ('front', 'eyes_reopened'):
                 assert min(runtime['eyeScales']) > .98, f'{expected_label}: eyes did not open'
@@ -158,8 +162,11 @@ def tick():
                 a = sum(first['handPositions'], [])
                 b = sum(runtime['handPositions'], [])
                 displacement = sum((x-y)**2 for x,y in zip(a,b)) ** .5
-                assert displacement > .01, f'{expected_label}: skeleton remained static'
-                report['animation_probes'].append({'action':expected_action, 'hand_displacement':round(displacement,4)})
+                arm_change = sum((x-y)**2 for x,y in zip(first['armPoseSignature'],runtime['armPoseSignature'])) ** .5
+                # A held greeting can rotate the wrist and fingers while its
+                # wrist stays in place. Check the actual articulated arm pose.
+                assert arm_change > .0001, f'{expected_label}: articulated arm remained static'
+                report['animation_probes'].append({'action':expected_action, 'hand_displacement':round(displacement,4),'arm_pose_change':round(arm_change,4)})
         except Exception as exc:
             report['errors'].append(str(exc))
     view.page().runJavaScript('JSON.stringify(window.brainDiagnostics)', check_motion)
