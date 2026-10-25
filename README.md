@@ -302,7 +302,7 @@ external app from its first line. On macOS, Brain uses Accessibility text with a
 window-only OCR fallback, reads continuous phrases in document order, and pulls upward while scrolling
 to the next page. The underline follows speech playback. Switching to another app,
 window or document stops reading. The window is never moved or resized. Use
-**Stop Reading** to cancel. **Read Selected Text** reads an existing selection without changing it. Accessibility and Screen Recording permissions may be
+**Stop Reading** to cancel. **Read Selected Text** reads an existing selection without changing it or using the clipboard. It checks the original document window, including browser text-marker selections when the keyboard focus remains on a button or input field. Accessibility and Screen Recording permissions may be
 needed depending on the target app; errors explain what is unavailable. Apps that
 do not expose text or scrollable content cannot be guaranteed to read completely.
 

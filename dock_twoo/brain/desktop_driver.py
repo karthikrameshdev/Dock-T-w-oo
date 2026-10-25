@@ -167,12 +167,101 @@ class DesktopDriver:
                 self.Q.CGEventPostToPid(self.pid,event)
         return {'dragged':True,'observe_again':True}
 
-    def selected_text(self,pid=None):
+    def _selected_string(self, node):
+        """Read a selection without selecting, copying, or reading the full page.
+
+        Chromium/WebKit documents often expose a text-marker range instead of
+        AXSelectedText. Native editors can expose a CFRange into a UTF-16 value.
+        """
+        text = self.get(node, 'AXSelectedText')
+        if isinstance(text, str) and text.strip():
+            return text
+        marker = self.get(node, 'AXSelectedTextMarkerRange')
+        if marker is not None:
+            error, text = self.AX.AXUIElementCopyParameterizedAttributeValue(
+                node, 'AXStringForTextMarkerRange', marker, None)
+            if error == 0 and isinstance(text, str) and text.strip():
+                return text
+        selected_range = self.get(node, 'AXSelectedTextRange')
+        if selected_range is None:
+            return None
+        try:
+            valid, span = self.AX.AXValueGetValue(selected_range, self.AX.kAXValueCFRangeType, None)
+        except (TypeError, ValueError):
+            return None
+        location, length = span if valid else (-1, 0)
+        if location < 0 or length <= 0:
+            return None
+        error, text = self.AX.AXUIElementCopyParameterizedAttributeValue(
+            node, 'AXStringForRange', selected_range, None)
+        if error == 0 and isinstance(text, str) and text.strip():
+            return text
+        value = self.get(node, 'AXValue')
+        if isinstance(value, str):
+            # AX offsets are UTF-16 code units, not Python character indexes.
+            encoded = value.encode('utf-16-le')
+            start, end = location * 2, (location + length) * 2
+            if end <= len(encoded):
+                try:
+                    text = encoded[start:end].decode('utf-16-le')
+                except UnicodeDecodeError:
+                    return None
+                if text.strip():
+                    return text
+        return None
+
+    def selected_text(self, pid=None, *, window=None, cancel=None):
         self._native()
-        if pid==os.getpid():raise RuntimeError('Select text in an external document first.')
-        app=self.AX.AXUIElementCreateApplication(pid) if pid is not None else self._frontmost()[0]
-        focused=self.get(app,'AXFocusedUIElement')
-        if 'Secure' in str(self.get(focused,'AXRole') or '') or self.get(focused,'AXSubrole')=='AXSecureTextField':raise PermissionError('Password text is not readable.')
-        text=self.get(focused,'AXSelectedText')
-        if not isinstance(text,str) or not text.strip():raise RuntimeError('No existing text selection was found in the active app.')
-        return {'text':text,'selection_changed':False}
+        if pid == os.getpid():
+            raise RuntimeError('Select text in an external document first.')
+        app = self.AX.AXUIElementCreateApplication(pid) if pid is not None else self._frontmost()[0]
+        self.AX.AXUIElementSetMessagingTimeout(app, .2)
+        for attribute in ('AXManualAccessibility', 'AXEnhancedUserInterface'):
+            self.AX.AXUIElementSetAttributeValue(app, attribute, True)
+        focused_window = self.get(app, 'AXFocusedWindow') or self.get(app, 'AXMainWindow')
+        window = window if window is not None else focused_window
+        focused = self.get(app, 'AXFocusedUIElement') if window == focused_window else None
+
+        def secure(node):
+            return ('Secure' in str(self.get(node, 'AXRole') or '') or
+                    self.get(node, 'AXSubrole') == 'AXSecureTextField')
+
+        if focused is not None and secure(focused):
+            raise PermissionError('Password text is not readable.')
+        # Search the focus and its ancestors first. A page's selection belongs
+        # to its WebArea even when a button/composer retains keyboard focus.
+        ancestors, ancestor = [], focused
+        while ancestor is not None and ancestor not in ancestors and len(ancestors) < 16:
+            ancestors.append(ancestor)
+            if ancestor == window:
+                break
+            ancestor = self.get(ancestor, 'AXParent')
+            if ancestor == app:
+                break
+        deadline = time.monotonic() + 3
+        for node in ancestors:
+            if cancel is not None and cancel.is_set():
+                raise InterruptedError('Reading stopped.')
+            if time.monotonic() >= deadline:
+                break
+            if not secure(node) and self.get(node, 'AXHidden') is not True:
+                text = self._selected_string(node)
+                if text is not None:
+                    return {'text': text, 'selection_changed': False}
+        pending, seen = deque([window]), set()
+        while pending and len(seen) < 1600 and time.monotonic() < deadline:
+            if cancel is not None and cancel.is_set():
+                raise InterruptedError('Reading stopped.')
+            node = pending.popleft()
+            if node is None or node in seen:
+                continue
+            seen.add(node)
+            if secure(node) or self.get(node, 'AXHidden') is True:
+                continue
+            text = self._selected_string(node)
+            if text is not None:
+                return {'text': text, 'selection_changed': False}
+            # Stay inside the captured window; never use another window's or
+            # an old clipboard selection as a substitute for the requested one.
+            pending.extend(self.get(node, 'AXChildren') or [])
+        raise RuntimeError('The app did not expose readable selected text. Select text in the document and try again.')

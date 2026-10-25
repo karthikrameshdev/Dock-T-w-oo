@@ -614,6 +614,8 @@ class BrainManager(QObject):
         
         Invoked both by right-clicking on the Brain dock icon and right-clicking on the mini agent.
         """
+        # Remember the document before the context menu becomes the key window.
+        self.reader._remember()
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu {
