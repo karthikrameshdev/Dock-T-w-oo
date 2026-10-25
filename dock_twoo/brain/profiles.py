@@ -35,10 +35,8 @@ class ProfileManager:
             store.set_setting('active_profile','cloud')
 
     def _cipher(self):
-        if not self._key_path.exists():
-            fd=os.open(self._key_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-            with os.fdopen(fd,'wb') as target:target.write(Fernet.generate_key())
-        return Fernet(self._key_path.read_bytes())
+        from dock_twoo.brain.credential_key import cipher_key
+        return Fernet(cipher_key(self._key_path))
 
     def _keys(self):
         if not self._secrets_path.exists():return {}

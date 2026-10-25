@@ -10,7 +10,7 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox, QDateEdit, QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QPlainTextEdit, QPushButton, QScrollArea,
-    QStackedWidget, QTextBrowser, QVBoxLayout, QWidget,
+    QStackedWidget, QTextBrowser, QVBoxLayout, QWidget, QSizePolicy,
 )
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
 from dock_twoo.ui.theme import get_scrollbar_style, get_theme_tokens
@@ -60,6 +60,12 @@ class TasksAppWidget(BaseAttachedApp):
         self._build_overview()
         self._build_editor()
         self._build_summary()
+        # Native Windows control hints must not force a wider attached drawer.
+        # Text fields and combo boxes can shrink within their expanding rows.
+        self.stack.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        for field in self.findChildren(QComboBox)+self.findChildren(QDateEdit):
+            field.setMinimumWidth(0)
+            field.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self._apply_theme()
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
