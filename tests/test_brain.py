@@ -289,7 +289,7 @@ def test_conversation_requires_one_configured_cloud_model():
         assert query_llm(prompt, profile=None, api_key='') == NOT_CONFIGURED
 
 
-def test_voice_commands_router(tmp_path):
+def test_voice_commands_router(tmp_path, qapp, monkeypatch):
     """Verify voice commands for mascot movement, actions, memory inspection, and computer automation."""
     from dock_twoo.brain.commands import handle_voice_command, get_process_memory_usage
     mgr = BrainManager.get_instance()
@@ -337,9 +337,16 @@ def test_voice_commands_router(tmp_path):
     assert mgr.companion.action == "fold_arms"
 
     # 3. Process Memory
+    # Exercise routing against a fixed process table rather than depending on
+    # the host OS and executable name of the pytest runner.
+    from types import SimpleNamespace
+    from dock_twoo.brain import commands
+    monkeypatch.setattr(commands, "platform", SimpleNamespace(system=lambda: "Darwin"))
+    monkeypatch.setattr(commands, "subprocess", SimpleNamespace(
+        check_output=lambda *_args, **_kwargs: b"RSS COMM\n32768 /test/python\n16384 /test/other\n"))
     count, mb = get_process_memory_usage("python")
-    assert count > 0
-    assert mb > 0.0
+    assert count == 1
+    assert mb == 32.0
 
     r_mem = handle_voice_command("What is my current memory usage in Python?", mgr)
     assert r_mem is not None
@@ -712,7 +719,7 @@ def test_top_left_corner_voice_command(tmp_path):
 
 def test_afconvert_flac_encoding(tmp_path):
     """Verify afconvert FLAC conversion produces valid FLAC audio data."""
-    import speech_recognition as sr
+    sr = pytest.importorskip("speech_recognition", reason="Optional legacy SpeechRecognition compatibility check")
     import wave
 
     test_wav = tmp_path / "test.wav"
