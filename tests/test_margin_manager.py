@@ -16,6 +16,14 @@ def qapp():
     return app
 
 
+@pytest.fixture
+def macos_backend(monkeypatch):
+    """Run the mocked Finder backend on every CI host without OS automation."""
+    from types import SimpleNamespace
+    from dock_twoo.os_integration import margin_manager
+    monkeypatch.setattr(margin_manager, "platform", SimpleNamespace(system=lambda: "Darwin"))
+
+
 def test_margin_manager_lifecycle(qapp):
     cfg = DockConfig(reserve_screen_space=True, edge="right", screen_margin_gap=8)
     mgr = DesktopMarginManager(cfg)
@@ -51,7 +59,7 @@ def test_margin_manager_signals(qapp):
     assert received[0] == ("Safari", 1370, 900)
 
 
-def test_margin_manager_window_restoration_on_edge_change(qapp, monkeypatch):
+def test_margin_manager_window_restoration_on_edge_change(qapp, monkeypatch, macos_backend):
     cfg = DockConfig(reserve_screen_space=True, edge="top")
     mgr = DesktopMarginManager(cfg)
 
@@ -80,7 +88,7 @@ def test_margin_manager_window_restoration_on_edge_change(qapp, monkeypatch):
     assert "Safari" not in mgr._adjusted_windows
 
 
-def test_margin_manager_desktop_icon_clamping_and_collision_avoidance(qapp, monkeypatch):
+def test_margin_manager_desktop_icon_clamping_and_collision_avoidance(qapp, monkeypatch, macos_backend):
     cfg = DockConfig(reserve_screen_space=True, edge="right", screen_margin_gap=8)
     mgr = DesktopMarginManager(cfg)
 
@@ -125,7 +133,7 @@ def test_margin_manager_desktop_icon_clamping_and_collision_avoidance(qapp, monk
     assert "Screenshot 2.png" in mgr._adjusted_icons
 
 
-def test_margin_manager_desktop_icon_restoration_on_edge_vacated(qapp, monkeypatch):
+def test_margin_manager_desktop_icon_restoration_on_edge_vacated(qapp, monkeypatch, macos_backend):
     cfg = DockConfig(reserve_screen_space=True, edge="right")
     mgr = DesktopMarginManager(cfg)
 

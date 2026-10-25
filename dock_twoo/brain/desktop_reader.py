@@ -445,6 +445,15 @@ class DesktopReader(QObject):
                 pass
 
     def start(self, mode='window'):
+        # Resolve the source before showing Brain or changing focus. AppKit
+        # foreground lookup also belongs on this GUI thread, not the worker.
+        try:
+            initial_target = self.backend.target()
+        except Exception as exc:
+            self.stop()
+            self.last_error = str(exc)
+            self.failed.emit(self.last_error)
+            return
         self.stop()
         self.active = True
         self.last_error = ''
@@ -456,7 +465,7 @@ class DesktopReader(QObject):
         self.manager.show_mini_agent()
         self.manager.companion.set_activity('processing')
         self.mode = mode
-        self._fetch(first=True)
+        self._fetch(first=True, initial_target=initial_target)
         self.guard_timer.start()
         self.changed.emit()
 
@@ -487,18 +496,19 @@ class DesktopReader(QObject):
             self.manager.listener.arm_wake()
             self.changed.emit()
 
-    def _fetch(self, *, first=False):
+    def _fetch(self, *, first=False, initial_target=None):
         generation, cancel = self.generation, self.cancel
         target, page = self.target, self.page
+        mode = self.mode
 
         def worker():
             try:
-                selected = self.backend.target() if first else target
+                selected = initial_target if first else target
                 if first and hasattr(self.backend, 'activate'):
                     self.backend.activate(selected, cancel)
-                if first and self.mode == 'selected':
+                if first and mode == 'selected':
                     from dock_twoo.brain.desktop_driver import DesktopDriver
-                    text = DesktopDriver().selected_text(selected.pid)['text']
+                    text = DesktopDriver().selected_text(selected.pid, window=selected.element, cancel=cancel)['text']
                     result = ReadingPage([ReadingLine(text, selected.bounds)], selected.bounds, 1., 'selected', 1.)
                 else:
                     result = self.backend.first_page(selected, cancel) if first else self.backend.scroll_page(selected, page, cancel)

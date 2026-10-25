@@ -93,17 +93,48 @@ def test_selected_reading_reads_existing_selection_without_page_navigation(tmp_p
     manager=BrainManager(store=BrainStore(tmp_path),start_services=False)
     spoken=[];calls=[]
     monkeypatch.setattr(manager.speech,'start',spoken.append)
-    monkeypatch.setattr(DesktopDriver,'selected_text',lambda _self,pid:calls.append(pid) or {'text':'Complete selected sentence.','selection_changed':False})
-    target=ReadingTarget(42,'Selected Document',1,QRect(0,0,800,600))
+    def selected_text(_self, pid, **kwargs):
+        calls.append((pid, kwargs['window'], kwargs['cancel'].is_set()))
+        return {'text':'Complete selected sentence.','selection_changed':False}
+    monkeypatch.setattr(DesktopDriver,'selected_text',selected_text)
+    target=ReadingTarget(42,'Selected Document',1,QRect(0,0,800,600),element=object())
     class Backend:
         def target(self):return target
         def remember_frontmost(self):pass
         def first_page(self,*_args):raise AssertionError('Selected text must not navigate or select a page.')
     manager.reader.backend=Backend();manager.reader.start('selected')
     qtbot.waitUntil(lambda:bool(spoken))
-    assert spoken==['Complete selected sentence.'] and calls==[42]
+    assert spoken==['Complete selected sentence.'] and calls==[(42,target.element,False)]
     manager.reader.speech_finished()
     assert not manager.reader.active
+    manager.shutdown()
+
+
+def test_source_window_is_captured_on_gui_thread_before_brain_is_shown(tmp_path,qtbot,monkeypatch):
+    from PySide6.QtCore import QThread
+    manager=BrainManager(store=BrainStore(tmp_path),start_services=False)
+    order=[]
+    target=ReadingTarget(42,'Original Document',1,QRect(0,0,800,600))
+    class Backend:
+        def target(self):
+            assert QThread.currentThread()==manager.thread()
+            order.append('capture')
+            return target
+        def activate(self,selected,_cancel):
+            assert selected is target
+            order.append('activate')
+        def first_page(self,selected,_cancel):
+            assert selected is target
+            return page(['Original document text.'],1)
+        def remember_frontmost(self):pass
+    manager.reader.backend=Backend()
+    monkeypatch.setattr(manager,'show_mini_agent',lambda:order.append('show'))
+    spoken=[]
+    monkeypatch.setattr(manager.speech,'start',spoken.append)
+    manager.reader.start()
+    qtbot.waitUntil(lambda:bool(spoken))
+    assert order==['capture','show','activate']
+    assert spoken==['Original document text.']
     manager.shutdown()
 
 
