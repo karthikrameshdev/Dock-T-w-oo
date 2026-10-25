@@ -121,6 +121,13 @@ directory; use `--output` to select another path.
 
 ## Resource budget and worker presentation
 
+The supported Qt binding is PySide6 6.11.2–6.11.x. Linux/Python 3.11 exposed a
+native reference-count regression in 6.12.0: every `Signal.emit` dropped one
+reference to Python's `True` singleton, causing an eventual process abort.
+A standalone 10,000-emission subprocess regression checks both reference counts
+and clean process exit. Keep `pyproject.toml` and `requirements.txt` aligned when
+updating Qt, and run that regression on Python 3.11 as well as newer Python.
+
 `ResourceKeeper` samples the Python process and all descendants using process CPU
 time deltas on macOS, Windows and Linux. The target is 20% of one core, matching
 Activity Monitor's process units, not 20% divided by the machine's core count.

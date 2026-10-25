@@ -16,6 +16,26 @@ from tests.test_brain_input_shape import payload
 from tests.test_multi_brain import manager_at,inventory
 
 
+def test_native_signal_emission_preserves_python_singletons_and_exits_cleanly():
+    # Audio-level updates emit throughout the app's lifetime. Qt 6.12.0's
+    # Linux binding decrements True on every emit, eventually aborting Python
+    # <3.12. Isolate the real native call so a regression cannot kill pytest.
+    result = subprocess.run([sys.executable, '-c', '''
+import sys
+from PySide6.QtCore import QObject, Signal
+class Source(QObject):
+    level = Signal(float)
+source = Source()
+source.level.emit(0.2)
+before = (sys.getrefcount(True), sys.getrefcount(False))
+for _ in range(10000):
+    source.level.emit(0.2)
+after = (sys.getrefcount(True), sys.getrefcount(False))
+assert after == before, (before, after)
+'''], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_real_mixer_releases_old_clips_after_long_running_transitions():
     node=shutil.which('node')
     if not node:pytest.skip('Node is needed for the Three.js lifecycle regression')

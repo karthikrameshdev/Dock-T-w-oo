@@ -1,4 +1,5 @@
-PySide6>=6.6.0
+# Keep aligned with pyproject.toml; 6.12.0 corrupts signal bool refcounts.
+PySide6>=6.11.2,<6.12
 sounddevice>=0.5.3
 cryptography>=42.0.0
 numpy>=1.26.0

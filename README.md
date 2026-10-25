@@ -136,6 +136,17 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+When upgrading an existing environment that used Qt 6.12.0, close Dock and
+replace its Qt packages before reinstalling. That release has a native signal
+reference-count bug on Linux/Python 3.11; this project uses the verified 6.11
+release line. Removing the split WebEngine/PDF packages also prevents mixed Qt
+libraries from remaining in an older environment. Run inside the activated venv:
+
+```bash
+python -m pip uninstall -y PySide6 PySide6_Addons PySide6_Essentials PySide6_WebEngine PySide6_Pdf shiboken6
+python -m pip install -e '.[dev]'
+```
+
 ### Running Dock T(w)oo
 
 ```bash
