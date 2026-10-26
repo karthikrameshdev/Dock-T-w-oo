@@ -542,7 +542,9 @@ class DesktopReader(QObject):
                 self.finished.emit()
             return
         self.pages_read += 1
-        self.queue.extend((chunk, result.viewport) for chunk in speech_chunks('\n'.join(line.text for line in lines),limit=6000))
+        from dock_twoo.brain.speech_text import spoken_text
+        narration = spoken_text('\n'.join(line.text for line in lines))
+        self.queue.extend((chunk, result.viewport) for chunk in speech_chunks(narration,limit=6000))
         # Reading starts immediately. Mascot travel never delays the audio.
         self._speak_next()
         self.changed.emit()

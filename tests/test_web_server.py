@@ -278,7 +278,7 @@ def test_keep_awake_api_requires_explicit_boolean_and_local_origin(test_server,m
 
 def test_console_serves_new_native_icons(test_server):
     _,port,_=test_server
-    for name in ('logo','tasks','coffee'):
+    for name in ('logo','tasks','coffee','activity'):
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/icons/{name}.svg',timeout=3) as response:
             assert response.status==200 and '<svg' in response.read().decode()
 
@@ -461,3 +461,16 @@ def test_awake_api_default_persistence_and_brain_guard(test_server,tmp_path,monk
         assert error.value.code==400
     with pytest.raises(urllib.error.HTTPError) as error:request({'character_id':'parrot','enabled':True},False)
     assert error.value.code==403 and not store.character_awake('parrot')
+
+
+def test_live_trail_moved_to_dock_page(test_server):
+    _, port, _ = test_server
+    def read(path):
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}' + path, timeout=3) as response:
+            return response.read().decode()
+    page = read('/live-trail.html')
+    assert 'id="liveActivity"' in page and 'id="agentTaskTrail"' in page
+    assert 'Request' in read('/activity.js') and 'Waiting for the model response' in read('/activity.js')
+    console = read('/')
+    assert 'page-activity' not in console and 'id="agentTaskTrail"' not in console
+    assert 'src="activity.js"' not in console

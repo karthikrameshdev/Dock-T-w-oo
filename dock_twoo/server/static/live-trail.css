@@ -1,0 +1,29 @@
+body{margin:0;padding:14px;background:#101217;color:#e9edf9;color-scheme:dark}
+body.theme-light{background:#fff;color:#182238;color-scheme:light}
+main{display:flex;flex-direction:column;gap:22px;max-width:1200px;margin:auto}
+.live-agents{padding:16px;border:1px solid var(--usage-border);border-radius:14px;background:var(--usage-card)}
+.trail-heading{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center}
+.trail-heading h3{font-size:17px}.trail-heading span{font-size:12px;color:var(--usage-muted)}
+#agentTaskTrail{max-height:350px;overflow:auto}
+#agentTaskTrail details{border-color:var(--usage-border);margin:0 0 8px}
+#agentTaskTrail summary strong{display:block;font-size:13px}#agentTaskTrail summary span{font-size:12px;color:var(--usage-muted)}
+.trail-job-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
+.trail-job-content p{margin:12px 0}.trail-job-content a{color:#93bcff;display:block;margin-top:12px}.theme-light .trail-job-content a{color:#2859b6}
+.activity-tracker .activity-layout{grid-template-columns:1fr}.activity-tracker .activity-list{max-height:220px}
+.activity-tracker .activity-detail{padding:14px}.activity-tracker .activity-detail pre{max-height:320px;margin:10px 0}
+.activity-tracker h4{margin:12px 0 0}.activity-call summary{line-height:1.6}.activity-call summary span{display:block;font-size:12px;color:var(--usage-muted)}
+.activity-call[data-state="in_flight"]{border-left:3px solid #a696ff}.activity-call[data-state="error"]{border-left:3px solid #e38a82}
+.activity-tracker .activity-toolbar{gap:8px}.activity-toolbar button{flex:1}.activity-limits{order:5;border-top:1px solid var(--usage-border);padding-top:12px}
+body::-webkit-scrollbar{width:6px}body::-webkit-scrollbar-thumb{background:#606879;border-radius:6px}
+@media(min-width:900px){.activity-tracker .activity-layout{grid-template-columns:280px minmax(0,1fr)}.activity-tracker .activity-list{max-height:75vh}}
+
+.activity-tracker .activity-list{max-height:none;overflow:visible;gap:12px}
+.activity-run>summary{cursor:pointer;list-style-position:inside;overflow-wrap:anywhere}
+.activity-run>summary .activity-row-heading{display:inline-flex;width:calc(100% - 24px);margin-left:5px}
+.activity-run>summary strong{margin-top:4px}.activity-run>summary small{font-size:11px}
+.activity-run[open]>summary{padding-bottom:14px;border-bottom:1px solid var(--usage-border)}
+.activity-run[open]>.activity-detail{border:0;padding:14px 0 0;border-radius:0}
+.activity-run[hidden]{display:none}
+
+.usage-shell button:disabled{opacity:.45;cursor:default}
+.activity-call summary strong{text-transform:none}

@@ -101,7 +101,6 @@
               <span class="nav-label">Companion Drawers</span>
             </button>
             <button class="nav-item" data-page="page-dashboard"><span class="nav-icon">◴</span><span class="nav-label">Dashboard</span></button>
-            <button class="nav-item" data-page="page-activity"><span class="nav-icon">≋</span><span class="nav-label">Activity Tracker</span></button>
             <button class="nav-item" data-page="page-brain">
               <span class="nav-icon">🧠</span>
               <span class="nav-label">AI Voice Assistant</span>
@@ -393,10 +392,6 @@
           <div class="page-header"><h2>Agent model usage dashboard</h2><p>Understand API, CLI and network model usage. Local speech and vision models have no token metrics.</p></div>
           <div id="cloudUsageDashboard"></div>
         </div>
-        <div class="page-view" id="page-activity">
-          <div class="page-header"><h2>Activity Tracker</h2><p>Follow each request, cloud exchange, recovery attempt and local tool result.</p></div>
-          <div id="brainActivityTracker"></div>
-        </div>
         <div class="page-view" id="page-tasks">
           <div class="page-header"><h2>Tasks</h2><p>Record work by day. Ask Brain to add items or summarize a date.</p></div>
           <div class="settings-card">
@@ -668,7 +663,6 @@
               <div class="action-btn-row"><button id="agentCharacterForget" class="btn btn-secondary" type="button">Clear character memory</button>
               <button id="agentCharacterSave" class="btn btn-primary" type="button">Save character settings</button></div><p id="agentCharacterStatus" class="field-desc" role="status"></p>
             </div>
-            <div class="settings-card"><h3>Live agent activity</h3><p class="field-desc">Shared gRPC task trail for all agents. Detailed events are retained for 7 days; usage totals remain available.</p><div id="agentDocumentOutputs"></div><div id="agentTaskTrail" aria-live="polite"></div></div>
           </div>
 
           <!-- Tab 3: Robot Companion & Motions -->
@@ -1136,7 +1130,6 @@
 
   <script src="controls.js"></script>
   <script src="usage.js"></script>
-  <script src="activity.js"></script>
   <script src="app.js"></script>
 <script src="/ecosystem.js"></script>
   <script src="/awake.js"></script>

@@ -57,6 +57,9 @@ class SpeechPlayback(QObject):
 
     def _start(self, text: Optional[str], *, song=False, sound_id=None) -> None:
         self.stop()
+        if text is not None:
+            from dock_twoo.brain.speech_text import spoken_text
+            text = spoken_text(text)
         self.last_error = ""
         token = self.generation
         cancel = self.cancel_event = threading.Event()

@@ -135,6 +135,7 @@ def test_rejected_wake_releases_processing_state_and_explains_retry(qtbot,tmp_pa
 
 def test_awake_preference_blocks_kws_fallback_and_inflight_names_but_not_manual(qapp,tmp_path,monkeypatch):
     manager=manager_at(tmp_path,inventory()[:1]);listener=manager.listener
+    manager.store.set_setting('voice_reply',False)
     try:
         manager.listener.start=lambda:None
         store=manager.store

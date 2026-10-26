@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dock2 · Live Trail</title>
+  <link rel="stylesheet" href="/usage.css">
+  <link rel="stylesheet" href="/controls.css">
+  <link rel="stylesheet" href="/live-trail.css">
+</head>
+<body>
+  <main aria-label="Live Trail">
+    <section class="usage-shell live-agents" aria-label="Agent tasks">
+      <div class="trail-heading"><h3>Agent tasks</h3><span id="trailConnection" role="status">Connecting…</span></div>
+      <p class="usage-muted">Follow active work, then expand a model call below to inspect its request and response.</p>
+      <div id="agentTaskTrail"></div>
+    </section>
+    <section id="liveActivity" aria-label="Model calls and request history"></section>
+  </main>
+  <script src="/controls.js"></script>
+  <script src="/activity.js"></script>
+  <script src="/live-trail.js"></script>
+</body>
+</html>

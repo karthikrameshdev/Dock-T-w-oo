@@ -307,17 +307,20 @@ class BrainManager(QObject, BrainSessions):
         if active:
             self.listener.start()
         # Explicit listening can coexist with an agent worker, never playback.
-        self.listener.set_output_active(active and not self.listener.is_recording)
+        self.listener.set_output_active(active)
 
     @Slot(str)
     def _on_named_keyword_started(self, character_id):
+        # A queued microphone signal can arrive after synthesis/playback began.
+        if self.listener.wake_suppressed or self.reader.active:
+            return
         if not self.store.character_awake(character_id):
             self.listener.cancel_recording()
             self.listener.arm_wake()
             self._after_capture()
             return
         owner = self.voice_actor(character_id)
-        # A wake can interrupt playback, while the single model worker continues.
+        # Named handoffs are accepted between responses, never from playback.
         self._listening_actor_id = owner
         self._listening_source = self._session_source = 'voice'
         self._session_actor_id = self._ui_actor_id = owner
@@ -337,6 +340,8 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot(str, str, str, bool)
     def _on_named_turn_completed(self, character_id, command, transcript, bare):
+        if self.listener.wake_suppressed or self.reader.active:
+            return
         owner = self.voice_actor(character_id)
         self.listener.cancel_recording()
         self._session_actor_id = owner
@@ -641,8 +646,6 @@ class BrainManager(QObject, BrainSessions):
                 document = max(documents, key=lambda path: (bool(re.search(r'final|report|document', path.stem, re.I)), path.stat().st_size))
                 if document.stat().st_size <= 500000:
                     content = document.read_text(encoding='utf-8', errors='replace')
-                    content = re.sub(r'^#{1,6}\s+', '', content, flags=re.M)
-                    content = re.sub(r'\[([^]]+)\]\([^)]+\)', r'\1', content).replace('```', '').replace('`', '')
                     spoken += '\n\n' + content
             self.speech.start(spoken)
 

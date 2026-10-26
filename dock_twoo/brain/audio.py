@@ -106,7 +106,10 @@ def synthesize(
     """Synthesize a local ONNX phrase, with platform speech while the model prepares."""
     if not isinstance(message, str) or not message.strip():
         raise ValueError("Speech message cannot be empty.")
-    clean_msg = message.strip()[:1000]
+    from dock_twoo.brain.speech_text import spoken_text
+    clean_msg = spoken_text(message)[:1000]
+    if not clean_msg:
+        raise ValueError('No readable words were supplied for speech.')
     cancel = cancel or threading.Event()
     if cancel.is_set():
         raise InterruptedError("Speech cancelled.")
@@ -194,6 +197,8 @@ def synthesize_song(lyrics: str, path: Path | str, cancel: threading.Event, voic
     selected voice supplies the words; continuous pitch motion adds the melody.
     """
     import numpy as np
+    from dock_twoo.brain.speech_text import spoken_text
+    lyrics = spoken_text(lyrics)
     if voice_models is None:
         from dock_twoo.brain.local_tts import get_local_tts
         source = get_local_tts().clip(lyrics, cancel,voice=(voice_settings or {}).get('voice'),speed=(voice_settings or {}).get('speed'))

@@ -177,6 +177,7 @@ def get_default_apps() -> List[DockAppItem]:
             is_bottom=True,
         ),
         DockAppItem(id="keep_awake",name="Keep Awake",icon="coffee",tooltip="Keep Awake · Off",is_bottom=True,action_type="action"),
+        DockAppItem(id="activity",name="Live Trail",icon="activity",tooltip="Live Trail · Model calls and agent tasks",is_bottom=True),
         DockAppItem(id="dashboard",name="Dashboard",icon="dashboard",tooltip="Cloud Usage Dashboard",is_bottom=True),
         DockAppItem(
             id="settings",
@@ -468,8 +469,8 @@ class ConfigManager(QObject):
                     # Add new apps without resetting the user's order or settings.
                     app_ids = {a.id for a in self._config.apps}
                     for addition in get_default_apps():
-                        if addition.id in ('tasks','scheduler','keep_awake','dashboard') and addition.id not in app_ids:
-                            index = next((i for i,a in enumerate(self._config.apps) if a.id == ('settings' if addition.id in ('keep_awake','dashboard') else 'vault')),len(self._config.apps))
+                        if addition.id in ('tasks','scheduler','keep_awake','dashboard','activity') and addition.id not in app_ids:
+                            index = next((i for i,a in enumerate(self._config.apps) if a.id == ('settings' if addition.id in ('keep_awake','dashboard','activity') else 'vault')),len(self._config.apps))
                             if addition.id=='dashboard':
                                 settings_index=next((i for i,a in enumerate(self._config.apps) if a.id=='settings'),index)
                                 awake_index=next((i for i,a in enumerate(self._config.apps) if a.id=='keep_awake'),index)

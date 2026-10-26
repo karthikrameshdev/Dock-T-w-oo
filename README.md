@@ -268,22 +268,22 @@ or when Dock exits. It does not disable manual locks or managed security policie
 It is also available in the console and as a cloud-agent tool.
 
 The **Dashboard** icon between Keep Awake and Settings opens an attached cloud
-usage drawer. The console has the same dashboard plus **Activity Tracker**.
+usage drawer. The console also has the dashboard. **Live Trail**, beside Dashboard
+on the dock, opens model calls and agent tasks in its own attached drawer.
 Choose this month (default), seven days, or From/To dates. Charts show cloud input,
 output, daily consumption, models and API outcomes. Counts come from provider
 usage for the full sent payload and generated output; local speech/vision has no
 token metrics. Missing usage and currency costs remain explicitly unavailable.
 
-Activity Tracker records accepted voice transcripts and typed requests, every
+Live Trail records accepted voice transcripts and typed requests, every
 cloud payload/response, local tool results, recovery calls and stop reasons.
 Credentials are redacted and fixed system instructions are represented by size
 and fingerprint. Detailed traces expire after seven days; compact daily totals
 remain. Tracking starts with this update; older usage cannot be reconstructed.
 
-Three stalled cloud turns stop the request without another paid call. Defaults
-also cap a request at eight cloud calls, a 24,000-token budget guard and 1,024 output
-tokens per call. Activity Tracker exposes these limits. Preflight token estimates
-protect the budget, while displayed totals use provider-reported counts only.
+Repeated stalled turns trigger recovery review. Request budgets and recovery
+limits are adjustable in Live Trail; calls and token budgets default to no fixed
+limit. Displayed usage totals use provider-reported counts only.
 
 The **Ask Brain** field uses the same agent as speech. Connection failures,
 unsupported app controls and missing OS permissions return explicit errors.
@@ -512,9 +512,12 @@ information and stay on this computer.
 Assistant data now lives in `<storage root>/voice`. Startup copies legacy `brain`
 data once and retains the old directory as a recovery backup; conflicting data
 is never overwritten. The console names this **Voice Assistant Memory & Storage**.
-Activity Tracker provides readable requests/responses, per-call profiles and
-agents, input/output tokens, retries, timing and expandable events. Live polling
-preserves expanded details; it can also be paused while inspecting a request.
+**Live Trail** is on Dock2, outside the configuration console. It shows active
+agent tasks, request history, per-call profiles and agents, input/output tokens,
+retries, timing and expandable events. Expand a model call to see the redacted
+request and response together, including calls still in progress. All items start collapsed. Expand only the rows you want to inspect; expanded rows
+survive live polling and closing/reopening the drawer. Updates can be paused;
+the native page is created on first use and suspended while closed.
 
 **AI Voice Assistant → Awake** lists every mini assistant, with search and an
 individual wake-by-name switch. All identities start enabled. Brain is the default
@@ -523,3 +526,18 @@ fallback speech recognition from summoning Rio, including an automatic wake stil
 being decoded. Manual selection/listening, current work and background delegation
 continue. Preferences persist after restart. The main microphone wake-listener
 switch remains a separate global privacy control.
+
+
+While an assistant speaks or reads a document, character-name wake detection is
+suspended (including page/phrase gaps). Spoken **Stop** / **Brain Stop** and manual
+interruption remain available. Name detection resumes after playback and its
+short echo tail. A response mentioning Rio cannot switch the active character.
+
+All speech paths normalize formatting before phrase generation: Markdown/HTML
+markers are silent, sentence punctuation controls pauses, and meaningful amounts
+are spoken naturally (`$200` → “two hundred dollars”, `$1.50` → “one dollar and
+fifty cents”). This changes narration only, preserving documents and model text.
+`scripts/verify_voice_controls.py` checks real offline stop/echo recognition;
+`scripts/verify_spoken_text.py` checks cached Kokoro→Whisper currency pronunciation.
+`scripts/verify_console_workspace.py` exercises the real native Live Trail with
+isolated local activity and gRPC fixtures, without cloud calls or microphone audio.

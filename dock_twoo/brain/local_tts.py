@@ -53,6 +53,9 @@ class LocalTts:
     def clip(self,text,cancel,*,voice=None,speed=None):
         if not self.engine:raise RuntimeError('The local Kokoro speech model is preparing. Check Voice status in Brain settings.')
         from dock_twoo.brain.audio import SpeechClip
+        from dock_twoo.brain.speech_text import spoken_text
+        text = spoken_text(text)
+        if not text:raise ValueError('No readable words were supplied for speech.')
         import numpy as np
         with self._synth_lock:
             if cancel.is_set():raise InterruptedError('Speech stopped.')

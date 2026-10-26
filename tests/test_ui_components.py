@@ -106,7 +106,7 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
     assert "settings" in dock._icon_buttons
     assert "brain" in dock._icon_buttons
     assert "scheduler" in dock._icon_buttons
-    assert len(dock._icon_buttons) == 8
+    assert len(dock._icon_buttons) == 9
     assert "tasks" in dock._icon_buttons and "keep_awake" in dock._icon_buttons
 
     # Simulate clicking notes icon
@@ -122,6 +122,14 @@ def test_dock_window_toggle_and_active_state(qtbot, qapp, tmp_path):
     dock._handle_icon_click("notes", notes_btn.mapToGlobal(QPoint(10, 10)))
     assert not dock.attached_window.isVisible()
     assert notes_btn._is_active is False
+
+    # The dock opens and toggles Live Trail just like the other attached apps.
+    trail_btn = dock._icon_buttons['activity']
+    assert dock.attached_window._apps['activity'].view is None
+    dock._handle_icon_click('activity', trail_btn.mapToGlobal(QPoint(10, 10)))
+    assert dock.attached_window.is_showing_app('activity') and trail_btn._is_active
+    dock._handle_icon_click('activity', trail_btn.mapToGlobal(QPoint(10, 10)))
+    assert not dock.attached_window.isVisible() and not trail_btn._is_active
 
     dock.close()
 

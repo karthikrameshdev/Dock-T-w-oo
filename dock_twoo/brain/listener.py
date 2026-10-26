@@ -200,6 +200,7 @@ class AudioListener(QObject):
         self._wake_armed = True
         self.wake_detection_enabled = True
         self._output_active = False
+        self._wake_suspended = False
         self._ignore_audio_until = 0.0
         self._capture_generation = 0
         self.input_device = ""
@@ -285,6 +286,7 @@ class AudioListener(QObject):
         self._decode_token = None
         self._capture_forced = False
         self._passive_stop = False
+        self._wake_suspended = False
         self._stop_latched = False
         self._wake_capture = False
         self._keyword_character_id = None
@@ -299,6 +301,9 @@ class AudioListener(QObject):
 
     @capture_locked
     def _begin_wake_capture(self, frames: list[bytes], character_id=None) -> bool:
+        if self.wake_suppressed:
+            self.last_wake_decision = 'wake-suspended-for-output'
+            return False
         if self.named_characters and character_id and not self.store.character_awake(character_id):
             self.last_wake_decision = 'character-awake-disabled'
             self.wake_detector.reset()
@@ -382,6 +387,7 @@ class AudioListener(QObject):
     @capture_locked
     def arm_wake(self) -> None:
         self.cancel_recording()
+        self._wake_suspended = False
         self._passive_stop = False
         self._stop_latched = False
         self._wake_armed = self.wake_detection_enabled
@@ -401,8 +407,13 @@ class AudioListener(QObject):
     def suspend(self) -> None:
         """Suspend capture during an explicit document-reading session."""
         self.cancel_recording()
+        self._wake_suspended = True
         self._wake_armed = False
         self._passive_stop = True
+
+    @property
+    def wake_suppressed(self) -> bool:
+        return self._output_active or self._wake_suspended or time.monotonic() < self._ignore_audio_until
 
     @capture_locked
     def set_output_active(self, active: bool) -> None:
@@ -412,6 +423,9 @@ class AudioListener(QObject):
         if active:
             self._passive_stop = True
             if not was_active:
+                # Invalidate ASR already running when speech starts. It must not
+                # deliver an old wake after playback finishes either.
+                self.cancel_recording()
                 self._stop_latched = False
                 self.stop_detector.reset()
         if active or was_active:
@@ -422,6 +436,7 @@ class AudioListener(QObject):
             self._backup_ticks = 0
             self._backup_checked = False
             self._backup_silence = 0.0
+            self._audio_timeline.clear()
             self.wake_detector.reset()
             self.endpoint_vad.reset()
 
@@ -432,6 +447,8 @@ class AudioListener(QObject):
         self.wake_detector.configure_names([entry['name'] for entry in characters()])
 
     def _emit_statement(self, text, command=None, bare=False, character_id=None):
+        if self.wake_suppressed:
+            return
         if self.named_characters:
             from dock_twoo.brain.catalog import named_prefix
             found, rest = named_prefix(text, acoustic=True)
@@ -508,7 +525,7 @@ class AudioListener(QObject):
             return
         self.audio_frames_seen += 1
 
-        if self._output_active or (self._passive_stop and not self.is_recording):
+        if self._output_active or self._wake_suspended or (self._passive_stop and not self.is_recording):
             self.last_wake_decision = "monitoring-spoken-stop"
             clean = self.echo_guard.filter(pcm, captured_at)
             if not self._stop_latched and self.stop_detector.ready:
@@ -520,12 +537,13 @@ class AudioListener(QObject):
                     self.last_wake_decision = 'spoken-stop'
                     self.stop_requested.emit(keyword.replace('_', ' ').title())
                     return
-            if not self.named_characters or not self.wake_detection_enabled:
+            if self._output_active or self._wake_suspended or not self.named_characters or not self.wake_detection_enabled:
                 return
-            # Shared output permits a named handoff on echo-cleaned audio.
+            # Processing may accept another request; audible output and an
+            # entire document-reading session are strictly stop-only.
             pcm = clean
             samples = array.array('h'); samples.frombytes(pcm)
-        if time.monotonic() < self._ignore_audio_until and not self.named_characters:
+        if time.monotonic() < self._ignore_audio_until or (captured_at is not None and captured_at < self._ignore_audio_until):
             self.last_wake_decision = "suppressing-playback-echo"
             return
 
@@ -777,6 +795,8 @@ class AudioListener(QObject):
             self._wake_check_lock.release()
 
     def _check_wake_word_locked(self, frames: list[bytes], generation: Optional[int] = None, frame_end: Optional[int] = None) -> None:
+        if self.wake_suppressed or (generation is not None and generation != self._capture_generation):
+            return
         raw_pcm = b"".join(frames)
         if len(raw_pcm) < 16000 * 2 * 0.18:
             self.last_wake_decision = "segment-too-short"
@@ -788,7 +808,7 @@ class AudioListener(QObject):
             if clean_pcm != raw_pcm:
                 text = self._transcribe_pcm(clean_pcm).strip()
         self._record_voice_check(text, "utterance backup")
-        if generation is not None and (generation != self._capture_generation or (not self._wake_armed and not (self.named_characters and not self.is_recording and self._decode_token is None))):
+        if self.wake_suppressed or (generation is not None and (generation != self._capture_generation or (not self._wake_armed and not (self.named_characters and not self.is_recording and self._decode_token is None)))):
             return
         if not text:
             self.last_wake_decision = "no-transcript"
@@ -830,7 +850,7 @@ class AudioListener(QObject):
             return
 
         with self._capture_lock:
-            if generation is not None and (generation != self._capture_generation or (not self._wake_armed and not (self.named_characters and not self.is_recording and self._decode_token is None))):
+            if self.wake_suppressed or (generation is not None and (generation != self._capture_generation or (not self._wake_armed and not (self.named_characters and not self.is_recording and self._decode_token is None)))):
                 return
             # Preserve the audio that arrived while the backup ASR was decoding.
             following = [(pcm, voiced) for seq, pcm, voiced in self._audio_timeline

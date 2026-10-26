@@ -54,7 +54,7 @@ TOOLS=[
  tool('add_note','Create a note in the existing Notes application.',{'title':S,'body':S},['title','body']),
  tool('list_notes','Read existing Notes, optionally filtering by text.',{'query':S}),
  tool('keep_awake','Enable or disable prevention of idle display/system sleep. Manual locks remain possible.',{'enabled':{'type':'boolean'}},['enabled']),
- tool('open_dock_app','Open Dock Notes, Tasks, Vault, Dashboard, or its Settings/Control console.',{'app':{'type':'string','enum':['notes','tasks','scheduler','vault','settings','brain','dashboard']}},['app']),
+ tool('open_dock_app','Open Dock Notes, Tasks, Vault, Dashboard, Live Trail (activity), or its Settings/Control console.',{'app':{'type':'string','enum':['notes','tasks','scheduler','vault','settings','brain','dashboard','activity']}},['app']),
  tool('finish','Finish the task with the spoken answer and an appropriate reaction. Only claim actions confirmed by tool results.',
       {'text':S,'emotion':{'type':'string','enum':['neutral','happy','excited','curious','concerned','calm']},
        'gesture':{'type':'string','enum':['none','nod','wave','handshake','celebrate','whistle','think','read']},
@@ -292,7 +292,8 @@ class LocalTools:
             return {'requested_app':args['app']}
         if name=='open_app':
             target=args['name'].lower().strip()
-            if target in ('settings','control','dock settings','brain settings','notes','tasks','scheduler','vault','dashboard'):
+            if target=='live trail':target='activity'
+            if target in ('settings','control','dock settings','brain settings','notes','tasks','scheduler','vault','dashboard','activity'):
                 return self.execute('open_dock_app',{'app':'settings' if target in ('settings','control','dock settings','brain settings') else target},cancel)
             if target in ('mac settings','macos settings','system settings'):args={**args,'name':'System Settings'}
             if target=='windows settings':

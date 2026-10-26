@@ -22,6 +22,7 @@ from dock_twoo.ui.apps import (
     TasksAppWidget,
     SchedulerAppWidget,
     DashboardAppWidget,
+    LiveTrailAppWidget,
     VaultAppWidget,
 )
 from dock_twoo.ui.theme import get_theme_tokens, paint_color
@@ -69,6 +70,7 @@ class AttachedWindow(QWidget):
             "tasks": TasksAppWidget,
             "scheduler": SchedulerAppWidget,
             "dashboard": DashboardAppWidget,
+            "activity": LiveTrailAppWidget,
             "vault": VaultAppWidget,
             "brain": BrainAppWidget,
         }

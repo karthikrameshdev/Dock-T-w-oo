@@ -1032,7 +1032,6 @@ async function initStorageConsole() {
 async function initBrainConsole() {
   const byId = id => document.getElementById(id);
   window.BrainUsage?.mount(document.getElementById('cloudUsageDashboard'));
-  window.BrainActivity?.mount(document.getElementById('brainActivityTracker'));
   const headers = {'Content-Type':'application/json','X-Brain-Request':'local'};
   let generation=0, presets={}, catalog={};
   const post = async (path,body={}) => {
