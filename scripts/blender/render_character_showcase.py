@@ -20,7 +20,7 @@ scene.camera.data.ortho_scale=6.0
 scene.render.resolution_x=scene.render.resolution_y=1024;scene.render.resolution_percentage=100
 scene.eevee.taa_render_samples=64
 rig.animation_data.action=bpy.data.actions['wave'];scene.frame_set(18)
-scene.render.filepath=str(root/'Brain-hero.png');bpy.ops.render.render(write_still=True)
+scene.render.filepath=str(root/'default-hero.png');bpy.ops.render.render(write_still=True)
 if '--video' in sys.argv:
     out=root/'previews'/'reel-frames';out.mkdir(exist_ok=True,parents=True)
     scene.render.resolution_x=scene.render.resolution_y=640;scene.eevee.taa_render_samples=16

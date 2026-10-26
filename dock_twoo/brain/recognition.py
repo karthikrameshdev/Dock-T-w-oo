@@ -50,7 +50,7 @@ class LocalRecognizer:
                 self._recognizer = sherpa_onnx.OfflineRecognizer.from_whisper(
                     tokens=str(folder / self.TOKENS), encoder=str(folder / self.ENCODER),
                     decoder=str(folder / self.DECODER), language="en", task="transcribe",
-                    num_threads=2, decoding_method="greedy_search", provider="cpu",
+                    num_threads=1, decoding_method="greedy_search", provider="cpu",
                 )
                 self.state, self.error = "ready", ""
                 return True

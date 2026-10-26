@@ -80,17 +80,34 @@ class Playground(QObject):
         self.manager = manager
         self._last_positions = {}
         self._groups = {}
+        self._routes = {}
+        self._progress = {}
+        self._next_plan = {}
+        self._plan_tokens = 3
+        self._plan_refill = time.monotonic()
         self._next_social = time.monotonic() + 18
         self._next_crossing = time.monotonic() + 25
         self.timer = QTimer(self)
-        self.timer.setInterval(33)
+        self.timer.setInterval(80)
         self.timer.timeout.connect(self.step)
         self.timer.start()
 
     def arrange(self):
         for display_id, entry in self.manager._all_display_entries.items():
-            actors = [c for c in self.manager.companions.values() if c.screen_id == display_id]
+            actors = [c for c in self.manager.companions.values() if c.screen_id == display_id and c.isVisible()]
             area = entry['screen'].availableGeometry()
+            if len(actors) >= 10:
+                # Deterministic compact cells avoid fragmented greedy placement.
+                count = len(actors)
+                cols = max(range(1, count+1), key=lambda n:min(area.width()/(n*264), area.height()/(math.ceil(count/n)*268)))
+                rows = math.ceil(count/cols)
+                scale = min(1, area.width()/(cols*264), area.height()/(rows*268))*.95
+                for index, actor in enumerate(actors):
+                    actor.set_character_scale(scale)
+                    actor.move(round(area.left()+(index%cols+.5)*area.width()/cols-actor.width()/2),
+                               round(area.top()+(index//cols+.5)*area.height()/rows-actor.height()/2))
+                    self._last_positions[actor.actor_id] = actor.pos()
+                continue
             scale = fit_scale(area, len(actors), size=(132,225))
             occupied = []
             # Keep the microphone owner stationary if another character approaches.
@@ -121,22 +138,60 @@ class Playground(QObject):
         return cls.region(actor,position).boundingRect()
 
     def constrain_step(self, actor, point):
-        """Steer around another body rather than teleporting through it."""
+        """Follow a bounded route; abandon unreachable destinations safely."""
+        from dock_twoo.brain.navigation import find_route, segment_clear
+        old = actor.pos(); key = actor.actor_id; now = time.monotonic()
+        shape = self.local_region(actor)
+        area = actor.assigned_screen.availableGeometry() if actor.assigned_screen else None
+        if area and self.manager.store.setting('brain_roam_all_screens', False):
+            for entry in self.manager._all_display_entries.values():
+                if not self.manager.character_on_screen(actor.character_id, entry['id'], exclude=actor):
+                    area = area.united(entry['screen'].availableGeometry())
         peers = [self.region(c) for c in self.manager.companions.values() if c != actor and c.isVisible()]
         def clear(p):
-            box = self.region(actor, p)
-            return not any(box.intersects(rect) for rect in peers)
-        if clear(point):
-            return point
-        old = actor.pos()
-        step = max(2, min(8, (point - old).manhattanLength()))
-        candidates = [old + QPoint(dx, dy) for dx, dy in ((step, 0), (-step, 0), (0, step), (0, -step))]
-        if actor.assigned_screen:
-            area = actor.assigned_screen.availableGeometry()
-            candidates = [p for p in candidates if area.contains(self.bounds(actor,p))]
-        for candidate in sorted(candidates, key=lambda p: (p - point).manhattanLength()):
-            if clear(candidate):
+            body = shape.translated(p)
+            return (area is None or area.contains(body.boundingRect())) and not any(body.intersects(r) for r in peers)
+        goal = getattr(actor, 'destination', None)
+        goal = QPoint(goal) if goal is not None else QPoint(point)
+        watch = self._progress.get(key)
+        if watch is None or (old-watch[1]).manhattanLength() > 12:
+            self._progress[key] = (now, QPoint(old)); stalled = False
+        else:
+            stalled = now-watch[0] > 1.5 and (goal-old).manhattanLength() > 8
+        route = self._routes.get(key)
+        if route and (route['goal']-goal).manhattanLength() > 40:
+            route = None; self._routes.pop(key, None)
+        if not route and not stalled and segment_clear(old, point, clear):return point
+        if now-self._plan_refill >= 1:
+            self._plan_tokens = 3; self._plan_refill = now
+        if (not route or stalled) and now >= self._next_plan.get(key, 0) and self._plan_tokens:
+            self._plan_tokens -= 1; self._next_plan[key] = now+.8
+            path = find_route(old, goal, area, shape, peers) if area else []
+            if path:
+                route = {'goal': goal, 'points': path}
+                self._routes[key] = route
+                self._progress[key] = (now, QPoint(old))
+                if (path[-1]-goal).manhattanLength() > 6 and getattr(actor,'destination',None) is not None:
+                    # The requested point is occupied or beyond an edge. Finish
+                    # at reachable free space instead of walking there forever.
+                    actor.destination = QPoint(path[-1]); route['goal'] = QPoint(path[-1])
+            else:
+                self._routes.pop(key, None); route = None
+        if route:
+            while route['points'] and (route['points'][0]-old).manhattanLength() <= 3:route['points'].pop(0)
+            if not route['points']:
+                self._routes.pop(key, None)
+                return old
+            target = route['points'][0]
+            distance = math.hypot(target.x()-old.x(), target.y()-old.y())
+            stride = min(distance, max(2, min(8, (point-old).manhattanLength())))
+            candidate = QPoint(round(old.x()+(target.x()-old.x())*stride/max(1,distance)),
+                               round(old.y()+(target.y()-old.y())*stride/max(1,distance)))
+            if segment_clear(old, candidate, clear):
+                if abs(candidate.x()-old.x())>1:actor.facing = 1 if candidate.x()>old.x() else -1
                 return candidate
+            self._routes.pop(key, None)
+        # Wait for the next bounded replan rather than oscillating against a peer.
         return old
 
     def step(self):
@@ -145,6 +200,9 @@ class Playground(QObject):
         known = self.manager.companions
         self._last_positions = {key: value for key, value in self._last_positions.items() if key in known}
         self._groups = {key: value for key, value in self._groups.items() if key in known}
+        for mapping in (self._routes, self._progress, self._next_plan):
+            for key in list(mapping):
+                if key not in known or not known[key].isVisible():mapping.pop(key, None)
         occupied = []
         for actor in sorted(actors, key=lambda c: c.activity == 'idle'):
             if actor.activity != 'idle':
@@ -170,20 +228,17 @@ class Playground(QObject):
                     self.arrange()
                     return
                 actor.move(point)
-                actor.stop_motion()
+                # Preserve the independent clip, route and arrival callback.
             occupied.append(self.region(actor))
             self._last_positions[actor.actor_id] = actor.pos()
         free = [c for c in actors if c.activity == 'idle' and not c.reduced_motion
                 and not c.origin and now > getattr(c, 'social_until', 0)]
         if not self.manager.store.setting('roaming', True):
             return
-        if now > self._next_social and len(free) > 1:
-            self._next_social = now + random.uniform(25, 40)
-            self.play(random.choice(list(GROUP_ACTIVITIES)), free[0].actor_id)
         if now > self._next_crossing and free and self.manager.store.setting('brain_roam_all_screens', False):
             self._next_crossing = now + random.uniform(25, 40)
             actor = random.choice(free)
-            destinations = [e for e in self.manager._all_display_entries.values() if e['id'] != actor.screen_id]
+            destinations = [e for e in self.manager._all_display_entries.values() if e['id'] != actor.screen_id and not self.manager.character_on_screen(actor.character_id, e['id'], exclude=actor)]
             if destinations:
                 entry = random.choice(destinations)
                 area = entry['screen'].availableGeometry()

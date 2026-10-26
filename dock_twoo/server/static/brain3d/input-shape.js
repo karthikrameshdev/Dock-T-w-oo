@@ -9,8 +9,8 @@ export class InputShape {
     this.material=new THREE.MeshBasicMaterial({color:0xffffff});
     this.lastTime=-Infinity;this.lastBits='';this.samples=0;this.elapsed=0;
   }
-  sample(scene,camera,model,width,height,time) {
-    if(time-this.lastTime<1/30)return null;
+  sample(scene,camera,model,width,height,time,fps=30) {
+    if(time-this.lastTime<1/Math.max(2,Math.min(30,fps)))return null;
     this.lastTime=time;
     width=Math.round(width);height=Math.round(height);
     if(width<1 || height<1 || width>1024 || height>1024)return null;
@@ -27,7 +27,8 @@ export class InputShape {
       this.target.setSize(width,height);
       scene.overrideMaterial=this.material;
       renderer.setRenderTarget(this.target);renderer.clear();renderer.render(scene,camera);
-      pixels=new Uint8Array(width*height*4);
+      if(this.pixels?.length!==width*height*4)this.pixels=new Uint8Array(width*height*4);
+      pixels=this.pixels;
       renderer.readRenderTargetPixels(this.target,0,0,width,height,pixels);
     } finally {
       renderer.setRenderTarget(previous);scene.overrideMaterial=override;

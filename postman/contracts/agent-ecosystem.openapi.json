@@ -1,0 +1,277 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Named agent ecosystem controls",
+    "version": "2.1.0",
+    "description": "One logical agent per catalog identity, parallel independent work, one microphone and one speaker. Authenticated gRPC schema is dock_twoo/brain/ecosystem/agents.proto."
+  },
+  "paths": {
+    "/api/brain/ecosystem": {
+      "get": {
+        "description": "Live job registry and bounded seven-day trail. Jobs include parent id, character, profile, state, latest progress, last_reported and generated artifacts. All agents can delegate using their owned running parent task; self, ancestor and busy assignments are rejected. Only one character is rendered.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input or busy character"
+          },
+          "403": {
+            "description": "Local controls required"
+          }
+        }
+      }
+    },
+    "/api/brain/character-profile": {
+      "post": {
+        "description": "Set or clear a character model binding and optionally save local voice tuning. Clearing the binding falls back to the active default. Running tasks keep their snapshot.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input or busy character"
+          },
+          "403": {
+            "description": "Local controls required"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "character_id"
+                ],
+                "properties": {
+                  "character_id": {
+                    "type": "string",
+                    "description": "Exact catalog id, including default for Brain."
+                  },
+                  "profile_id": {
+                    "type": "string",
+                    "description": "Empty clears binding and inherits platform default."
+                  },
+                  "tuning": {
+                    "type": "object",
+                    "required": [
+                      "voice",
+                      "speed",
+                      "pitch"
+                    ],
+                    "properties": {
+                      "voice": {
+                        "type": "string"
+                      },
+                      "speed": {
+                        "type": "number",
+                        "minimum": 0.75,
+                        "maximum": 1.4
+                      },
+                      "pitch": {
+                        "type": "number",
+                        "minimum": 0.85,
+                        "maximum": 1.2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brain/memory/forget": {
+      "post": {
+        "description": "Clear all scoped summaries, preferences and workflow learning for an idle character. Saved Tasks, Notes and documents remain.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input or busy character"
+          },
+          "403": {
+            "description": "Local controls required"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "character_id"
+                ],
+                "properties": {
+                  "character_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/brain/artifact": {
+      "get": {
+        "description": "Download an existing generated file inside application document storage. Paths outside this root and symlink traversal are rejected. No microphone/model call.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid input or busy character"
+          },
+          "403": {
+            "description": "Local controls required"
+          }
+        }
+      }
+    },
+    "/api/brain/awake": {
+      "get": {
+        "description": "List wake-by-name settings. All identities default to enabled. This does not change background work or the global microphone switch.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All catalog identities with persisted awake flags; default/Brain is always true."
+          },
+          "400": {
+            "description": "Invalid character, non-boolean enabled, or attempt to disable Brain."
+          },
+          "403": {
+            "description": "Local controls required."
+          }
+        }
+      },
+      "post": {
+        "description": "Persist one character wake-by-name preference. Brain cannot be disabled. Has no effect on manual selection or processing. Takes effect before the next automatic wake, including fallback ASR.",
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "character_id",
+                  "enabled"
+                ],
+                "properties": {
+                  "character_id": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All catalog identities with persisted awake flags; default/Brain is always true."
+          },
+          "400": {
+            "description": "Invalid character, non-boolean enabled, or attempt to disable Brain."
+          },
+          "403": {
+            "description": "Local controls required."
+          }
+        }
+      }
+    }
+  }
+}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import random
 import os
 import re
@@ -75,14 +77,18 @@ class BrainManager(QObject, BrainSessions):
         self.activity_cleanup = QTimer(self)
         self.activity_cleanup.setInterval(60*60*1000)
         self.activity_cleanup.timeout.connect(self.activity.prune)
-        if start_services:self.activity_cleanup.start()
+        # ResourceKeeper performs disk pruning away from the GUI thread.
         from dock_twoo.brain.audio_devices import DefaultAudioDevices
         self.audio_devices = DefaultAudioDevices(self)
         self.speech = SpeechPlayback(self, audio_devices=self.audio_devices)
         self.speech.store = self.store
 
         self._init_sessions()
-        actor = Companion(self)
+        from dock_twoo.brain.catalog import character
+        selected = self.store.setting('active_character', 'default')
+        try:character(selected)
+        except ValueError:selected = 'default'
+        actor = Companion(self, character_id=selected)
         actor.actor_id = 'default'
         self.companions['default'] = actor
         self.speech.activity.connect(self._set_active_activity)
@@ -120,8 +126,8 @@ class BrainManager(QObject, BrainSessions):
         # Real-time microphone listening and wake word ('Brain') detection
         self.listener = AudioListener(
             wake_word=self.store.setting("wake_word", "brain"),
-            on_wake=self._on_wake_detected,
-            on_turn_complete=self._on_turn_complete,
+            on_wake=None,
+            on_turn_complete=None,
             parent=self,
             store=self.store,
             model_dir=voice_model_dir,
@@ -135,7 +141,9 @@ class BrainManager(QObject, BrainSessions):
         self.listener.speech_started.connect(self._on_speech_started)
         self.listener.speech_ended.connect(self._on_speech_ended)
         self.listener.processing_started.connect(self._on_processing_started)
-        self.listener.wake_started.connect(self._on_keyword_started)
+        self.listener.enable_character_names()
+        self.listener.named_wake_started.connect(self._on_named_keyword_started)
+        self.listener.named_turn_completed.connect(self._on_named_turn_completed)
         self.listener.turn_timed_out.connect(self._on_session_timeout)
         self.speech.activity.connect(self._on_speech_activity)
         self.listener.wake_detection_enabled = bool(self.store.setting("wake_word_enabled", True))
@@ -150,8 +158,33 @@ class BrainManager(QObject, BrainSessions):
         self.reader = DesktopReader(self)
         if not start_services:
             self.reader.remember_timer.stop()
+        from dock_twoo.brain.ecosystem.semantic import SemanticModel
+        from dock_twoo.brain.ecosystem.memory import AdaptiveMemory
+        from dock_twoo.brain.ecosystem.cache import PromptCache
+        self.semantic_model=SemanticModel(voice_model_dir or self.store.data_dir/'models')
+        self.memory=AdaptiveMemory(self.store.data_dir/'memory',self.semantic_model)
+        self.prompt_cache=PromptCache(self.store.data_dir/'cache')
+        if start_services:self.semantic_model.start()
         self.agent = BrainAgent(self.profile_mgr, self, tracker=self.activity)
+        from dock_twoo.brain.ecosystem.coordinator import Coordinator
+        from dock_twoo.brain.agent_notifications import AgentNotifications
+        self.notifications = AgentNotifications(self)
+        from dock_twoo.brain.security.approvals import FileApprovals
+        from dock_twoo.brain.security.files import FileGuard
+        self.file_approvals=FileApprovals(self)
+        self.file_guard=FileGuard(self.store.data_dir/'security'/'analysis-files.json',self.file_approvals.ask)
+        self.agent.tools.guard=self.file_guard
+        self.coordinator=Coordinator(self)
+        self.agent.coordinator=self.coordinator
+        if start_services:self.coordinator.start()
         self.animation_director = AnimationDirector(self)
+        from dock_twoo.brain.ecosystem.animation import EcologyDirector
+        self.ecology=EcologyDirector(self)
+        if not start_services:self.ecology.timer.stop()
+        from dock_twoo.brain.resources import ResourceKeeper
+        self.resources = ResourceKeeper(self, enabled=start_services)
+        from dock_twoo.brain.reminders import ReminderService
+        self.reminders = ReminderService(self, enabled=start_services)
         self.reader.failed.connect(self._on_reading_failed)
         self.reader.finished.connect(self._on_reading_finished)
         self.speech.progress.connect(lambda value: self.companion.reading_progress(value))
@@ -169,6 +202,8 @@ class BrainManager(QObject, BrainSessions):
         """Keep microphone startup failures available to the settings console."""
         self.audio_listener_error = message
         self.status_changed.emit(message)
+        if hasattr(self, 'notifications'):
+            self.notifications.show(message)
 
     @Slot(str)
     def _do_speech_start(self, reply: str) -> None:
@@ -179,7 +214,13 @@ class BrainManager(QObject, BrainSessions):
         if action_name == "loop":
             self.companion.start_animation_loop()
         else:
-            self.companion.play_action(action_name)
+            self.play_user_action(self.companion, action_name)
+
+    def play_user_action(self, actor, action):
+        actor.resource_active_until = time.monotonic()+min(20,actor.actions.get(action,('',5))[1]+1)
+        actor.resource_resting=False
+        if actor.model_view:actor.model_view.set_parked(False)
+        actor.play_action(action)
 
     def is_mini_agent_visible(self) -> bool:
         return any(actor.isVisible() for actor in self.companions.values())
@@ -233,6 +274,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_speech_started(self):
+        self.audio_listener_error = ''
         self.session_timer.stop()
         self._refresh_actor_states()
 
@@ -265,7 +307,49 @@ class BrainManager(QObject, BrainSessions):
         if active:
             self.listener.start()
         # Explicit listening can coexist with an agent worker, never playback.
-        self.listener.set_output_active(active and not self.listener.is_recording)
+        self.listener.set_output_active(active)
+
+    @Slot(str)
+    def _on_named_keyword_started(self, character_id):
+        # A queued microphone signal can arrive after synthesis/playback began.
+        if self.listener.wake_suppressed or self.reader.active:
+            return
+        if not self.store.character_awake(character_id):
+            self.listener.cancel_recording()
+            self.listener.arm_wake()
+            self._after_capture()
+            return
+        owner = self.voice_actor(character_id)
+        # Named handoffs are accepted between responses, never from playback.
+        self._listening_actor_id = owner
+        self._listening_source = self._session_source = 'voice'
+        self._session_actor_id = self._ui_actor_id = owner
+        self.in_conversation_session = True
+        self.session_timer.stop()
+        if self.reader.active:
+            self.reader.stop()
+        self._awaiting_reply = False
+        self.speech.stop()
+        if self._active_turn and not self._deferred_reply:
+            self._active_turn = None
+        actor = self.actor_for(owner)
+        actor.stop_motion()
+        actor.turn_to_user()
+        self._refresh_actor_states()
+        self.notifications.show(f'{actor.character_name} is listening…')
+
+    @Slot(str, str, str, bool)
+    def _on_named_turn_completed(self, character_id, command, transcript, bare):
+        if self.listener.wake_suppressed or self.reader.active:
+            return
+        owner = self.voice_actor(character_id)
+        self.listener.cancel_recording()
+        self._session_actor_id = owner
+        self._session_source = 'voice'
+        self._listening_actor_id = None
+        self.listener.last_completed_transcript = transcript
+        self._queue_turn(command or transcript, 'voice', owner, kind='greeting' if bare else 'request')
+        self._after_capture()
 
     @Slot()
     def _on_keyword_started(self):
@@ -391,10 +475,37 @@ class BrainManager(QObject, BrainSessions):
         else:
             self.main_thread_action_requested.emit(fn)
 
+    def forget_character_memory(self, character_id):
+        from dock_twoo.brain.catalog import character
+        character(character_id)
+        if self.coordinator.agent_states.get(character_id) in ('processing','queued') or any(item['turn'].character_id == character_id for item in self._processing_turns.values()) or any(self.actor_busy(actor) for actor in self.companions.values() if actor.character_id==character_id):
+            raise ValueError('Finish or stop this character’s task and listening before clearing its memory.')
+        self.memory.forget_character(character_id)
+        self._character_histories.pop(character_id,None)
+        for key,actor in self.companions.items():
+            if actor.character_id==character_id:self._histories.pop(key,None)
+        for agent in {self.agent, *self._character_agents.values()}:
+            for key in list(agent._last_memory_runs):
+                if json.loads(key)[0]==character_id:agent._last_memory_runs.pop(key,None)
+            for key in list(agent._last_task_families):
+                if key[0]==character_id:agent._last_task_families.pop(key,None)
+
     def submit_request(self, text, source='console', screen_id=None):
-        profile = dict(self.profile_mgr.get_active_profile())
+        from dock_twoo.brain.catalog import named_prefix
+        character_id, command=named_prefix(text)
+        identity=character_id or self.actor_for(screen_id).character_id
+        profile = dict(self.profile_mgr.character_profile(identity))
         key = self.profile_mgr.get_key(profile.get('provider'), profile.get('id'))
-        self.run_on_main_thread(lambda: self._queue_turn(text, source, screen_id, profile_snapshot=(profile, key)))
+        def accept():
+            target = screen_id
+            if character_id is not None:
+                display_id = self.actor_for(screen_id).screen_id
+                self.choose_assistant(character_id)
+                target = self.select_character(character_id, display_id).actor_id
+            self._queue_turn(command if character_id is not None and command else text, source, target,
+                             kind='greeting' if character_id is not None and not command else 'request',
+                             profile_snapshot=(profile, key), character_id=identity)
+        self.run_on_main_thread(accept)
 
     def _do_turn_complete(self, user_text: str, source='voice', screen_id=None) -> None:
         self._queue_turn(user_text, source, screen_id)
@@ -454,83 +565,89 @@ class BrainManager(QObject, BrainSessions):
                 self._finish_turn()
             return
 
+        # Local session exit; model requests are launched independently by the scheduler.
+        self.in_conversation_session = False
+        self.conversation_history.clear()
+        reply = "Goodbye! Standing by whenever you need me."
+        self.activity.finish(run_id, 'complete', reply)
+        self._deliver_model_reply(self._active_turn, reply)
+
+    def _launch_model_turn(self, turn):
+        from dock_twoo.brain.ecosystem.coordinator import WorkerManager
         self.session_timer.stop()
-        self._agent_cancel.set()
-        self._agent_cancel = threading.Event()
-        agent_cancel = self._agent_cancel
-        self.listener.start()
-        if not self.listener.is_recording:
-            self.listener.set_output_active(True)
-        self.activity_requested.emit("processing")
-        self._query_generation += 1
-        generation = self._query_generation
-        self.conversation_history.append({"role": "user", "content": user_text})
-        history = list(self.conversation_history)
-
-        # Check for conversational session exit phrases ("bye", "goodbye", "that's all", "dismiss")
-        clean = user_text.strip().lower()
-        if re.search(r"^(bye|goodbye|that\'?s\s+all|dismiss|dismissed|see\s+you|thank\s+you\s+bye|thanks\s+bye|exit|stop\s+listening)\b", clean):
-            self.in_conversation_session = False
-            self.conversation_history.clear()
-            reply = "Goodbye! Standing by on your desktop whenever you need me."
-            self.activity.finish(run_id, "complete", reply)
-            self._publish_response(reply)
-            if self.store.setting("voice_reply", True):
-                self._awaiting_reply = True
-                self.speech_start_requested.emit(reply)
-            else:
-                self._finish_turn()
-            return
-
-        turn = self._active_turn
+        cancel = threading.Event()
+        identity = turn.character_id
+        agent = self._character_agents.get(identity)
+        if agent is None:
+            agent = self.agent if identity == 'default' else BrainAgent(self.profile_mgr, self, tracker=self.activity, client_factory=self.agent.client_factory)
+            self._character_agents[identity] = agent
+        proxy = WorkerManager(self, identity, None, self.coordinator.desktop_lock, cancel, foreground=True, actor_id=turn.actor_id)
+        agent.manager = proxy
+        agent.tools.manager = proxy
+        agent.coordinator = self.coordinator
+        history = self._character_histories.setdefault(identity, [])
+        history.append({'role': 'user', 'content': turn.text})
+        del history[:-12]
+        snapshot = list(history)
+        self._processing_turns[turn.run_id] = {'turn': turn, 'agent': agent, 'cancel': cancel}
         self._worker_running = True
+        self.activity.event(turn.run_id, 'dequeued', {'actor_id': turn.actor_id, 'character_id': identity})
         def run_turn():
             reply = None
             try:
-                reply = self.agent.run(user_text, history=history, cancel=agent_cancel,
-                                       source=source, run_id=run_id,
-                                       profile=turn.profile, api_key=turn.key)
+                reply = agent.run(turn.text, history=snapshot, cancel=cancel, source=turn.source,
+                                  run_id=turn.run_id, profile=turn.profile, api_key=turn.key,
+                                  character_name=turn.character_name, character_id=identity)
             except InterruptedError:
                 pass
             except Exception as exc:
-                self.status_changed.emit(f"Brain request failed: {type(exc).__name__}")
-                reply = f"I could not complete the request. {exc}"
-
+                reply = 'I could not complete the request. ' + str(exc)
+                self.activity.finish(turn.run_id, 'error', reply)
+            finally:
+                proxy.release_desktop()
             def completed():
-                self._worker_running = False
-                if generation != self._query_generation or agent_cancel.is_set() or reply is None:
-                    self._awaiting_reply = False
-                    self._finish_turn()
-                    return
-                def deliver_reply():
-                    self.conversation_history.append({"role": "assistant", "content": str(reply)})
-                    self._publish_response(reply)
-                    if getattr(reply, 'tasks_query', None) is not None:
-                        self.tasks_view_requested.emit({'filters': reply.tasks_query, 'summary': str(reply)})
-                    self.animation_director.respond(reply)
-                    if self.reader.active:
-                        return
-                    if self.store.setting("voice_reply", True):
-                        self._awaiting_reply = True
-                        if getattr(reply, 'gesture', None) == 'whistle':
-                            self.speech.whistle()
-                        elif getattr(reply, 'delivery', None) == 'sing':
-                            self.speech.sing(str(reply))
-                        elif hasattr(reply, 'lyrics'):
-                            self.speech.sing(reply.lyrics)
-                        else:
-                            self.speech.start(reply)
+                self._processing_turns.pop(turn.run_id, None)
+                self._worker_running = bool(self._processing_turns)
+                if not cancel.is_set() and reply is not None:
+                    history = self._character_histories.setdefault(identity, [])
+                    history.append({'role': 'assistant', 'content': str(reply)})
+                    del history[:-12]
+                    if self.companion.character_id == identity:
+                        self._reply_queue.append((turn, reply))
                     else:
-                        self.listener.set_output_active(False)
-                        self._finish_turn()
-                if self.listener.is_recording or self.listener._decode_token is not None:
-                    self._deferred_reply = deliver_reply
-                else:
-                    deliver_reply()
+                        self.notifications.show(f'{turn.character_name} finished. Select {turn.character_name} and ask for its status.')
+                self._drain_turns()
             self.run_on_main_thread(completed)
-
-        self._active_query_thread = threading.Thread(target=run_turn, daemon=True, name='brain-agent-turn')
+        self._active_query_thread = threading.Thread(target=run_turn, daemon=True, name='agent-' + identity)
         self._active_query_thread.start()
+
+    def _deliver_model_reply(self, turn, reply):
+        self._publish_response(reply)
+        if getattr(reply, 'tasks_query', None) is not None:
+            self.tasks_view_requested.emit({'filters': reply.tasks_query, 'summary': str(reply)})
+        self.animation_director.respond(reply)
+        if self.reader.active:
+            return
+        if not self.store.setting('voice_reply', True):
+            self.listener.set_output_active(False)
+            self._finish_turn()
+            return
+        self._awaiting_reply = True
+        turn.phase = 'speaking'
+        self._refresh_actor_states()
+        if getattr(reply, 'gesture', None) == 'whistle':
+            self.speech.whistle()
+        elif getattr(reply, 'delivery', None) == 'sing' or hasattr(reply, 'lyrics'):
+            self.speech.sing(getattr(reply, 'lyrics', str(reply)))
+        else:
+            spoken = str(reply)
+            documents = [Path(path) for path in getattr(reply, 'artifacts', []) if Path(path).suffix.lower() in ('.md', '.txt') and Path(path).is_file()]
+            if documents:
+                document = max(documents, key=lambda path: (bool(re.search(r'final|report|document', path.stem, re.I)), path.stat().st_size))
+                if document.stat().st_size <= 500000:
+                    content = document.read_text(encoding='utf-8', errors='replace')
+                    spoken += '\n\n' + content
+            self.speech.start(spoken)
 
     def _on_turn_complete(self, user_text):
         def accept():
@@ -583,7 +700,7 @@ class BrainManager(QObject, BrainSessions):
         self._awaiting_reply = False
         self._histories.setdefault(actor.actor_id, [])
         self._start_capture(actor.actor_id, source)
-        if self._active_turn and not self._worker_running and not self._deferred_reply:
+        if self._active_turn and not self._deferred_reply:
             self._finish_turn()
 
     @Slot()
@@ -596,6 +713,10 @@ class BrainManager(QObject, BrainSessions):
         for turn in self._turn_queue:
             self.activity.finish(turn.run_id, 'stopped', reason='Removed from the queue by Stop.')
         self._turn_queue.clear()
+        self._reply_queue.clear()
+        for item in self._processing_turns.values():
+            item['cancel'].set()
+            item['agent'].stop()
         if self._active_turn:
             self.activity.finish(self._active_turn.run_id, 'stopped', reason='Stopped by the user.')
         self._pending_listener = None
@@ -606,6 +727,7 @@ class BrainManager(QObject, BrainSessions):
         self._deferred_reply = None
         self._awaiting_reply = False
         self._agent_cancel.set()
+        if hasattr(self,"coordinator"):self.coordinator.stop()
         self.agent.stop()
         self.animation_director.cancel()
         self.reader.stop()
@@ -616,14 +738,19 @@ class BrainManager(QObject, BrainSessions):
         self.session_timer.stop()
         self.listener.arm_wake()
         self.speech.stop()
-        if not self._worker_running:
-            self._active_turn = None
+        self._active_turn = None
         self._stopping = False
         self._refresh_actor_states()
 
     def shutdown(self):
         self.stop_talking()
         self.input_router.close()
+        self.reminders.close()
+        self.resources.close()
+        self.file_approvals.close()
+        self.notifications.close()
+        self.ecology.close()
+        self.coordinator.close()
         self._stopping = True
         self.reader.remember_timer.stop()
         self.activity_cleanup.stop()
@@ -639,7 +766,7 @@ class BrainManager(QObject, BrainSessions):
 
     def _publish_response(self, text: str) -> None:
         self._response_generation += 1
-        self.last_response = {'generation':self._response_generation, 'text':str(text)}
+        self.last_response = {'generation':self._response_generation, 'text':str(text), 'artifacts':list(getattr(text,'artifacts',[]))}
         self.reply_received.emit(str(text))
 
     def read_text(self, text: str) -> None:
@@ -700,6 +827,17 @@ class BrainManager(QObject, BrainSessions):
         menu=self._build_context_menu(target)
         menu.exec(global_pos)
 
+    def set_resource_cap(self, enabled):
+        self.store.set_setting('resource_cap_enabled', bool(enabled))
+        self.animation_director.cancel()
+        for actor in self.companions.values():
+            if enabled:
+                actor.stop_motion();actor.motion_timer.stop()
+                actor._yaw=actor.turn_progress=actor.turn_target=0.0
+                actor.roam_timer.stop();actor.follow_timer.stop()
+            if actor.model_view:actor.model_view.set_parked(False)
+        self.resources._budget()
+
     def _build_context_menu(self, target=None) -> QMenu:
         """Create the current profile and action choices on the GUI thread."""
         actor = self.actor_for(target)
@@ -729,7 +867,7 @@ class BrainManager(QObject, BrainSessions):
         """)
 
         # 1. Talk Action
-        talk_label = "Finish speaking" if self.listener.is_recording else "🎤 Talk to Brain"
+        talk_label = "Finish speaking" if self.listener.is_recording else f"🎤 Talk to {actor.character_name}"
         act_talk = menu.addAction(talk_label, lambda: self.toggle_talking(actor.actor_id))
         act_talk.setEnabled(True)
         menu.addAction("Read Desktop", lambda: self.start_reading("desktop", actor.actor_id))
@@ -740,8 +878,15 @@ class BrainManager(QObject, BrainSessions):
 
         menu.addSeparator()
 
+        cap = menu.addAction('Cap resource to 25%')
+        cap.setCheckable(True)
+        cap.setChecked(bool(self.store.setting('resource_cap_enabled',False)))
+        cap.setToolTip('Pause body motion; keep eyes, lips, headlight, voice and background tasks active. CPU target, not a hard quota.')
+        cap.toggled.connect(self.set_resource_cap)
+
         # 2. Model Profiles Submenu
-        profile_menu = menu.addMenu("🧠 Model Profile")
+        profile_menu = menu.addMenu(f"Agent model for {actor.character_name}")
+        profile_menu.addAction("Use default agent model",lambda:self.profile_mgr.bind_character(actor.character_id,""))
         profiles = self.profile_mgr.get_profiles()
         active_id = self.store.setting("active_profile")
 
@@ -752,11 +897,13 @@ class BrainManager(QObject, BrainSessions):
             display_label = f"{p_name} ({p_status.title()})"
             act = profile_menu.addAction(display_label)
             act.setCheckable(True)
-            act.setChecked(p_id == active_id)
-            act.triggered.connect(lambda checked=False, pid=p_id: self._activate_and_notify(pid))
+            act.setChecked(p_id == self.profile_mgr.character_profile(actor.character_id)['id'])
+            act.triggered.connect(lambda checked=False, pid=p_id: self.profile_mgr.bind_character(actor.character_id,pid))
 
         # 3. Animations Submenu
         anim_menu = menu.addMenu("🎭 Animations")
+        anim_menu.setEnabled(not actor.resource_capped)
+        cap.toggled.connect(lambda enabled:anim_menu.setEnabled(not enabled))
         act_loop = anim_menu.addAction("▶ Play All (Loop)", actor.start_animation_loop)
         act_loop.setEnabled(not actor.reduced_motion)
 
@@ -764,9 +911,9 @@ class BrainManager(QObject, BrainSessions):
         act_stop.setEnabled(bool(actor.action or actor.animation_loop))
 
         anim_menu.addSeparator()
-        for action_key, (action_lbl, _) in ACTIONS.items():
+        for action_key, (action_lbl, _) in actor.actions.items():
             a_act = anim_menu.addAction(
-                action_lbl, lambda checked=False, k=action_key: actor.play_action(k)
+                action_lbl, lambda checked=False, k=action_key: self.play_user_action(actor,k)
             )
             a_act.setEnabled(not actor.reduced_motion)
 
@@ -777,34 +924,33 @@ class BrainManager(QObject, BrainSessions):
         roam_act.setCheckable(True)
         roam_act.setChecked(bool(self.store.setting("roaming", True)))
         roam_act.toggled.connect(lambda v: self.store.set_setting("roaming", v))
+        roam_act.setEnabled(not actor.resource_capped)
+        cap.toggled.connect(lambda enabled:roam_act.setEnabled(not enabled))
         follow_act = menu.addAction("Follow Cursor")
         follow_act.setCheckable(True)
         follow_act.setChecked(actor.follow_cursor_enabled)
         follow_act.toggled.connect(actor.set_follow_cursor)
+        follow_act.setEnabled(not actor.resource_capped)
+        cap.toggled.connect(lambda enabled:follow_act.setEnabled(not enabled))
 
         all_screens = menu.addAction("Roam across all screens")
         all_screens.setCheckable(True)
         all_screens.setChecked(bool(self.store.setting('brain_roam_all_screens', False)))
         all_screens.toggled.connect(self.set_roam_all_screens)
-        menu.addAction("Add another Brain", lambda: self.add_brain(actor.screen_id))
-        characters = menu.addMenu('Brains on this screen')
-        for number, other in enumerate(self.companions.values(), 1):
-            if other.screen_id != actor.screen_id:
-                continue
-            characters.addAction(f'Talk to Brain {number}', lambda checked=False, key=other.actor_id: self.toggle_talking(key))
-            if other.actor_id.startswith('extra-'):
-                characters.addAction(f'Remove Brain {number}', lambda checked=False, key=other.actor_id: self.remove_brain(key))
-        if actor.actor_id.startswith('extra-'):
-            menu.addAction("Remove this Brain", lambda: self.remove_brain(actor.actor_id))
-        remove_extras = menu.addAction("Remove all secondary Brains", self.remove_all_secondary_brains)
-        remove_extras.setEnabled(any(key.startswith('extra-') for key in self.companions) or
-                                 any(isinstance(item, dict) and str(item.get('id', '')).startswith('extra-')
-                                     for item in self.store.setting('brain_instances', [])))
-        together = menu.addMenu("Play together")
-        from dock_twoo.brain.playground import GROUP_ACTIVITIES
-        for key, label in GROUP_ACTIVITIES.items():
-            choice = together.addAction(label, lambda checked=False, kind=key: self.playground.play(kind, actor.actor_id))
-            choice.setEnabled(hasattr(self, 'playground') and len(self.companions) > 1)
+        from dock_twoo.brain.catalog import characters as character_catalog
+        choose = menu.addMenu('Choose assistant')
+        for entry in character_catalog():
+            option = choose.addAction(entry['name'],
+                lambda checked=False, key=entry['id']: self.choose_assistant(key))
+            option.setCheckable(True)
+            option.setChecked(entry['id'] == actor.character_id)
+        if len(self._all_display_entries) > 1:
+            screens = menu.addMenu('Move assistant to screen')
+            for key, entry in self._all_display_entries.items():
+                option = screens.addAction(entry.get('name', key),
+                    lambda checked=False, display=key: self.select_character(actor.character_id, display))
+                option.setCheckable(True)
+                option.setChecked(key == actor.screen_id)
 
         # 5. Speak Replies Toggle
         voice_act = menu.addAction("🔊 Speak Replies")
@@ -821,13 +967,13 @@ class BrainManager(QObject, BrainSessions):
         menu.addSeparator()
 
         # 7. Configure in Web Console
-        menu.addAction("⚙️ Brain Settings & Models…", self.open_console_settings)
+        menu.addAction("⚙️ Voice Assistant Settings & Models…", self.open_console_settings)
 
         # 8. Close / Hide Mini Agent Option
         menu.addSeparator()
-        show_all = menu.addAction("Show all Brains", self.show_mini_agent)
+        show_all = menu.addAction("Show assistant", self.show_mini_agent)
         show_all.setEnabled(any(not c.isVisible() for c in self.companions.values()))
-        hide_all = menu.addAction("✕ Hide all Brains and stop requests", self.hide_mini_agent)
+        hide_all = menu.addAction("✕ Hide assistant and stop requests", self.hide_mini_agent)
         hide_all.setEnabled(self.is_mini_agent_visible())
 
         return menu
@@ -860,9 +1006,9 @@ class BrainManager(QObject, BrainSessions):
             if ready.wait(3) and 'status' in outcome:return outcome['status']
             return copy.deepcopy(getattr(self,'_status_cache',{'name':'Brain','activity':'busy','error':'The desktop UI is busy.'}))
         status = {
-            "name": "Brain",
+            "name": "Voice Assistant",
             "queue": self.queue_status(),
-            "characters": [{'id': actor.actor_id, 'screen_id': actor.screen_id,
+            "characters": [{'id': actor.actor_id, 'character_id': actor.character_id, 'name': actor.character_name, 'screen_id': actor.screen_id,
                             'visible': actor.isVisible(), 'activity': actor.activity}
                            for actor in self.companions.values()],
             "is_mini_agent_visible": self.is_mini_agent_visible(),
@@ -885,6 +1031,9 @@ class BrainManager(QObject, BrainSessions):
                                "model": self.profile_mgr.get_active_profile().get("model", ""), "kind":"cloud"},
             "agent": self.agent.status(),
             "local_speech": get_local_tts().status(),
+            "local_policy": self.semantic_model.status(),
+            "resources": dict(self.resources.stats),
+            "ecosystem": {"agents":30,"grpc_ready":self.coordinator.bus.port is not None,"agent_states":dict(self.coordinator.agent_states)},
             "animation": dict(self.animation_director.last_decision),
             "last_response": dict(self.last_response),
             "character": {
@@ -903,6 +1052,8 @@ class BrainManager(QObject, BrainSessions):
 
     def apply_voice_settings(self, changes: Dict[str, Any]) -> None:
         """Apply saved voice controls to the live listener on the GUI thread."""
+        if 'resource_cap_enabled' in changes:
+            self.set_resource_cap(bool(changes['resource_cap_enabled']))
         if "follow_cursor" in changes:
             self.companion.set_follow_cursor(bool(changes["follow_cursor"]))
         if "wake_word" in changes:

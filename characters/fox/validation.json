@@ -1,0 +1,27 @@
+{
+  "id": "fox",
+  "source_sha256": "f53fdb9bc0af204c70bef10d025a900acca58bbb27fa649a0b4d06697d9d6a8f",
+  "asset_sha256": "d9daa4d65799d50194568211dfcb5654dd9c7f7b579449c9a5188aa5402643f0",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

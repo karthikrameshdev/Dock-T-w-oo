@@ -70,7 +70,7 @@ def test_previous_daily_usage_migrates_without_changing_totals(tmp_path):
     tracked_call(store,{'provider':'custom','model':'old'},100,20)
     # Reproduce the original aggregate schema without profile columns.
     with store.db() as db:
-        columns=[row[1] for row in db.execute('PRAGMA table_info(daily_usage)') if row[1] not in ('profile_id','profile_name')]
+        columns=[row[1] for row in db.execute('PRAGMA table_info(daily_usage)') if row[1] not in ('profile_id','profile_name','character_id','character_name')]
         db.execute('CREATE TABLE old_usage AS SELECT '+','.join(columns)+' FROM daily_usage')
         db.execute('DROP TABLE daily_usage');db.execute('ALTER TABLE old_usage RENAME TO daily_usage')
     restored=ActivityStore(tmp_path)
@@ -89,9 +89,9 @@ def test_dock_context_menu_switches_the_selected_profile(qapp,tmp_path,monkeypat
     monkeypatch.setattr(manager.reader,'_remember',lambda:None)
     monkeypatch.setattr(manager.speech,'start',spoken.append)
     root=manager._build_context_menu()
-    menu=next(child for child in root.findChildren(QMenu) if 'Model Profile' in child.title())
+    menu=next(child for child in root.findChildren(QMenu) if 'Agent model for' in child.title())
     action=next(action for action in menu.actions() if action.text().startswith('Research'))
     action.trigger()
-    assert manager.profile_mgr.get_active_profile()['id']==profile['id']
-    assert spoken==['Switched profile to Research.']
+    assert manager.profile_mgr.character_profile('default')['id']==profile['id']
+    assert spoken==[]
     manager.shutdown()

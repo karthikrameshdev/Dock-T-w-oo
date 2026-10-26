@@ -76,7 +76,7 @@
     </header>
 
     <!-- Multi-Page Workspace Grid -->
-    <main class="console-body" id="consoleBody">
+    <main class="console-body hide-preview" id="consoleBody">
 
       <!-- Left Navigation Sidebar -->
       <aside class="console-sidebar">
@@ -101,10 +101,9 @@
               <span class="nav-label">Companion Drawers</span>
             </button>
             <button class="nav-item" data-page="page-dashboard"><span class="nav-icon">◴</span><span class="nav-label">Dashboard</span></button>
-            <button class="nav-item" data-page="page-activity"><span class="nav-icon">≋</span><span class="nav-label">Activity Tracker</span></button>
             <button class="nav-item" data-page="page-brain">
               <span class="nav-icon">🧠</span>
-              <span class="nav-label">Brain Voice Agent</span>
+              <span class="nav-label">AI Voice Assistant</span>
               <span class="nav-tag">Core Feature</span>
             </button>
           </div>
@@ -161,9 +160,14 @@
           </div>
 
           <div class="settings-card">
+            <h3 class="card-subheading">Startup</h3>
+            <label class="toggle-row"><span>Start on system boot</span><input type="checkbox" id="startOnBoot"></label>
+            <p class="field-desc">Launch Dock automatically after you sign in. Restores Keep Live and your last selected assistant's visibility. Closing the console keeps Dock running; use Quit in the tray menu to stop it.</p>
+          </div>
+          <div class="settings-card">
             <div class="form-group">
               <label for="displayMode">Show Dock on</label>
-              <p class="field-desc">Choose one display, every display, or a specific set such as screens 1 and 4. All Brains share one microphone and request queue.</p>
+              <p class="field-desc">Choose one display, every display, or a specific set such as screens 1 and 4. All characters share one microphone and speaker; agent work runs in parallel.</p>
               <select id="displayMode"><option value="single">One screen</option><option value="all">All screens</option><option value="selected">Selected screens</option></select>
               <div id="displayChecklist" role="group" aria-label="Displays" style="display:grid;gap:10px;margin-top:16px"></div>
               <p class="help-text" id="displayStatus" role="status">Detecting connected displays…</p>
@@ -385,12 +389,8 @@
 
         <!-- Page 5: Notes App Settings -->
         <div class="page-view" id="page-dashboard">
-          <div class="page-header"><h2>Cloud usage dashboard</h2><p>Understand your cloud usage. Local speech and vision models have no token metrics.</p></div>
+          <div class="page-header"><h2>Agent model usage dashboard</h2><p>Understand API, CLI and network model usage. Local speech and vision models have no token metrics.</p></div>
           <div id="cloudUsageDashboard"></div>
-        </div>
-        <div class="page-view" id="page-activity">
-          <div class="page-header"><h2>Activity Tracker</h2><p>Follow each request, cloud exchange, recovery attempt and local tool result.</p></div>
-          <div id="brainActivityTracker"></div>
         </div>
         <div class="page-view" id="page-tasks">
           <div class="page-header"><h2>Tasks</h2><p>Record work by day. Ask Brain to add items or summarize a date.</p></div>
@@ -468,32 +468,43 @@
           </div>
         </div>
 
-        <!-- Page 6: Brain Voice Agent Settings -->
+        <!-- Page 6: AI Voice Assistant Settings -->
         <!-- Page 6: Brain Core Feature Settings -->
         <div class="page-view" id="page-brain">
           <div class="page-header">
-            <h2>Brain Voice Assistant & Robotic Mini Agent</h2>
-            <p>Dock 2 Core System: hands-free audio assistant, on-device wake word, cloud agent planning, and desktop robotics</p>
+            <h2>AI Voice Assistant & Robotic Mini Agent</h2>
+            <p>Dock 2 Core System: hands-free audio assistant, on-device wake names, agent model planning, and desktop robotics</p>
           </div>
 
           <!-- Brain Multi-Tab Navigation Bar -->
           <div class="brain-tab-bar">
             <button type="button" class="brain-tab-btn active" data-tab="brain-tab-voice">
               <span class="tab-icon">🎙️</span>
-              <span>Voice & Wake Word</span>
+              <span>Voice</span>
             </button>
+            <button type="button" class="brain-tab-btn" data-tab="brain-tab-awake"><span class="tab-icon">◉</span><span>Awake</span></button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-profiles">
               <span class="tab-icon">🧠</span>
-              <span>Cloud Profiles</span>
+              <span>Agent Models</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-motions">
               <span class="tab-icon">🤖</span>
-              <span>Robot Companion & Motions</span>
+              <span>Mini Assistant &amp; Motions</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-actions">
               <span class="tab-icon">⚡</span>
               <span>Native Actions & Vault</span>
             </button>
+          </div>
+
+          <div class="brain-tab-panel" id="brain-tab-awake">
+            <div class="settings-card" id="assistantAwakeSettings">
+              <h3>Mini assistant Awake settings</h3>
+              <p class="field-desc">Choose which names can wake an assistant. All start on. Brain stays on as the default assistant. Turning Awake off does not stop background tasks, delegation or manual selection. The microphone's main wake-listener switch still controls hands-free listening globally.</p>
+              <input type="search" id="assistantAwakeSearch" class="text-input" placeholder="Find an assistant…" aria-label="Find an assistant in Awake settings">
+              <p id="assistantAwakeStatus" class="field-desc" role="status">Loading assistants…</p>
+              <div id="assistantAwakeList" class="assistant-awake-list"></div>
+            </div>
           </div>
 
           <!-- Tab 1: Voice & Wake Word -->
@@ -516,7 +527,7 @@
                   <span>✨ Summon Mini Agent</span>
                 </button>
                 <button type="button" id="brainTalkBtn" class="btn btn-secondary">
-                  <span>🎤 Talk to Brain</span>
+                  <span>🎤 Talk to assistant</span>
                 </button>
                 <button type="button" id="brainLoopAnimBtn" class="btn btn-secondary">
                   <span>🎭 Play Animations</span>
@@ -527,15 +538,15 @@
               </div>
               <form id="brainRequestForm" class="form-row" style="margin-top: 16px;">
                 <div class="form-group flex-1">
-                  <label for="brainRequestText">Ask Brain</label>
+                  <label for="brainRequestText">Ask the selected assistant</label>
                   <input id="brainRequestText" class="text-input" type="text" maxlength="2000" placeholder="Sing a song, open Cursor, or ask a question" autocomplete="off">
                 </div>
-                <button type="submit" class="btn btn-primary" id="brainRequestSend">Send to Brain</button>
+                <button type="submit" class="btn btn-primary" id="brainRequestSend">Send to assistant</button>
               </form>
               <div class="action-btn-row"><button type="button" class="btn btn-secondary" id="brainStopAgent">Stop request</button><button type="button" class="btn btn-secondary" data-reader="read_selected">Read Selected Text</button><button type="button" class="btn btn-secondary" data-reader="read_window">Read Active Window</button><button type="button" class="btn btn-secondary" data-reader="stop_reading">Stop Reading</button></div>
               <p class="field-desc" id="brainAgentProgress" role="status"></p>
               <p class="field-desc" id="brainLocalSpeechStatus" role="status"></p>
-              <p id="brainRequestStatus" class="field-desc" role="status">Type a request here or speak to Brain. Both use the same assistant.</p>
+              <p id="brainRequestStatus" class="field-desc" role="status">Type a request or speak to the selected assistant. Start with a character name to switch.</p>
             </div>
 
             <!-- Hands-Free Wake Word -->
@@ -546,15 +557,15 @@
               <div class="toggle-card-item">
                 <div>
                   <label class="toggle-title" for="brainWakeWordToggle">Enable Wake Word Detection</label>
-                  <p class="field-desc">Trigger Brain automatically when speaking the wake phrase</p>
+                  <p class="field-desc">Activate the addressed character when speaking its name</p>
                 </div>
                 <input type="checkbox" id="brainWakeWordToggle" checked class="modern-toggle">
               </div>
 
               <div class="form-row">
                 <div class="form-group flex-1">
-                  <label for="brainWakeWord">Custom Wake Phrase</label>
-                  <input type="text" id="brainWakeWord" class="text-input" value="Hey Brain">
+                  <label for="brainWakeWord">Character Wake Names</label>
+                  <input type="text" id="brainWakeWord" class="text-input" value="Brain, Rio, Luma…" readonly aria-readonly="true">
                 </div>
 
                 <div class="form-group flex-1">
@@ -617,10 +628,10 @@
           <!-- One configured external reasoning model -->
           <div class="brain-tab-panel" id="brain-tab-profiles">
             <div class="settings-card">
-              <h3>Cloud model profiles</h3>
-              <p class="field-desc">Save multiple cloud profiles and choose one for each conversation. Switch here or by right-clicking Brain in the dock. Speech and desktop tools stay local.</p>
+              <h3>Agent model profiles</h3>
+              <p class="field-desc">Configure API, network, Ollama or installed CLI models. Assign a profile to each character below. Any agent can delegate to available peers. One selected character appears on screen; all workers run in the background. Speech stays local.</p>
               <div class="form-row">
-                <div class="form-group flex-1"><label for="brainCloudProfile">Cloud profile</label><select id="brainCloudProfile" class="select-input"></select></div>
+                <div class="form-group flex-1"><label for="brainCloudProfile">Agent model profile</label><select id="brainCloudProfile" class="select-input"></select></div>
                 <button type="button" id="brainCloudNew" class="btn btn-secondary">New profile</button>
               </div>
               <p id="brainCloudActive" class="field-desc" role="status"></p>
@@ -628,15 +639,29 @@
               <form id="brainCloudForm">
                 <div class="form-group"><label for="brainCloudName">Profile name</label><input id="brainCloudName" class="text-input" maxlength="80" placeholder="For example, Everyday or Research" required></div>
                 <div class="form-row">
-                  <div class="form-group flex-1"><label for="brainCloudProvider">Provider</label><select id="brainCloudProvider" class="select-input"><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="deepseek">DeepSeek</option><option value="xai">xAI</option><option value="huggingface">Hugging Face</option><option value="custom">Custom cloud provider</option></select></div>
+                  <div class="form-group flex-1"><label for="brainCloudProvider">Provider</label><select id="brainCloudProvider" class="select-input"><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="deepseek">DeepSeek</option><option value="xai">xAI</option><option value="huggingface">Hugging Face</option><option value="custom">Custom API provider</option><option value="ollama">Ollama server</option><option value="network">Network model server</option><option value="gemini_cli" disabled>Gemini CLI · guarded adapter unavailable</option><option value="codex_cli" disabled>Codex CLI · guarded adapter unavailable</option><option value="claude_cli">Claude Code CLI</option><option value="kilo_cli" disabled>Kilo CLI · guarded adapter unavailable</option><option value="custom_cli" disabled>Other CLI · guarded adapter unavailable</option></select></div>
                   <div class="form-group flex-1"><label for="brainCloudProtocol">API format</label><select id="brainCloudProtocol" class="select-input"><option value="openai">OpenAI compatible</option><option value="anthropic">Anthropic Messages</option></select></div>
                 </div>
                 <div class="form-group"><label for="brainCloudUrl">Provider base URL</label><input id="brainCloudUrl" type="url" class="text-input" placeholder="https://provider.example/v1" required></div>
+                <div id="agentCliFields" hidden>
+                  <div class="form-group"><label for="agentCliExecutable">CLI executable</label><input id="agentCliExecutable" class="text-input" placeholder="Executable name or full path"></div>
+                  <div class="form-group"><label for="agentCliArguments">Custom CLI arguments (JSON array)</label><input id="agentCliArguments" class="text-input" value="[]"><p class="field-desc">Only Claude Code currently has a guarded CLI adapter. It requires a saved API key and runs with native tools, hooks and external configuration disabled. Other CLI adapters remain unavailable until they can enforce file approvals and outbound redaction. API and network profiles remain available.</p></div>
+                </div>
+                <div class="form-group"><label for="agentCacheMode">Provider prefix caching</label><select id="agentCacheMode" class="select-input"><option value="auto">Automatic · native support where available</option><option value="off">Local templates only</option></select></div>
                 <div class="form-group"><label for="brainCloudModel">Model ID</label><input id="brainCloudModel" class="text-input" placeholder="Enter the provider's tool-capable model ID" required></div>
                 <div class="form-group"><label for="brainCloudKey">API key</label><input id="brainCloudKey" type="password" class="text-input" autocomplete="new-password" placeholder="Enter a key, or leave blank to retain the saved key"></div>
                 <div class="action-btn-row"><button type="submit" class="btn btn-primary">Save profile</button><button type="button" id="brainCloudTest" class="btn btn-secondary">Test saved profile</button></div>
               </form>
               <p id="brainCloudStatus" class="field-desc" role="status">Model is not configured.</p>
+            </div>
+            <div class="settings-card" id="agentCharacterSettings">
+              <h3>Characters &amp; model assignments</h3>
+              <p class="field-desc">One logical agent per character, with one task at a time. Only the selected character is displayed; peers work in the background.</p>
+              <div class="form-row"><div class="form-group flex-1"><label for="agentCharacter">Character</label><select id="agentCharacter" class="select-input"></select></div><div class="form-group flex-1"><label for="agentCharacterProfile">Agent model</label><select id="agentCharacterProfile" class="select-input"></select></div></div>
+              <p id="agentCharacterRole" class="field-desc"></p>
+              <div class="form-row"><div class="form-group flex-1"><label for="agentCharacterVoice">Local voice</label><select id="agentCharacterVoice" class="select-input"></select></div><div class="form-group flex-1"><label for="agentCharacterSpeed">Pace</label><input id="agentCharacterSpeed" class="text-input" type="number" min="0.75" max="1.4" step="0.01"></div><div class="form-group flex-1"><label for="agentCharacterPitch">Pitch</label><input id="agentCharacterPitch" class="text-input" type="number" min="0.85" max="1.2" step="0.01"></div></div>
+              <div class="action-btn-row"><button id="agentCharacterForget" class="btn btn-secondary" type="button">Clear character memory</button>
+              <button id="agentCharacterSave" class="btn btn-primary" type="button">Save character settings</button></div><p id="agentCharacterStatus" class="field-desc" role="status"></p>
             </div>
           </div>
 
@@ -772,13 +797,13 @@
 
             <!-- Model Storage & Memory Vault -->
             <div class="settings-card">
-              <h3 class="card-subheading">Brain Memory & Storage</h3>
+              <h3 class="card-subheading">Voice Assistant Memory & Storage</h3>
               <p class="field-desc">Local encrypted memory vault and retention management</p>
 
               <div class="info-box">
                 <div class="info-box-icon">🧠</div>
                 <div class="info-box-content">
-                  <strong>Brain Vault Location:</strong> <code>~/.dock_twoo/brain/</code>
+                  <strong>Voice Assistant Vault Location:</strong> <code><span id="voiceVaultLocation">~/.dock2/voice/</span></code>
                   <p>Voice preferences, model profiles, conversation memory, and encryption keys are stored locally on your machine.</p>
                 </div>
               </div>
@@ -960,17 +985,17 @@
                 <div class="storage-card-path" id="storageModelsPath">~/.dock2/models</div>
                 <div class="storage-card-stats">
                   <span>Size: <strong id="storageModelsSize">0.0 MB</strong></span>
-                  <span>Local LLMs & Weights</span>
+                  <span>Local speech, privacy & animation models</span>
                 </div>
               </div>
 
               <!-- Brain -->
               <div class="storage-subsystem-card">
                 <div class="storage-card-header">
-                  <span class="storage-card-title">🧠 Brain Assistant</span>
+                  <span class="storage-card-title">Voice Assistant</span>
                   <span class="badge" id="storageBrainCount">0 files</span>
                 </div>
-                <div class="storage-card-path" id="storageBrainPath">~/.dock2/brain</div>
+                <div class="storage-card-path" id="storageBrainPath">~/.dock2/voice</div>
                 <div class="storage-card-stats">
                   <span>Size: <strong id="storageBrainSize">0.0 MB</strong></span>
                   <span>Memory, Settings & Profiles</span>
@@ -999,7 +1024,7 @@
               </div>
               <div class="about-item">
                 <span class="about-label">GUI Framework</span>
-                <span class="about-val">PySide6 (Qt 6.12.0)</span>
+                <span class="about-val">PySide6 (Qt 6.11)</span>
               </div>
               <div class="about-item">
                 <span class="about-label">Python Runtime</span>
@@ -1105,7 +1130,8 @@
 
   <script src="controls.js"></script>
   <script src="usage.js"></script>
-  <script src="activity.js"></script>
   <script src="app.js"></script>
+<script src="/ecosystem.js"></script>
+  <script src="/awake.js"></script>
 </body>
 </html>

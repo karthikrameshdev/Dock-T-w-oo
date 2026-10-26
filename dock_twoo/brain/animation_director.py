@@ -18,9 +18,9 @@ class AnimationDirector(QObject):
         action=REACTIONS.get(gesture) or EMOTIONS.get(emotion)
         if gesture=='none' and time.monotonic()-self.last<4:action=None
         self.last_decision={'emotion':emotion,'gesture':gesture,'action':action or 'talk'}
-        if not action or self.manager.store.setting('reduced_motion',False) or self.manager.reader.active:return
+        if not action or self.manager.store.setting('resource_cap_enabled',False) or self.manager.store.setting('reduced_motion',False) or self.manager.reader.active:return
         from dock_twoo.brain.animation import ACTIONS
-        if action not in ACTIONS:return
+        if action not in self.manager.companion.actions:return
         self.last=time.monotonic()
         actor=self.manager.companion
         def play():

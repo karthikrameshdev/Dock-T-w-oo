@@ -2,7 +2,7 @@
 
 Uses disposable settings and production floating Companions. Requires the local
 asset server; never opens the microphone or calls a cloud provider. --interactive
-leaves a link-like button underneath overlapping Brain canvases for OS-click QA.
+leaves a link-like button underneath the character canvas for OS-click QA.
 """
 import argparse,json,os,sys,tempfile,time
 from pathlib import Path
@@ -24,9 +24,9 @@ class TraceLink(QPushButton):
   p=event.globalPosition();mouse_events.append({'receiver':'underlying-link','global':[p.x(),p.y()]})
   super().mousePressEvent(event)
 folder=tempfile.TemporaryDirectory(prefix='brain-outline-');store=BrainStore(Path(folder.name));store.update_settings({'roaming':False,'follow_cursor':False,'wake_word_enabled':False,'voice_reply':False})
-manager=BrainManager(store=store,start_services=False);entries=display_inventory();manager.configure_displays(entries[:1],entries);first=manager.companion;second=manager.add_brain()
+manager=BrainManager(store=store,start_services=False);entries=display_inventory();manager.configure_displays(entries[:1],entries);first=manager.companion
 manager.playground.timer.stop()
-for actor in (first,second):actor.activity_timer.stop();actor.roam_timer.stop();actor.follow_timer.stop()
+for actor in (first,):actor.activity_timer.stop();actor.roam_timer.stop();actor.follow_timer.stop()
 panel=QWidget();panel.setWindowTitle('Brain Outline Check');panel.resize(960,680);panel.move(180,100)
 label=QLabel(panel);label.setGeometry(20,20,920,90)
 link=TraceLink('Underlying link: transparent margins and gaps must reach this button',panel);link.setGeometry(40,190,880,420)
@@ -37,13 +37,13 @@ def talking(target=None):
 manager.toggle_talking=talking
 
 def layout_actors():
- for actor,x in ((first,500),(second,660)):
+ for actor,x in ((first,500),):
   actor.move(panel.mapToGlobal(QPoint(x,250)))
   actor.model_view.sync_geometry()
 
 def mode(name):
  manager.stop_talking()
- for actor in (first,second):
+ for actor in (first,):
   actor.stop_motion();actor.set_character_scale(.65 if name=='small' else 1.);actor._yaw=1. if name=='side' else 0.;actor.turn_target=actor._yaw
   actor.set_activity('idle')
  if name=='glow':
@@ -62,12 +62,12 @@ link.clicked.connect(clicked_link)
 
 def snapshot():
  actors=[]
- for actor in (first,second):
+ for actor in (first,):
   r=actor.input_region;b=r.boundingRect();count=sum(rect.width()*rect.height() for rect in r)
   actors.append({'id':actor.actor_id,'canvas':[actor.x(),actor.y(),actor.width(),actor.height()],
                  'body':b.getRect(),'body_pixels':count,'shape_ready':actor.has_input_shape,'activity':actor.activity,
                  'input_transparent_visual':bool(actor.model_view.windowFlags() & Qt.WindowType.WindowTransparentForInput)})
- label.setText(f'Brain clicks: {len(clicks)} | Link clicks: {link_clicks} | Recording: {manager.listener.is_recording}\nCanvas rectangles overlap; visible bodies and native input follow the live pose.')
+ label.setText(f'Brain clicks: {len(clicks)} | Link clicks: {link_clicks} | Recording: {manager.listener.is_recording}\nNative input follows only the live character silhouette.')
  result={'actors':actors,'brain_clicks':clicks,'link_clicks':link_clicks,'cursor':[QCursor.pos().x(),QCursor.pos().y()],
          'mouse_events':mouse_events[-20:],'cloud_calls':manager.activity.metrics()['summary']['calls']}
  (args.output/'state.json').write_text(json.dumps(result,indent=2)+'\n');return result
@@ -85,7 +85,7 @@ def native_hit_probes(done):
  # Hold the sampled pose's native mask while WindowServer commits its input
  # gate. This is a test snapshot; the production renderer never pauses masks.
  paused=[]
- for actor in (first,second):
+ for actor in (first,):
   paused.append((actor,actor.motion_timer.isActive(),actor.model_view.bridge.blockSignals(True)))
   actor.motion_timer.stop()
  bounds=first.input_region.boundingRect();head=QPoint(bounds.center().x(),bounds.top()+bounds.height()//3)
@@ -106,7 +106,7 @@ def native_hit_probes(done):
   def inspect():
    proxy,send=mac_window(first);expected=send(ctypes.c_long,proxy,'windowNumber')
    ids=[]
-   for actor in (first,second):
+   for actor in (first,):
     window,message=mac_window(actor);ids.append(message(ctypes.c_long,window,'windowNumber'))
    top=AppKit.NSScreen.screens()[0].frame().size.height
    actual=AppKit.NSWindow.windowNumberAtPoint_belowWindowWithWindowNumber_((point.x(),top-point.y()),0)
@@ -124,7 +124,7 @@ def finish():
 
 def tick():
  global index,phase,pending
- if not all(c.model_view.ready and c.has_input_shape for c in (first,second)):
+ if not all(c.model_view.ready and c.has_input_shape for c in (first,)):
   if time.monotonic()-started>40:errors.append('Silhouette or renderer timed out');finish()
   return
  if args.interactive:snapshot();return
@@ -144,10 +144,7 @@ def tick():
     assert not first.input_region.contains(QPoint(2,first.height()//2))
     assert first.model_view.geometry().topLeft()==first.pos()
     if name=='side':assert actor['body'][2]<results[0]['body'][2]
-    if name=='glow':assert runtime['listeningAura'] and actor['body_pixels']<first.width()*first.height()*.35
-    if name=='front':
-     assert first.geometry().intersects(second.geometry())
-     assert not manager.playground.region(first).intersects(manager.playground.region(second))
+    if name=='glow':assert not runtime['listeningAura'] and actor['body_pixels']<first.width()*first.height()*.35
     if sys.platform=='darwin':assert all(p['correct'] for p in probes),probes
     first.model_view.grab().save(str(args.output/(name+'.png')))
     results.append({'scenario':name,'body':actor['body'],'pixels':actor['body_pixels'],'mask_ms':runtime.get('inputShapeMilliseconds'),

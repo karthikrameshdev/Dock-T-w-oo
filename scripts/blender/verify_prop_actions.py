@@ -72,6 +72,6 @@ report={'success':not issues,'samples':samples,'ball_contact_frame':42,'ball_con
         'maximum_grip_error':max_grip_error,'maximum_rope_grip_error':max_rope_error,'issues':issues,
         'blend_sha256':hashlib.sha256(Path(bpy.data.filepath).read_bytes()).hexdigest(),
         'glb_sha256':hashlib.sha256((ROOT/'dock_twoo/server/static/brain3d/brain.glb').read_bytes()).hexdigest()}
-(ROOT/'character/prop-animation-validation.json').write_text(json.dumps(report,indent=2)+'\n')
+(ROOT/'characters/default/prop-animation-validation.json').write_text(json.dumps(report,indent=2)+'\n')
 print('BRAIN_PROP_VALIDATION',json.dumps(report))
 if issues:raise RuntimeError('Prop contact or grip checks failed')

@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "birds": [
+    {
+      "id": "owl",
+      "assetHash": "e244cd7c8500463f2628ce2bccf4e5694d0967d915d1799e5d6a07c58db2b955",
+      "closedGap": 0.025987159740825907,
+      "authoredTalkGap": 0.19328102046245704,
+      "liveSpeechGap": 0.22721433955242876,
+      "recoveredGap": 0.025987159740825907,
+      "upperLift": 0.0400339013318769,
+      "lowerDrop": 0.15607184403291607
+    },
+    {
+      "id": "parrot",
+      "assetHash": "b4838e47fa20d8ed8237210ba82ef47b09fa7936e26194a2452d79dfd074e71b",
+      "closedGap": 0.026620999898477445,
+      "authoredTalkGap": 0.2334389433003789,
+      "liveSpeechGap": 0.2753663343587196,
+      "recoveredGap": 0.026620999898477445,
+      "upperLift": 0.04944985205114194,
+      "lowerDrop": 0.19302303739692883
+    },
+    {
+      "id": "robin",
+      "assetHash": "52958db367b4844ec8db2d9013c563259c23e9d5f0ff4a8fbeca5d5983d0f227",
+      "closedGap": 0.0215504055828071,
+      "authoredTalkGap": 0.17462797417685288,
+      "liveSpeechGap": 0.20566851189806734,
+      "recoveredGap": 0.0215504055828071,
+      "upperLift": 0.036614727650484236,
+      "lowerDrop": 0.1428410398262514
+    }
+  ],
+  "errors": []
+}

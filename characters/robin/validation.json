@@ -1,0 +1,27 @@
+{
+  "id": "robin",
+  "source_sha256": "4dc65d169a4a4ce831320972698c8035e5362ccd9e357c750970c7f1b87ebbf0",
+  "asset_sha256": "52958db367b4844ec8db2d9013c563259c23e9d5f0ff4a8fbeca5d5983d0f227",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

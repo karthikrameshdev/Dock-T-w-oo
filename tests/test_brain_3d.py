@@ -35,8 +35,8 @@ def test_exported_rig_covers_actions_and_uses_one_opaque_character():
 
 
 def test_saved_animation_clearance_audit_passes_for_every_clip():
-    audit = json.loads((ROOT / 'character/animation-validation.json').read_text())
-    assert audit['blend_sha256'] == hashlib.sha256((ROOT / 'character/Brain.blend').read_bytes()).hexdigest()
+    audit = json.loads((ROOT / 'characters/default/animation-validation.json').read_text())
+    assert audit['blend_sha256'] == hashlib.sha256((ROOT / 'characters/default/default.blend').read_bytes()).hexdigest()
     assert audit['glb_sha256'] == hashlib.sha256((ROOT / 'dock_twoo/server/static/brain3d/brain.glb').read_bytes()).hexdigest()
     assert audit['success'] and audit['intersections'] == []
     assert audit['clips'] == len(ACTIONS) + 1  # includes the neutral idle clip
@@ -56,11 +56,11 @@ def test_repeated_blinks_reopen_eyes_with_the_real_three_animation_mixer():
 
 def test_character_release_identifies_the_exact_saved_source_and_runtime():
     release = json.loads((ROOT / 'dock_twoo/server/static/brain3d/character.json').read_text())
-    assert release['version'] == '3.2.0'
+    assert release['version'] == '4.0.0'
     assert release['source_sha256'] == hashlib.sha256((ROOT / release['source']).read_bytes()).hexdigest()
     assert release['asset_sha256'] == hashlib.sha256((ROOT / 'dock_twoo/server/static/brain3d' / release['asset']).read_bytes()).hexdigest()
     assert set(ACTIONS) <= release['actions'].keys()
-    assert len(release['actions']) == 56 and release['bones'] == 58
+    assert len(release['actions']) == 136 and release['bones'] == 58
     assert all(clip['duration'] > 0 for clip in release['actions'].values())
 
 
@@ -81,9 +81,9 @@ def test_demo_playlist_includes_every_current_character_action_once():
 
 
 def test_saved_toy_contacts_match_this_source_and_export():
-    audit=json.loads((ROOT/'character/prop-animation-validation.json').read_text())
+    audit=json.loads((ROOT/'characters/default/prop-animation-validation.json').read_text())
     assert audit['success'] and not audit['issues']
-    assert audit['blend_sha256']==hashlib.sha256((ROOT/'character/Brain.blend').read_bytes()).hexdigest()
+    assert audit['blend_sha256']==hashlib.sha256((ROOT/'characters/default/default.blend').read_bytes()).hexdigest()
     assert audit['glb_sha256']==hashlib.sha256((ROOT/'dock_twoo/server/static/brain3d/brain.glb').read_bytes()).hexdigest()
     assert audit['ball_contact_frame']<audit['ball_launch_frame']
     assert abs(audit['ball_contact_gap'])<.002

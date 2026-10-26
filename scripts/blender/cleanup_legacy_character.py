@@ -6,7 +6,7 @@ from pathlib import Path
 import hashlib,json,os,shutil
 import bpy
 source=Path(bpy.data.filepath)
-assert source.name=='Brain.blend'
+assert source.name=='default.blend'
 backup_dir=Path(os.environ.get('BRAIN_CHARACTER_BACKUP_DIR',str(Path.home()/'.dock-twoo/character-backups')))
 backup_dir.mkdir(parents=True,exist_ok=True)
 backup=backup_dir/('Brain-'+hashlib.sha256(source.read_bytes()).hexdigest()[:12]+'.blend')

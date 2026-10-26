@@ -321,7 +321,12 @@ class ScreenManager:
                             ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool),
                         )(nswindow, setAcceptsMouseMovedEvents, True)
 
-                        # Configure NSTrackingArea with NSTrackingActiveAlways so Cocoa delivers hover events when inactive
+                        # Configure one tracking area per native view. This
+                        # method also runs on every drawer open; adding another
+                        # area each time leaks objects and duplicates mouse events.
+                        if getattr(widget, '_dock_tracking_view_id', None) == win_id:
+                            return
+                        # NSTrackingActiveAlways delivers hover when inactive.
                         NSTrackingArea = objc.objc_getClass(b"NSTrackingArea")
                         alloc = objc.sel_registerName(b"alloc")
                         area_alloc = ctypes.cast(
@@ -351,5 +356,12 @@ class ScreenManager:
                             objc.objc_msgSend,
                             ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
                         )(view_ptr, addTrackingArea, tracking_area)
+                        # NSView retains its tracking areas. Balance alloc/init.
+                        release = objc.sel_registerName(b"release")
+                        ctypes.cast(
+                            objc.objc_msgSend,
+                            ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p),
+                        )(tracking_area, release)
+                        widget._dock_tracking_view_id = win_id
             except Exception as e:
                 pass

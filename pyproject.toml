@@ -12,10 +12,16 @@ authors = [
     { name = "Karthik Ramesh", email = "karthik.ramesh.dev@gmail.com" }
 ]
 dependencies = [
-    "PySide6>=6.6.0",
+    # Qt 6.12.0 Signal.emit corrupts bool refcounts on Linux/Python 3.11.
+    # Keep the verified 6.11 line until the native regression is fixed.
+    "PySide6>=6.11.2,<6.12",
     "cryptography>=42.0.0",
     "sounddevice>=0.5.3",
     "numpy>=1.26.0",
+    "psutil>=6,<8",
+    "tzdata>=2025.1",
+    "grpcio>=1.68,<2",
+    "protobuf>=5,<8",
     "sherpa-onnx>=2.0.0,<3",
     "sentencepiece>=0.2.0",
     "huggingface-hub>=0.26.0",
@@ -35,6 +41,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+build = ["pyinstaller>=6.16,<7"]
 dev = [
     "pytest>=8.0.0",
     "pytest-qt>=4.4.0",
@@ -57,4 +64,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 
 [tool.setuptools.package-data]
-dock_twoo = ["assets/**/*", "server/static/**/*"]
+dock_twoo = ["assets/**/*", "server/static/**/*", "brain/ecosystem/*.proto"]

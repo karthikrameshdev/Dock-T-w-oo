@@ -20,7 +20,9 @@ from dock_twoo.ui.apps import (
     BrainAppWidget,
     NotesAppWidget,
     TasksAppWidget,
+    SchedulerAppWidget,
     DashboardAppWidget,
+    LiveTrailAppWidget,
     VaultAppWidget,
 )
 from dock_twoo.ui.theme import get_theme_tokens, paint_color
@@ -33,6 +35,8 @@ class AttachedWindow(QWidget):
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        from dock_twoo.brain.control_surfaces import protect_controls
+        protect_controls(self)
         self.config = config
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
@@ -64,7 +68,9 @@ class AttachedWindow(QWidget):
         app_classes = {
             "notes": NotesAppWidget,
             "tasks": TasksAppWidget,
+            "scheduler": SchedulerAppWidget,
             "dashboard": DashboardAppWidget,
+            "activity": LiveTrailAppWidget,
             "vault": VaultAppWidget,
             "brain": BrainAppWidget,
         }

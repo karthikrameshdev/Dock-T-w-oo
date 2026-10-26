@@ -1,0 +1,27 @@
+{
+  "id": "chef",
+  "source_sha256": "e7c979c97a0efc02d2fca20c4c972c5a76d52aa747e431979113eb482cd62152",
+  "asset_sha256": "5d78fbc2849bcf55bbaefa0efb1d9de9063a926a4f101bb698ec1fd4db1ef764",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

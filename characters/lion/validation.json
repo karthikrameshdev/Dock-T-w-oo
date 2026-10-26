@@ -1,0 +1,27 @@
+{
+  "id": "lion",
+  "source_sha256": "9380ddc004c22a2bdc7e8e5ef3427b415fcc3d2b671f05e82969131f6dfaa50f",
+  "asset_sha256": "24f41aeb588a4cb18d668a2bf3935d915ab2b9aa87e20b1c43921823e8e8cb07",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

@@ -38,3 +38,13 @@ deleting a configuration retained its usage history. No member was silent.
   share one agent; both accepted requests preserve their original profiles after
   switching. Four provider calls report 1,100 synthetic tokens (480 + 620).
   No live-provider requests were made.
+
+- 2026-10-26: `verify_privacy_transport.py` sends chat and Anthropic requests
+  through real quantized ONNX NER redaction. The receiving fixture rejects any of
+  five synthetic secrets/PII values. Both requests passed and opaque values were
+  restored locally. No production data or provider requests were used.
+- 2026-10-26: Parallel gRPC research passed with the optional resource cap enabled:
+  5 tasks, peak 3 workers, 18 HTTP calls, 4,880 fixture tokens, 4 retained documents,
+  and all temporary projects released. The native responsiveness check passed
+  for generated Brain and Rio wake+command audio, Notes dispatch, Kokoro PCM,
+  facial motion and working/completion toasts. Hardware audio was not opened.

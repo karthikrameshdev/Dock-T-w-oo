@@ -1,0 +1,27 @@
+{
+  "id": "artist",
+  "source_sha256": "80f07e0dea9d71991fc243bdec488c0da907961e36a483294c1b08b342b2ec7c",
+  "asset_sha256": "c9ec58c3f57d1cf345905878475f0ed7446b1218187f678ca59cb7c37e2eeea9",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

@@ -136,6 +136,17 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+When upgrading an existing environment that used Qt 6.12.0, close Dock and
+replace its Qt packages before reinstalling. That release has a native signal
+reference-count bug on Linux/Python 3.11; this project uses the verified 6.11
+release line. Removing the split WebEngine/PDF packages also prevents mixed Qt
+libraries from remaining in an older environment. Run inside the activated venv:
+
+```bash
+python -m pip uninstall -y PySide6 PySide6_Addons PySide6_Essentials PySide6_WebEngine PySide6_Pdf shiboken6
+python -m pip install -e '.[dev]'
+```
+
 ### Running Dock T(w)oo
 
 ```bash
@@ -169,6 +180,8 @@ The test suite covers:
 - Pointed callout tooltip positioning.
 - Attached companion window stacking and switching.
 - Web Console REST API endpoints (`GET /api/config`, `POST /api/config`, `GET /api/status`).
+
+For long-running character/input checks, see the [resident rendering verification](docs/agent-ecosystem.md#resident-rendering-and-input-priority).
 
 ---
 
@@ -223,28 +236,54 @@ entries on the same day are deduplicated. Notes use the existing Notes drawer.
 System Settings. Windows Settings requires Windows; the desktop CUA and full
 window reader currently support macOS Accessibility apps.
 
+**Scheduler** has its own dock drawer. Add, search, pause, resume or delete
+one-time, daily, weekday, weekly and monthly reminders. Say “Rio, remind me
+tomorrow at 11 am about the meeting” or “Brain, every day at 10 am remind me to
+review my tasks.” The agent saves the reminder locally with its character and
+time zone. Notifications appear five minutes before, one minute before and at
+the scheduled time. Spoken reminders use local TTS and wait for the shared audio
+lane. Keep Dock running and the computer awake for timely alerts; after sleep or
+restart, it delivers one catch-up alert instead of replaying stale warnings.
+
+Right-click the Voice Assistant icon and choose **Choose assistant** to switch
+between the 30 characters. Only one character window exists across all displays.
+Every agent can delegate to available peers; background workers have no character
+renderer, microphone or audio output. Brief top-of-screen toasts report assignment
+and completion. Completed work and live progress remain in the console task trail.
+
+The right-click **Cap resource to 25%** option is unchecked by default. When
+checked, the character stands still: body, hands, head turns and roaming stop.
+Eye movement, blinking, lip sync, headlight, listening, toasts and parallel agent
+work remain active. Dock samples its process tree every two seconds and adjusts
+visual frame/readback rates toward 25% of one CPU core. This is a cooperative
+visual budget, not an OS CPU or RAM quota; speech inference and task execution can
+exceed it. Turning the option off restores full animation. Hidden pages are
+discarded after 45 seconds; visible characters are never parked behind a snapshot.
+Housekeeping cleans completed temporary work and expired activity traces without
+killing other applications or repeatedly unloading active speech models.
+
 The **Keep Awake** coffee icon above Settings toggles idle system/display sleep
 prevention (`caffeinate -d -i` on macOS). It releases its own assertion when disabled
 or when Dock exits. It does not disable manual locks or managed security policies.
 It is also available in the console and as a cloud-agent tool.
 
 The **Dashboard** icon between Keep Awake and Settings opens an attached cloud
-usage drawer. The console has the same dashboard plus **Activity Tracker**.
+usage drawer. The console also has the dashboard. **Live Trail**, beside Dashboard
+on the dock, opens model calls and agent tasks in its own attached drawer.
 Choose this month (default), seven days, or From/To dates. Charts show cloud input,
 output, daily consumption, models and API outcomes. Counts come from provider
 usage for the full sent payload and generated output; local speech/vision has no
 token metrics. Missing usage and currency costs remain explicitly unavailable.
 
-Activity Tracker records accepted voice transcripts and typed requests, every
+Live Trail records accepted voice transcripts and typed requests, every
 cloud payload/response, local tool results, recovery calls and stop reasons.
 Credentials are redacted and fixed system instructions are represented by size
 and fingerprint. Detailed traces expire after seven days; compact daily totals
 remain. Tracking starts with this update; older usage cannot be reconstructed.
 
-Three stalled cloud turns stop the request without another paid call. Defaults
-also cap a request at eight cloud calls, a 24,000-token budget guard and 1,024 output
-tokens per call. Activity Tracker exposes these limits. Preflight token estimates
-protect the budget, while displayed totals use provider-reported counts only.
+Repeated stalled turns trigger recovery review. Request budgets and recovery
+limits are adjustable in Live Trail; calls and token budgets default to no fixed
+limit. Displayed usage totals use provider-reported counts only.
 
 The **Ask Brain** field uses the same agent as speech. Connection failures,
 unsupported app controls and missing OS permissions return explicit errors.
@@ -285,10 +324,15 @@ plus an MP4 preview when `ffmpeg` is installed.
 
 ## Blender character and document reading
 
-The editable rig lives in [`character/Brain.blend`](character/Brain.blend).
+The editable rig lives in [`characters/default/default.blend`](characters/default/default.blend).
 Brain uses its exported GLB through a transparent local Qt/WebGL renderer. The same
 opaque meshes, white eyes, pupils, smile, gloves and boots appear at every angle.
-See [`character/README.md`](character/README.md) for rebuilding and animation validation.
+See [`characters/default/README.md`](characters/default/README.md) for rebuilding and animation validation.
+
+The [companion library](characters/README.md) contains 30 separate Blender projects,
+each with 136 animation clips and its own antenna. Browse the running app at
+`http://127.0.0.1:28842/brain3d/library.html` or open `characters/index.html` for the
+local catalog and source links. The original Brain remains the default.
 The interactive preview is at `/brain3d/index.html` on the local console server.
 
 Say **“Brain, go to top left”** in one statement. Capture waits for 1.5 seconds of
@@ -352,49 +396,148 @@ sudo apt-get install libpulse0 libasound2-dev
 
 Windows and macOS use Qt's native audio backend from the installed PySide6 wheels.
 
-### Displays and multiple Brains
+### Displays and named voice agents
 
-Use **Placement & Sizing → Show Dock on** to choose one display, all displays, or
-specific screens such as 1 and 4. Hardware identities retain the selection when
-screens are rearranged. Disconnected selections are remembered; if none are
-connected, Dock temporarily appears on the primary screen. All-screens mode also
-includes newly attached monitors. Mirrored displays follow the logical screens
-reported by the operating system.
+Use **Placement & Sizing → Show Dock on** to select one display, all displays, or
+specific screens such as 1 and 4. Disconnected selections are remembered. The dock
+falls back to the primary screen until a selected screen returns.
 
-Right-click the dock's Brain icon for **Add another Brain**, **Brains on this
-screen**, **Roam across all screens**, and **Play together**. Extra characters work
-on a single screen too. They roam and animate independently, avoid one another,
-and scale to fit a crowded display. Only one Brain owns the microphone; clicking
-another finishes the current capture before handing over listening. When two or more visible Brains share a screen, a yellow
-body glow identifies the voice-woken microphone owner. Clicking a Brain (including
-while following the cursor) or using push-to-talk lights only its yellow head;
-a lone Brain also uses only the head light. A wake word selects the visible Brain nearest the
-pointer, without making every character listen or speak.
+Right-click **Voice Assistant → Choose assistant** to select Brain, Orbit, Rio,
+Luma, Fable or another supplied Blender character. A named wake such as “Hey Rio,
+open my notes” changes the same renderer to Rio and routes the complete statement
+to that identity. The selected character is remembered. **Move assistant to
+screen** and **Roam across all screens** control the one assistant independently
+of the dock's multi-display placement. Old saved crowds migrate to one window;
+model bindings, memory, task history and documents remain intact.
 
-**Hide all Brains** retains every character; **Show all Brains** restores them.
-**Remove all secondary Brains** deletes the extra characters and their saved
-placements, including disconnected displays. Primary Brains cannot be removed.
-Accepted work and microphone ownership transfer to a primary if an extra is removed.
+The selected character uses its own rig and animation library. Local ONNX semantic
+ranking varies idle actions. There is no listening body aura; the head light shows
+state. The live body silhouette controls clicks, leaving transparent margins,
+effects and props click-through. **Hide assistant** and **Show assistant** control
+that single window. The parachute action includes descent, landing and retraction.
 
-Brain's native click area follows the live 3D body silhouette, including turns,
-hands and gaps between limbs. Transparent canvas space, light effects and toy
-props let clicks reach the app underneath. Collision checks use the same body
-shape, so transparent render canvases can overlap without keeping Brains apart.
-The visual layer remains complete while the input layer follows the outline.
+### Peer agent ecosystem
 
-The parachute action first flies to altitude, opens the saved Blender canopy,
-descends with a gentle drift, and reaches the landing point before the canopy
-retracts. The desktop path shares the authored clip's progress clock.
+All 30 agents have equal delegation capabilities. Orbit can assign Brain and Owl
+independent work, collect their artifacts and prepare a final document; Brain can
+do the same. Each logical identity owns at most one live job. Completed agents can
+be reused in a later batch, and workers can delegate further. Busy, self and ancestor
+assignments are rejected promptly, so a dependency cycle cannot deadlock the pool.
+Up to 29 background workers can process concurrently, with one shared desktop-input
+lease for CUA operations. They never create hidden windows or audio services.
 
-All characters share one FIFO agent and speech lane. A second request waits until
-the current request and spoken answer finish. Each turn retains its original cloud
-profile and credential even if the active profile changes while it is queued.
-**Stop** cancels current work and removes pending requests. Every request still has
-the same progress, call, token and time limits. Local playground animation creates
-no cloud calls. Profiles have isolated saved credentials; overall and per-profile
-usage dashboards retain counts even after a profile is deleted.
+Only the selected agent listens or speaks. Selecting another character ends the
+old audio session without cancelling background jobs. Inactive agents' finished
+jobs produce a brief toast, retain their results and can be queried later; they do
+not interrupt the selected agent. Ask “Orbit, what is the status?” to hear its live
+worker reports over authenticated gRPC without another model call. The console
+provides the durable task trail and downloadable outputs. **Stop** cancels running
+and queued work, including descendants.
+
+In **AI Voice Assistant → Agent Models**, configure an HTTPS API, an explicit
+network/Ollama endpoint, or the guarded Claude Code CLI adapter. Assign profiles
+per character; an unassigned character uses the active default. Accepted tasks
+retain their profile and credentials. Claude Code requires a saved API key and
+runs without native tools, hooks, MCP servers or user/project configuration; it
+returns decisions to Dock's guarded tools. Gemini, Codex, Kilo and custom CLI
+adapters are disabled until equivalent enforcement is available. Temporary
+working directories are not OS sandboxes. Outputs are retained before cleanup.
+
+Speech recognition, Kokoro speech synthesis, speaker tuning, species sound cues,
+semantic ranking, extractive memory compaction and failure review run locally.
+The configured API/CLI/network model performs reasoning. No local generative LLM
+server is installed. A shared quantized MiniLM transformer ranks evidence/actions;
+scoped memory learns workflows only from explicit, attributable feedback. Current
+instructions override preferences; repeated topic interest does not create one.
+
+Stable prompt templates are cached locally for every transport. Native provider
+prefix adapters support OpenAI and Claude; Gemini and other compatible providers
+use their supported implicit caching. Provider-side cache availability, minimums
+and hits remain provider-controlled. Local template reuse never claims a billed
+cache hit. No generated answer or desktop action is replayed from cache.
+
+Detailed activity expires after seven days; daily usage totals remain. Dashboards
+filter by date, profile and character, with overall totals. Only provider-reported
+input/output tokens are counted; unavailable CLI usage remains unknown. Native CLI
+usage and events reflect what that CLI exposes, rather than invented internal API
+calls. Progressive work has no default three-call stop. Repeated failures trigger
+local review and targeted Brain recovery, then a clear error if recovery fails.
+Optional call, token and time limits remain available in local agent settings.
 
 Head lights: **green** online/idle, **yellow** listening, **purple** processing,
 **cyan** responding, **orange** queued, **red** offline. Head effects respect reduced
-motion. Multi-screen behavior uses Qt on macOS, Windows and Linux; native window
-reading/automation availability still depends on the platform integration.
+motion. Desktop reading/automation availability depends on the platform adapter.
+See [the implementation and verification notes](docs/agent-ecosystem.md).
+
+## Installed application and restart behavior
+
+Run `./install.sh` on macOS/Linux, or `install.cmd` on Windows, to build and install
+for the current user. Python 3.11+ is required to build; recipients of a packaged
+bundle do not need Python or the source checkout. The installer enables startup
+at user login by default. Use `--no-autostart` or disable **Start on system boot**
+in the console to opt out. Use `--no-start` to install without launching.
+
+Native packages must be built on their target OS. The manual **Native application
+packages** GitHub workflow builds macOS `.app`, Windows `.exe` plus its support
+folder, and Linux bundles. Distribute the entire archive, not the executable
+alone. macOS packages are currently ad-hoc signed, not Developer ID notarized;
+Windows packages are not Authenticode signed. OS trust prompts can apply.
+Keep Live intent, selected character, visibility and resource-cap preference
+survive restart. Quitting releases sleep prevention without clearing the saved
+intent. Pending approvals are never restored or automatically accepted. The
+console always opens with Live Preview off; enabling it affects that tab only.
+
+## Guarded actions and private model input
+
+Portable `pwd`, `ls`/`dir`, `cat`/`type`, `mkdir`, `touch`, `cp` and single-file
+`rm`/`del` are implemented through guarded tools, not an unrestricted shell.
+Agents may read documents and create new analysis files. Updating or deleting a
+pre-existing/user-edited file needs a native **Approve once / Deny** bar showing
+its full path. An unchanged file created by Dock's analysis tools may be revised
+or removed automatically. Approval is bound to the unchanged file identity and
+expires after three minutes. Directory deletion, credential/startup writes,
+symlink mutations, arbitrary executables, and unscoped CUA clicking/typing/keys
+are disabled because they can bypass these protections. App opening, read-only
+observation and scrolling remain available.
+
+Model input passes through a local quantized BERT entity scanner and structured
+secret/PII filters, including memory and tool output. Opaque references are
+restored locally for subsequent tools. Scanner failure stops transmission.
+Entity detection is English-focused and heuristic; it is not a guarantee of
+complete anonymization for arbitrary text or every language. API authentication
+necessarily sends the configured credential to its provider in the authentication
+header, never in the model prompt. Local activity/tool details can contain private
+information and stay on this computer.
+
+Assistant data now lives in `<storage root>/voice`. Startup copies legacy `brain`
+data once and retains the old directory as a recovery backup; conflicting data
+is never overwritten. The console names this **Voice Assistant Memory & Storage**.
+**Live Trail** is on Dock2, outside the configuration console. It shows active
+agent tasks, request history, per-call profiles and agents, input/output tokens,
+retries, timing and expandable events. Expand a model call to see the redacted
+request and response together, including calls still in progress. All items start collapsed. Expand only the rows you want to inspect; expanded rows
+survive live polling and closing/reopening the drawer. Updates can be paused;
+the native page is created on first use and suspended while closed.
+
+**AI Voice Assistant → Awake** lists every mini assistant, with search and an
+individual wake-by-name switch. All identities start enabled. Brain is the default
+and cannot be disabled individually. Disabling Rio prevents both keyword and
+fallback speech recognition from summoning Rio, including an automatic wake still
+being decoded. Manual selection/listening, current work and background delegation
+continue. Preferences persist after restart. The main microphone wake-listener
+switch remains a separate global privacy control.
+
+
+While an assistant speaks or reads a document, character-name wake detection is
+suspended (including page/phrase gaps). Spoken **Stop** / **Brain Stop** and manual
+interruption remain available. Name detection resumes after playback and its
+short echo tail. A response mentioning Rio cannot switch the active character.
+
+All speech paths normalize formatting before phrase generation: Markdown/HTML
+markers are silent, sentence punctuation controls pauses, and meaningful amounts
+are spoken naturally (`$200` → “two hundred dollars”, `$1.50` → “one dollar and
+fifty cents”). This changes narration only, preserving documents and model text.
+`scripts/verify_voice_controls.py` checks real offline stop/echo recognition;
+`scripts/verify_spoken_text.py` checks cached Kokoro→Whisper currency pronunciation.
+`scripts/verify_console_workspace.py` exercises the real native Live Trail with
+isolated local activity and gRPC fixtures, without cloud calls or microphone audio.

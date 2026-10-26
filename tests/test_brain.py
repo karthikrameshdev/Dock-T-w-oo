@@ -39,8 +39,8 @@ def test_animation_poses_and_interpolation():
     assert "replace_text" in ACTIONS
     assert "fold_arms" in ACTIONS
     assert "sensor_scan" in ACTIONS
-    # Stool sitting must not exist
-    assert "sit" not in ACTIONS
+    # The new library includes a floor-sitting pose without the removed stool.
+    assert {"sit", "stand_up", "takeoff", "salute", "double_blink"} <= ACTIONS.keys()
     assert len(PLAYLIST) >= 20
 
     # Travel curve smoothing
@@ -188,7 +188,7 @@ def test_brain_manager_lifecycle(qtbot, qapp, tmp_path):
 
     # Status dictionary for console
     status = mgr.get_status()
-    assert status["name"] == "Brain"
+    assert status["name"] == "Voice Assistant"
     assert status["is_mini_agent_visible"] is True
     assert status["voice_input"]["enabled"] is True
     assert status["voice_input"]["error"] == ""

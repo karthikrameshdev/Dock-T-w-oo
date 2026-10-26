@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from PIL import Image, ImageDraw, ImageFont
 
-root = Path(__file__).resolve().parents[2] / 'character'
+root = Path(__file__).resolve().parents[2] / 'characters' / 'default'
 font_path = '/System/Library/Fonts/Supplemental/Arial.ttf'
 font = ImageFont.truetype(font_path, 22) if Path(font_path).exists() else ImageFont.load_default(size=22)
 names = ['hero', 'back', 'climb', 'fly', 'talk', 'magnifier', 'camera', 'read', 'scan_code', 'drag', 'walk', 'run']
@@ -32,6 +32,6 @@ if labels.exists() and len(list(frames.glob('*.png'))) == 576:
     subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-framerate', '24',
                     '-i', str(labeled / '%04d.png'), '-c:v', 'libx264', '-crf', '20',
                     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-                    str(root / 'Brain-actions.mp4')], check=True)
+                    str(root / 'default-actions.mp4')], check=True)
     shutil.rmtree(labeled)
 print('Packaged previews in', root)

@@ -35,6 +35,28 @@ def feed(listener, pcm, count):
         listener._handle_pcm_frame(pcm)
 
 
+def test_ambient_backup_runs_once_per_utterance_while_keywords_stay_live(tmp_path, qapp):
+    listener=listener_for_test(tmp_path);checks=[];keywords=[]
+    listener.wake_detector.feed=lambda pcm:keywords.append(pcm) or ''
+    listener._dispatch_wake_check=lambda frames:checks.append(frames)
+    feed(listener,SILENCE,100);assert not checks
+    feed(listener,SPEECH,600)
+    assert len(checks)==1 and len(keywords)==700
+    feed(listener,SILENCE,10);feed(listener,SPEECH,4);feed(listener,SILENCE,10)
+    assert len(checks)==2  # A short next utterance retains the fallback.
+    listener.wake_detector.feed=lambda pcm:'BRAIN'
+    feed(listener,SPEECH,1);assert listener.is_recording
+
+
+def test_continuous_noise_cannot_hold_the_microphone_indefinitely(tmp_path,qapp):
+    listener=listener_for_test(tmp_path);timeouts=[];decoded=[]
+    listener.turn_timed_out.connect(lambda:timeouts.append(True))
+    listener._transcribe_pcm=lambda pcm:decoded.append(pcm) or ''
+    listener.start_recording();feed(listener,SPEECH,1202)
+    assert timeouts==[True] and not listener.is_recording and not decoded
+    assert not listener.speech_frames and 'two minutes' in listener.last_error
+
+
 def test_inline_command_waits_through_a_pause_and_more_than_four_seconds(tmp_path, qtbot):
     listener = listener_for_test(tmp_path)
     listener._transcribe_pcm = lambda _pcm: 'Brain, go to the top right.'

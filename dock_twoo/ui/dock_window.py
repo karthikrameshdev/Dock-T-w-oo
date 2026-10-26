@@ -199,6 +199,8 @@ class DockWindow(QWidget):
     def __init__(self, config_manager: ConfigManager, *, screen_id=None, screen_index=None):
         # Frameless and stays on top — NO Qt.WindowType.Tool so macOS never hides it on deactivate!
         super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        from dock_twoo.brain.control_surfaces import protect_controls
+        protect_controls(self)
         self.config_manager = config_manager
         self.screen_id = screen_id
         self.display_index = screen_index
@@ -255,6 +257,8 @@ class DockWindow(QWidget):
         self.on_config_updated(self.config_manager.config)
 
     def _refresh_app_data(self, ident):
+        if ident == 'scheduler' and ident in self.attached_window._apps:
+            self.attached_window._apps[ident].refresh()
         if ident == 'notes' and ident in self.attached_window._apps:
             widget = self.attached_window._apps[ident]
             if widget.stack.currentIndex() == 0:

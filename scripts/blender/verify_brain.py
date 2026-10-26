@@ -1,6 +1,6 @@
 """Audit the saved rig at every frame and during idle/action blends.
 
-Run Blender --background character/Brain.blend --python this_file.
+Run Blender --background characters/default/default.blend --python this_file.
 Uses the same conservative helmet/ear/arm envelopes as the builder. This catches
 intersections between animation keys, not just the authored key poses.
 """
@@ -51,7 +51,7 @@ report = {'blend_sha256': hashlib.sha256(Path(bpy.data.filepath).read_bytes()).h
           'glb_sha256': hashlib.sha256((REPO / 'dock_twoo/server/static/brain3d/brain.glb').read_bytes()).hexdigest(),
           'success': not issues, 'clips': len(bpy.data.actions), 'frames': frames,
           'transition_samples': blends, 'intersections': issues}
-path = REPO / 'character/animation-validation.json'
+path = REPO / 'characters/default/animation-validation.json'
 path.write_text(json.dumps(report, indent=2) + '\n')
 print('BRAIN_ANIMATION_VALIDATION', json.dumps(report))
 if issues:

@@ -1,0 +1,27 @@
+{
+  "id": "musician",
+  "source_sha256": "518b17ec73972a73b094fa87eda83ec305f766163877d8074d2cff787fb3bcd0",
+  "asset_sha256": "1b89a12cfe3781144c42f6242d69e15728558c08b4c76666dc212e79f0940e53",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

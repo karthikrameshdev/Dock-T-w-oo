@@ -4,13 +4,16 @@ import json
 import os
 from pathlib import Path
 from cryptography.fernet import Fernet
-from dock_twoo.brain.cloud import PRESETS, validate_config
+from dock_twoo.brain.cloud import PRESETS
+from dock_twoo.brain.ecosystem.models import CLI_PROVIDERS, NETWORK_PROVIDERS, validate_agent_model as validate_config, configured
+
+PRESETS={**PRESETS,**NETWORK_PROVIDERS,**{name:"" for name in CLI_PROVIDERS}}
 
 PROVIDER_CATALOG={name:{'name':label,'kind':name,'default_base_url':PRESETS[name],'models':[],
                        'default_model':'','roles':['text_output','computer_use']}
     for name,label in [('gemini','Google Gemini'),('openrouter','OpenRouter'),('openai','OpenAI'),
                        ('anthropic','Anthropic Claude'),('deepseek','DeepSeek'),('xai','xAI'),
-                       ('huggingface','Hugging Face'),('custom','Custom cloud provider')]}
+                       ('huggingface','Hugging Face'),('custom','Custom API provider'),('ollama','Ollama server'),('network','Network model server'),('gemini_cli','Gemini CLI'),('codex_cli','Codex CLI'),('claude_cli','Claude Code CLI'),('kilo_cli','Kilo CLI'),('custom_cli','Other CLI')]}
 
 class ProfileManager:
     def __init__(self,store):
@@ -70,17 +73,22 @@ class ProfileManager:
     def get_key(self,provider,profile_id=None):
         with self.store.lock:
             ident=profile_id if profile_id is not None else self.store.setting('active_profile')
-            return self._keys().get('profile:'+str(ident)+':'+str(provider),'') or os.environ.get({'gemini':'GEMINI_API_KEY','anthropic':'ANTHROPIC_API_KEY',
+            saved=self._keys().get('profile:'+str(ident)+':'+str(provider),'')
+            if provider in CLI_PROVIDERS or provider in NETWORK_PROVIDERS:return saved
+            return saved or os.environ.get({'gemini':'GEMINI_API_KEY','anthropic':'ANTHROPIC_API_KEY',
                 'openai':'OPENAI_API_KEY','openrouter':'OPENROUTER_API_KEY','deepseek':'DEEPSEEK_API_KEY',
                 'xai':'XAI_API_KEY','huggingface':'HF_TOKEN'}.get(provider,'BRAIN_CUSTOM_API_KEY'),'')
 
     def get_profile_status(self,profile):
         try:validate_config(profile)
         except ValueError:return 'not configured'
+        if profile.get('provider') in CLI_PROVIDERS:return 'configured' if configured(profile) else 'not configured'
+        if profile.get('provider') in NETWORK_PROVIDERS:return 'configured'
         return 'configured' if self.get_key(profile.get('provider'),profile.get('id')) else 'not configured'
 
     def _public(self,config):
         config=dict(config)
+        config['kind']='cli' if config.get('provider') in CLI_PROVIDERS else 'network' if config.get('provider') in NETWORK_PROVIDERS else 'api'
         config['status']=self.get_profile_status(config)
         config['key_configured']=bool(self.get_key(config.get('provider'),config.get('id')))
         config['protocol']=config.get('protocol') or ('anthropic' if config.get('provider')=='anthropic' else 'openai')
@@ -107,8 +115,8 @@ class ProfileManager:
             name=requested_name.strip()
             if not name or len(name)>80:raise ValueError('Use a profile name of 1 to 80 characters.')
             if any(p['id']!=ident and p['name'].casefold()==name.casefold() for p in profiles):raise ValueError('Choose a unique profile name.')
-            clean=validate_config({k:data.get(k,'') for k in ('provider','base_url','model','protocol')})
-            clean={k:clean[k] for k in ('provider','base_url','model','protocol')};clean.update(id=ident,name=name)
+            clean=validate_config({k:data.get(k,[] if k=='arguments' else '') for k in ('provider','base_url','model','protocol','executable','arguments','cache_mode')})
+            clean={k:clean[k] for k in ('provider','base_url','model','protocol','kind','executable','arguments','cache_mode') if k in clean};clean.update(id=ident,name=name)
             if existing:profiles=[clean if p['id']==ident else p for p in profiles]
             else:profiles.append(clean)
             self.store.set_setting('cloud_profiles',profiles)
@@ -122,6 +130,25 @@ class ProfileManager:
     def get_provider_catalog(self):return {'catalog':PROVIDER_CATALOG,'presets':PRESETS,'roles':['text_output','computer_use']}
     def get_profiles(self):
         with self.store.lock:return [self._public(p) for p in self._configs()]
+    def character_profile(self, character_id):
+        from dock_twoo.brain.catalog import character
+        character(character_id)
+        ident=self.store.setting('character_profiles',{}).get(character_id)
+        config=next((p for p in self._configs() if p['id']==ident),None)
+        return self._public(config) if config else self.get_active_profile()
+
+    def bind_character(self, character_id, profile_id):
+        from dock_twoo.brain.catalog import character
+        character(character_id)
+        if profile_id and profile_id not in {p['id'] for p in self._configs()}:
+            raise ValueError('Choose an existing agent model profile.')
+        with self.store.lock:
+            bindings=dict(self.store.setting('character_profiles',{}))
+            if profile_id:bindings[character_id]=profile_id
+            else:bindings.pop(character_id,None)
+            self.store.set_setting('character_profiles',bindings)
+        return self.character_profile(character_id)
+
     def activate_profile(self,profile_id):
         with self.store.lock:
             if profile_id not in {p['id'] for p in self._configs()}:raise ValueError('Cloud profile not found.')

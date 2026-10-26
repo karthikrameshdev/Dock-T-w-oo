@@ -1,0 +1,27 @@
+{
+  "id": "husky",
+  "source_sha256": "a583ca0b1e59f770cd262391be69a47876006a829436d0f059ccf4d02d63c08b",
+  "asset_sha256": "94a561f36bb2692983a061dd138acb1d9d55d9cfd81c220a4b86d1b7a2e908b9",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

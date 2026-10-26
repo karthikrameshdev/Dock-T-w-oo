@@ -128,6 +128,21 @@ class ActivityStore:
         self.path.chmod(0o600)
         self.prune()
 
+        with self.db() as db:
+            for column, default in (('character_id','__legacy__'),('character_name','Earlier activity'),('task_id',''),('parent_task_id','')):
+                if column not in {row[1] for row in db.execute('PRAGMA table_info(calls)')}:
+                    db.execute(f"ALTER TABLE calls ADD COLUMN {column} TEXT NOT NULL DEFAULT '{default}'")
+            if 'character_id' not in {row[1] for row in db.execute('PRAGMA table_info(daily_usage)')}:
+                columns=[row[1] for row in db.execute('PRAGMA table_info(daily_usage)')]
+                db.execute('ALTER TABLE daily_usage RENAME TO daily_usage_before_characters')
+                definitions=[]
+                for row in db.execute('PRAGMA table_info(daily_usage_before_characters)'):
+                    definitions.append(row[1]+' '+row[2]+(' DEFAULT '+row[4] if row[4] is not None else ''))
+                db.execute('CREATE TABLE daily_usage ('+','.join(definitions)+",character_id TEXT NOT NULL,character_name TEXT NOT NULL,PRIMARY KEY(day,provider,model,profile_id,character_id))")
+                names=','.join(columns)
+                db.execute('INSERT INTO daily_usage('+names+",character_id,character_name) SELECT "+names+",'__legacy__','Earlier activity' FROM daily_usage_before_characters")
+                db.execute('DROP TABLE daily_usage_before_characters')
+
     @contextmanager
     def db(self):
         with self.lock:
@@ -168,8 +183,11 @@ class ActivityStore:
         with self.db() as db:
             db.execute('INSERT INTO calls(id,run_id,started,day,provider,model,requested_model,step,retry,status,profile_id,profile_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
                        (ident, run_id, started.isoformat(), started.date().isoformat(), config['provider'], config['model'], config['model'], step, int(retry), 'in_flight', config.get('id') or '__legacy__', config.get('name') or 'Earlier activity'))
+            db.execute('UPDATE calls SET character_id=?,character_name=?,task_id=?,parent_task_id=? WHERE id=?',
+                       (config.get('_character_id','__legacy__'),config.get('_character_name','Earlier activity'),config.get('_task_id',''),config.get('_parent_task_id',''),ident))
         self.event(run_id, 'cloud_request', {'call_id': ident, 'provider': config['provider'], 'model': config['model'],
                     'profile_id': config.get('id') or '__legacy__', 'profile_name': config.get('name') or 'Earlier activity',
+                    'character_id':config.get('_character_id','__legacy__'),'character_name':config.get('_character_name','Earlier activity'),'task_id':config.get('_task_id',''),'parent_task_id':config.get('_parent_task_id',''),
                     'retry': bool(retry), 'payload': safe_payload(payload, secret)}, step)
         return ident
 
@@ -191,9 +209,9 @@ class ActivityStore:
             values = [1,usage['input_tokens'] or 0,usage['output_tokens'] or 0,usage['total_tokens'] or 0,
                       usage['cached_tokens'],usage['reasoning_tokens'],int(usage['input_tokens'] is not None and usage['output_tokens'] is not None),
                       int(status=='error'),int(status in ('cancelled','interrupted')),row['retry'],latency_ms,usage['cost_usd'] or 0,int(usage['cost_usd'] is not None)]
-            db.execute('INSERT INTO daily_usage(day,provider,model,profile_id,profile_name,'+','.join(fields)+') VALUES('+','.join('?' for _ in range(5+len(fields)))+') '
-                       'ON CONFLICT(day,provider,model,profile_id) DO UPDATE SET profile_name=excluded.profile_name,'+','.join(f'{field}={field}+excluded.{field}' for field in fields),
-                       [row['day'],row['provider'],model,row['profile_id'],row['profile_name']]+values)
+            db.execute('INSERT INTO daily_usage(day,provider,model,profile_id,profile_name,character_id,character_name,'+','.join(fields)+') VALUES('+','.join('?' for _ in range(7+len(fields)))+') '
+                       'ON CONFLICT(day,provider,model,profile_id,character_id) DO UPDATE SET profile_name=excluded.profile_name,'+','.join(f'{field}={field}+excluded.{field}' for field in fields),
+                       [row['day'],row['provider'],model,row['profile_id'],row['profile_name'],row['character_id'],row['character_name']]+values)
         self.event(row['run_id'], 'cloud_response', {'call_id': ident, 'status': status, 'error': error,
                     'usage': usage, 'latency_ms': latency_ms, 'response': safe_payload(response, secret)}, row['step'])
 
@@ -241,7 +259,7 @@ class ActivityStore:
             calls=[dict(call) for call in db.execute('SELECT * FROM calls WHERE run_id=? ORDER BY started',(ident,))]
         return {'run':dict(row),'calls':calls,'events':events,'retention_days':RETENTION_DAYS}
 
-    def metrics(self, start=None, end=None, period='month', profile_id=None):
+    def metrics(self, start=None, end=None, period='month', profile_id=None, character_id=None):
         today=self.clock().date()
         if period not in ('month','7d','custom'):raise ValueError('Choose month, 7d, or custom.')
         if period=='custom' and (not start or not end):raise ValueError('Choose both From and To dates.')
@@ -256,6 +274,9 @@ class ActivityStore:
                 rows=[dict(row) for row in db.execute('SELECT * FROM daily_usage WHERE day BETWEEN ? AND ? AND profile_id=? ORDER BY day',(first.isoformat(),last.isoformat(),profile_id))]
             else:
                 rows=[dict(row) for row in db.execute('SELECT * FROM daily_usage WHERE day BETWEEN ? AND ? ORDER BY day',(first.isoformat(),last.isoformat()))]
+        if character_id not in (None,'','all'):
+            if not isinstance(character_id,str) or len(character_id)>80:raise ValueError('Choose a valid character.')
+            rows=[row for row in rows if row['character_id']==character_id]
         fields=['calls','input_tokens','output_tokens','total_tokens','cached_tokens','reasoning_tokens','known_usage_calls','failed_calls','cancelled_calls','retries','latency_ms','cost_usd','cost_known_calls']
         # Some compatible APIs report a total larger than their input/output
         # breakdown. Preserve the total without inventing a reasoning count.
@@ -267,8 +288,10 @@ class ActivityStore:
         total['average_latency_ms']=round(total['latency_ms']/max(1,total['calls']))
         total['successful_calls']=total['calls']-total['failed_calls']-total['cancelled_calls']
         total['unique_profiles']=len({row['profile_id'] for row in rows if row['profile_id']!='__legacy__'})
-        daily={};models={};profiles={}
+        daily={};models={};profiles={};agents={}
         for row in rows:
+            if row['character_id'] not in agents:agents[row['character_id']]={'character_id':row['character_id'],'name':row['character_name'],**{field:0 for field in fields}}
+            for field in fields:agents[row['character_id']][field]+=row[field]
             if row['profile_id'] not in profiles:profiles[row['profile_id']]={'profile_id':row['profile_id'],'name':row['profile_name'],**{field:0 for field in fields}}
             for field in fields:profiles[row['profile_id']][field]+=row[field]
             for group,key in ((daily,row['day']),(models,row['provider']+'/'+row['model'])):
@@ -281,5 +304,7 @@ class ActivityStore:
                 'models':[{'model':key,**value} for key,value in models.items()],
                 'profile_id':profile_id or 'all','profiles':list(profiles.values()),
                 'profile_options':[{'id':ident,'name':name,'historical':True} for ident,name in options.items()],
-                'source':'Provider-reported cloud API usage only. Local speech/vision are excluded.',
+                'character_id':character_id or 'all','characters':list(agents.values()),
+                'character_options':[{'id':c['id'],'name':c['name']} for c in __import__('dock_twoo.brain.catalog',fromlist=['characters']).characters()],
+                'source':'Provider-reported agent model usage only. Local speech/vision are excluded.',
                 'retention_days':RETENTION_DAYS,'totals_retention':'Daily aggregates retained; detailed requests and responses expire after seven days.'}

@@ -1,0 +1,27 @@
+{
+  "id": "beagle",
+  "source_sha256": "7c86f0b4b2b854dea391c07b25e23e3de2e735d15589c30bccaa30accdd0a948",
+  "asset_sha256": "99bfc0682d0220260359f550663149c026229bf213cff8940c584ad5a0d02aed",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

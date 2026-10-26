@@ -1,0 +1,837 @@
+{
+  "id": "musician",
+  "name": "Zuri",
+  "family": "human",
+  "species": "musician",
+  "main": "#A35993",
+  "secondary": "#335576",
+  "accent": "#A9EEFF",
+  "scale": 0.97,
+  "index": 29,
+  "version": "4.0.0",
+  "design": "Musician",
+  "source": "characters/musician/musician.blend",
+  "source_sha256": "518b17ec73972a73b094fa87eda83ec305f766163877d8074d2cff787fb3bcd0",
+  "asset": "musician.glb",
+  "asset_sha256": "1b89a12cfe3781144c42f6242d69e15728558c08b4c76666dc212e79f0940e53",
+  "bones": 58,
+  "meshes": 152,
+  "actions": {
+    "air_spin": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "original",
+      "description": "Air Spin"
+    },
+    "apologize": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Apologize \u00b7 Brain"
+    },
+    "backstep": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Backstep \u00b7 Brain"
+    },
+    "balanced_pose": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Balanced Pose \u00b7 Brain"
+    },
+    "balloon": {
+      "duration": 5.0,
+      "loop": false,
+      "category": "original",
+      "description": "Balloon"
+    },
+    "bank_left": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Left \u00b7 Brain"
+    },
+    "bank_right": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Right \u00b7 Brain"
+    },
+    "beckon": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Beckon \u00b7 Brain"
+    },
+    "bow": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Bow \u00b7 Brain"
+    },
+    "brake": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Brake \u00b7 Brain"
+    },
+    "camera": {
+      "duration": 1.4,
+      "loop": false,
+      "category": "original",
+      "description": "Camera"
+    },
+    "carry_box": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Carry Box \u00b7 Brain"
+    },
+    "catch": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Catch \u00b7 Brain"
+    },
+    "celebrate": {
+      "duration": 1.4,
+      "loop": false,
+      "category": "original",
+      "description": "Celebrate"
+    },
+    "charge": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Charge \u00b7 Brain"
+    },
+    "chase_ball": {
+      "duration": 1.0,
+      "loop": true,
+      "category": "original",
+      "description": "Chase Ball"
+    },
+    "cheer_partner": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "original",
+      "description": "Cheer Partner"
+    },
+    "clap": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Clap \u00b7 Brain"
+    },
+    "climb": {
+      "duration": 1.0,
+      "loop": true,
+      "category": "original",
+      "description": "Climb"
+    },
+    "climb_dock": {
+      "duration": 1.0,
+      "loop": true,
+      "category": "original",
+      "description": "Climb Dock"
+    },
+    "cook": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Cook \u00b7 Brain"
+    },
+    "crawl": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crawl \u00b7 Brain"
+    },
+    "crouch": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crouch \u00b7 Brain"
+    },
+    "cry": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Cry \u00b7 Brain"
+    },
+    "dance": {
+      "duration": 4.0,
+      "loop": false,
+      "category": "original",
+      "description": "Dance"
+    },
+    "dance_together": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "original",
+      "description": "Dance Together"
+    },
+    "dash": {
+      "duration": 2.0,
+      "loop": true,
+      "category": "original",
+      "description": "Dash"
+    },
+    "double_blink": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Double Blink \u00b7 Brain"
+    },
+    "drag": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "original",
+      "description": "Drag"
+    },
+    "draw": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Draw \u00b7 Brain"
+    },
+    "explore": {
+      "duration": 2.2,
+      "loop": false,
+      "category": "original",
+      "description": "Explore"
+    },
+    "facepalm": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Facepalm \u00b7 Brain"
+    },
+    "fly": {
+      "duration": 1.5,
+      "loop": false,
+      "category": "original",
+      "description": "Fly"
+    },
+    "fold_arms": {
+      "duration": 1.8,
+      "loop": false,
+      "category": "original",
+      "description": "Fold Arms"
+    },
+    "give_gift": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Give Gift \u00b7 Brain"
+    },
+    "give_thanks": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Give Thanks \u00b7 Brain"
+    },
+    "glance_back": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Glance Back \u00b7 Brain"
+    },
+    "glide": {
+      "duration": 3.0855,
+      "loop": true,
+      "category": "locomotion",
+      "description": "Glide \u00b7 Brain"
+    },
+    "greet": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Greet"
+    },
+    "hammer": {
+      "duration": 4.4,
+      "loop": false,
+      "category": "original",
+      "description": "Hammer"
+    },
+    "handshake": {
+      "duration": 2.5,
+      "loop": true,
+      "category": "original",
+      "description": "Handshake"
+    },
+    "happy": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Happy"
+    },
+    "head_tilt": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Head Tilt \u00b7 Brain"
+    },
+    "heart_gesture": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Heart Gesture \u00b7 Brain"
+    },
+    "high_five": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "High Five \u00b7 Brain"
+    },
+    "hover": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Hover"
+    },
+    "idle": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "original",
+      "description": "Idle"
+    },
+    "inspect_icon": {
+      "duration": 1.5,
+      "loop": false,
+      "category": "original",
+      "description": "Inspect Icon"
+    },
+    "inspect_window": {
+      "duration": 2.2,
+      "loop": false,
+      "category": "original",
+      "description": "Inspect Window"
+    },
+    "juggle": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Juggle \u00b7 Brain"
+    },
+    "jump": {
+      "duration": 0.9,
+      "loop": false,
+      "category": "original",
+      "description": "Jump"
+    },
+    "kick_ball": {
+      "duration": 4.0,
+      "loop": false,
+      "category": "original",
+      "description": "Kick Ball"
+    },
+    "kneel": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Kneel \u00b7 Brain"
+    },
+    "knock": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Knock \u00b7 Brain"
+    },
+    "land": {
+      "duration": 1.5,
+      "loop": false,
+      "category": "original",
+      "description": "Land"
+    },
+    "laugh": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Laugh \u00b7 Brain"
+    },
+    "lean_back": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Back \u00b7 Brain"
+    },
+    "lean_forward": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Forward \u00b7 Brain"
+    },
+    "lie_down": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Lie Down \u00b7 Brain"
+    },
+    "lift_object": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Lift Object \u00b7 Brain"
+    },
+    "listen": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "original",
+      "description": "Listen"
+    },
+    "look_down": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Down \u00b7 Brain"
+    },
+    "look_left": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Left \u00b7 Brain"
+    },
+    "look_right": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Right \u00b7 Brain"
+    },
+    "look_up": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Up \u00b7 Brain"
+    },
+    "magnifier": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "original",
+      "description": "Magnifier"
+    },
+    "nod": {
+      "duration": 0.8,
+      "loop": false,
+      "category": "original",
+      "description": "Nod"
+    },
+    "offer_hug": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Offer Hug \u00b7 Brain"
+    },
+    "open_door": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Open Door \u00b7 Brain"
+    },
+    "paint": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Paint \u00b7 Brain"
+    },
+    "parachute": {
+      "duration": 5.0,
+      "loop": false,
+      "category": "original",
+      "description": "Parachute"
+    },
+    "peek": {
+      "duration": 1.3,
+      "loop": false,
+      "category": "original",
+      "description": "Peek"
+    },
+    "playful_spar": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "original",
+      "description": "Playful Spar"
+    },
+    "point": {
+      "duration": 1.0,
+      "loop": false,
+      "category": "original",
+      "description": "Point"
+    },
+    "point_down": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Down \u00b7 Brain"
+    },
+    "point_up": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Up \u00b7 Brain"
+    },
+    "polish": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Polish \u00b7 Brain"
+    },
+    "ponder": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Ponder"
+    },
+    "power_down": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Down \u00b7 Brain"
+    },
+    "power_up": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Up \u00b7 Brain"
+    },
+    "present_left": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Left \u00b7 Brain"
+    },
+    "present_right": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Right \u00b7 Brain"
+    },
+    "pull_scroll": {
+      "duration": 0.8667,
+      "loop": false,
+      "category": "original",
+      "description": "Pull Scroll"
+    },
+    "push": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Push"
+    },
+    "read": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "original",
+      "description": "Read"
+    },
+    "replace_text": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "original",
+      "description": "Replace Text"
+    },
+    "roll": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Roll"
+    },
+    "run": {
+      "duration": 1.0,
+      "loop": true,
+      "category": "original",
+      "description": "Run"
+    },
+    "sad": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Sad"
+    },
+    "salute": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Salute \u00b7 Brain"
+    },
+    "scan_code": {
+      "duration": 2.5,
+      "loop": false,
+      "category": "original",
+      "description": "Scan Code"
+    },
+    "scan_screen": {
+      "duration": 1.8,
+      "loop": false,
+      "category": "original",
+      "description": "Scan Screen"
+    },
+    "search": {
+      "duration": 1.2,
+      "loop": false,
+      "category": "original",
+      "description": "Search"
+    },
+    "self_check": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Self Check \u00b7 Brain"
+    },
+    "sensor_scan": {
+      "duration": 2.0,
+      "loop": false,
+      "category": "original",
+      "description": "Sensor Scan"
+    },
+    "set_object_down": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Set Object Down \u00b7 Brain"
+    },
+    "shake_head": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Shake Head \u00b7 Brain"
+    },
+    "shiver": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Shiver \u00b7 Brain"
+    },
+    "shrug": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Shrug \u00b7 Brain"
+    },
+    "sidestep_left": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Left \u00b7 Brain"
+    },
+    "sidestep_right": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Right \u00b7 Brain"
+    },
+    "sit": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sit \u00b7 Brain"
+    },
+    "sleep": {
+      "duration": 1.6,
+      "loop": false,
+      "category": "original",
+      "description": "Sleep"
+    },
+    "smell": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Smell \u00b7 Brain"
+    },
+    "sneak": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sneak \u00b7 Brain"
+    },
+    "sneeze": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Sneeze \u00b7 Brain"
+    },
+    "spin_left": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Left \u00b7 Brain"
+    },
+    "spin_right": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Right \u00b7 Brain"
+    },
+    "stand_up": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Stand Up \u00b7 Brain"
+    },
+    "stir": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Stir \u00b7 Brain"
+    },
+    "stretch": {
+      "duration": 1.3,
+      "loop": false,
+      "category": "original",
+      "description": "Stretch"
+    },
+    "stretch_left": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Left \u00b7 Brain"
+    },
+    "stretch_right": {
+      "duration": 2.3687,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Right \u00b7 Brain"
+    },
+    "surprised": {
+      "duration": 1.0,
+      "loop": false,
+      "category": "original",
+      "description": "Surprised"
+    },
+    "sweep": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Sweep \u00b7 Brain"
+    },
+    "takeoff": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Takeoff \u00b7 Brain"
+    },
+    "talk": {
+      "duration": 2.8,
+      "loop": false,
+      "category": "original",
+      "description": "Talk"
+    },
+    "taste": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Taste \u00b7 Brain"
+    },
+    "throw": {
+      "duration": 2.6492,
+      "loop": false,
+      "category": "acting",
+      "description": "Throw \u00b7 Brain"
+    },
+    "thumbs_down": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Thumbs Down \u00b7 Brain"
+    },
+    "thumbs_up": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "acting",
+      "description": "Thumbs Up \u00b7 Brain"
+    },
+    "tiptoe": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Tiptoe \u00b7 Brain"
+    },
+    "touchdown": {
+      "duration": 2.5245,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Touchdown \u00b7 Brain"
+    },
+    "trip_recover": {
+      "duration": 2.805,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Trip Recover \u00b7 Brain"
+    },
+    "turn_around": {
+      "duration": 0.8,
+      "loop": false,
+      "category": "original",
+      "description": "Turn Around"
+    },
+    "type": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "original",
+      "description": "Type"
+    },
+    "victory_pose": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Victory Pose \u00b7 Brain"
+    },
+    "wake_up": {
+      "duration": 3.0855,
+      "loop": false,
+      "category": "acting",
+      "description": "Wake Up \u00b7 Brain"
+    },
+    "walk": {
+      "duration": 1.0,
+      "loop": true,
+      "category": "original",
+      "description": "Walk"
+    },
+    "walk_window": {
+      "duration": 1.0,
+      "loop": true,
+      "category": "original",
+      "description": "Walk Window"
+    },
+    "water_plant": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Water Plant \u00b7 Brain"
+    },
+    "wave": {
+      "duration": 1.4,
+      "loop": false,
+      "category": "original",
+      "description": "Wave"
+    },
+    "whistle": {
+      "duration": 1.1,
+      "loop": false,
+      "category": "original",
+      "description": "Whistle"
+    },
+    "wink": {
+      "duration": 0.8,
+      "loop": false,
+      "category": "original",
+      "description": "Wink"
+    },
+    "write": {
+      "duration": 2.244,
+      "loop": false,
+      "category": "acting",
+      "description": "Write \u00b7 Brain"
+    },
+    "yawn": {
+      "duration": 2.9297,
+      "loop": false,
+      "category": "acting",
+      "description": "Yawn \u00b7 Brain"
+    }
+  }
+}

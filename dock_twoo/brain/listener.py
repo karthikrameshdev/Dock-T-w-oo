@@ -67,7 +67,7 @@ def _patch_speech_recognition_flac() -> None:
 _patch_speech_recognition_flac()
 
 
-def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, str]:
+def command_after_keyword(text: str, wake_word: str = "brain", *, strict=False) -> tuple[bool, str]:
     """Interpret dictation only after the dedicated keyword model has fired.
 
     A tiny dictation model often spells a one-word 'Brain' as 'plane' or 'green'.
@@ -79,15 +79,18 @@ def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, st
         return False, ""
     configured = wake_word.lower().strip() or "brain"
     aliases = {"brain", "brian", "buddy", "bobby", "body", "grain", "green", "plane", "spring", configured, configured.split()[-1]}
+    if strict and configured not in {"brain","buddy","brian"}:aliases={configured}
     matches = list(re.finditer(r"[\w']+", text))
     for index, word in enumerate(words):
-        if word in {"brain", "brian", "buddy", configured, configured.split()[-1]}:
+        if strict and not (index==0 or (index==1 and words[0] in {"hey","hello","hi","okay","ok","a","may"})):continue
+        if word in ({configured} if strict and configured not in {"brain","buddy","brian"} else {"brain", "brian", "buddy", configured, configured.split()[-1]}):
             command = text[matches[index].end():].strip(" \t,.:;!?…-–—")
             remaining = re.findall(r"[\w']+", command.lower())
             if remaining and all(part in aliases | {"hey", "hello", "hi"} for part in remaining):
                 command = ""
             return True, command
     for index, word in enumerate(words[:3]):
+        if strict and not (index==0 or (index==1 and words[0] in {"hey","hello","hi","okay","ok","a","may"})):continue
         if word in aliases:
             command = text[matches[index].end():].strip(" \t,.:;!?…-–—")
             remaining = re.findall(r"[\w']+", command.lower())
@@ -96,7 +99,7 @@ def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, st
             return True, command
     if words and words[0] in {"what", "when", "where", "how", "can", "open", "launch", "type", "sing", "hum", "show", "take", "walk", "dance", "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn", "give", "go", "do", "research", "please", "help"}:
         return True, text.strip()
-    if len(words) <= 3:
+    if not strict and len(words) <= 3:
         return True, ""
     return False, ""
 
@@ -104,6 +107,8 @@ def command_after_keyword(text: str, wake_word: str = "brain") -> tuple[bool, st
 class AudioListener(QObject):
     """Monitors microphone stream for wake word ('Brain'), user speech, and fast VAD turn completion."""
 
+    named_wake_started = Signal(str)
+    named_turn_completed = Signal(str, str, str, bool)  # id, command, raw transcript, bare wake
     wake_detected = Signal()
     wake_started = Signal()  # A verified keyword was heard; show the companion immediately.
     speech_started = Signal()
@@ -133,6 +138,9 @@ class AudioListener(QObject):
         self.audio_devices.input_state.connect(self._input_state)
         self.audio_devices.error.connect(self.error_occurred)
         self._capture_lock = threading.RLock()
+        self.named_characters = False
+        self.capture_character_id = "default"
+        self._keyword_character_id = None
         self.wake_word = wake_word.lower().strip()
         self.is_running = False
         self.is_recording = False
@@ -181,6 +189,8 @@ class AudioListener(QObject):
         self._backup_ring = deque(maxlen=40)
         self._backup_voice_ring = deque(maxlen=40)
         self._backup_ticks = 0
+        self._backup_checked = False
+        self._backup_silence = 0.0
         self._endpoint = TurnEndpoint()
         self._wake_capture = False
         self._capture_revision = 0
@@ -190,6 +200,7 @@ class AudioListener(QObject):
         self._wake_armed = True
         self.wake_detection_enabled = True
         self._output_active = False
+        self._wake_suspended = False
         self._ignore_audio_until = 0.0
         self._capture_generation = 0
         self.input_device = ""
@@ -269,13 +280,17 @@ class AudioListener(QObject):
     @capture_locked
     def start_recording(self) -> None:
         """Listen for a complete turn; silence timeout starts before speech only."""
+        self.last_error = ''
         self._capture_generation += 1
         self._capture_revision = 0
         self._decode_token = None
         self._capture_forced = False
         self._passive_stop = False
+        self._wake_suspended = False
         self._stop_latched = False
         self._wake_capture = False
+        self._keyword_character_id = None
+        self.wake_detector.reset()
         self._endpoint = TurnEndpoint()
         self.speech_frames = []
         self.silence_count = 0
@@ -285,14 +300,29 @@ class AudioListener(QObject):
         self.speech_started.emit()
 
     @capture_locked
-    def _begin_wake_capture(self, frames: list[bytes]) -> None:
+    def _begin_wake_capture(self, frames: list[bytes], character_id=None) -> bool:
+        if self.wake_suppressed:
+            self.last_wake_decision = 'wake-suspended-for-output'
+            return False
+        if self.named_characters and character_id and not self.store.character_awake(character_id):
+            self.last_wake_decision = 'character-awake-disabled'
+            self.wake_detector.reset()
+            return False
+        if character_id is not None:
+            self.capture_character_id = character_id
+        self._output_active = False
+        self._ignore_audio_until = 0
         self.start_recording()
+        self._keyword_character_id = character_id
         self.speech_frames = list(frames)
         self._wake_capture = True
         self.has_spoken = True
         self._endpoint.speech = .2  # A verified name is already speech.
         self.last_wake_decision = "capturing-wake-statement"
         self.wake_started.emit()  # Visual acknowledgement only, never speech.
+        if self.named_characters:
+            self.named_wake_started.emit(self.capture_character_id)
+        return True
 
     @capture_locked
     def stop_recording(self) -> None:
@@ -357,6 +387,7 @@ class AudioListener(QObject):
     @capture_locked
     def arm_wake(self) -> None:
         self.cancel_recording()
+        self._wake_suspended = False
         self._passive_stop = False
         self._stop_latched = False
         self._wake_armed = self.wake_detection_enabled
@@ -364,6 +395,8 @@ class AudioListener(QObject):
         self._backup_ring.clear()
         self._backup_voice_ring.clear()
         self._backup_ticks = 0
+        self._backup_checked = False
+        self._backup_silence = 0.0
         self.ambient_speech_frames = []
         self.ambient_silence_count = 0
         self._audio_timeline.clear()
@@ -374,8 +407,13 @@ class AudioListener(QObject):
     def suspend(self) -> None:
         """Suspend capture during an explicit document-reading session."""
         self.cancel_recording()
+        self._wake_suspended = True
         self._wake_armed = False
         self._passive_stop = True
+
+    @property
+    def wake_suppressed(self) -> bool:
+        return self._output_active or self._wake_suspended or time.monotonic() < self._ignore_audio_until
 
     @capture_locked
     def set_output_active(self, active: bool) -> None:
@@ -385,6 +423,9 @@ class AudioListener(QObject):
         if active:
             self._passive_stop = True
             if not was_active:
+                # Invalidate ASR already running when speech starts. It must not
+                # deliver an old wake after playback finishes either.
+                self.cancel_recording()
                 self._stop_latched = False
                 self.stop_detector.reset()
         if active or was_active:
@@ -393,8 +434,36 @@ class AudioListener(QObject):
             self._backup_ring.clear()
             self._backup_voice_ring.clear()
             self._backup_ticks = 0
+            self._backup_checked = False
+            self._backup_silence = 0.0
+            self._audio_timeline.clear()
             self.wake_detector.reset()
             self.endpoint_vad.reset()
+
+    @capture_locked
+    def enable_character_names(self):
+        from dock_twoo.brain.catalog import characters
+        self.named_characters = True
+        self.wake_detector.configure_names([entry['name'] for entry in characters()])
+
+    def _emit_statement(self, text, command=None, bare=False, character_id=None):
+        if self.wake_suppressed:
+            return
+        if self.named_characters:
+            from dock_twoo.brain.catalog import named_prefix
+            found, rest = named_prefix(text, acoustic=True)
+            target = found or character_id or self.capture_character_id
+            if not self.store.character_awake(target) and (self._wake_capture or target != self.capture_character_id):
+                self.last_wake_decision = 'character-awake-disabled'
+                self.arm_wake()
+                self.turn_timed_out.emit()
+                return
+            value = rest if found else (command if command is not None else text.strip())
+            self.named_turn_completed.emit(target, value, text, bare or (found is not None and not rest))
+        elif bare:
+            self.wake_detected.emit()
+        else:
+            self.turn_completed.emit(text.strip() if command is None else command)
 
     def set_wake_word(self, value: str) -> None:
         self.wake_word = value.lower().strip() or "brain"
@@ -456,10 +525,10 @@ class AudioListener(QObject):
             return
         self.audio_frames_seen += 1
 
-        if self._output_active or (self._passive_stop and not self.is_recording):
+        if self._output_active or self._wake_suspended or (self._passive_stop and not self.is_recording):
             self.last_wake_decision = "monitoring-spoken-stop"
+            clean = self.echo_guard.filter(pcm, captured_at)
             if not self._stop_latched and self.stop_detector.ready:
-                clean = self.echo_guard.filter(pcm, captured_at)
                 keyword = self.stop_detector.feed(clean)
                 if keyword in ('STOP', 'BRAIN_STOP'):
                     self._stop_latched = True
@@ -467,8 +536,14 @@ class AudioListener(QObject):
                     self.cancel_recording()
                     self.last_wake_decision = 'spoken-stop'
                     self.stop_requested.emit(keyword.replace('_', ' ').title())
-            return
-        if time.monotonic() < self._ignore_audio_until:
+                    return
+            if self._output_active or self._wake_suspended or not self.named_characters or not self.wake_detection_enabled:
+                return
+            # Processing may accept another request; audible output and an
+            # entire document-reading session are strictly stop-only.
+            pcm = clean
+            samples = array.array('h'); samples.frombytes(pcm)
+        if time.monotonic() < self._ignore_audio_until or (captured_at is not None and captured_at < self._ignore_audio_until):
             self.last_wake_decision = "suppressing-playback-echo"
             return
 
@@ -497,6 +572,15 @@ class AudioListener(QObject):
 
         self._audio_timeline.append((self.audio_frames_seen, pcm, is_speech))
         if self.is_recording:
+            if self.named_characters and not self._wake_capture and self._endpoint.speech < 1.5:
+                from dock_twoo.brain.catalog import keyword_id
+                keyword = self.wake_detector.feed(pcm) if self.wake_detector.ready else ''
+                target = keyword_id(keyword) if keyword else None
+                if target is not None and self.store.character_awake(target):
+                    self.capture_character_id = target
+                    self._keyword_character_id = target
+                    self._wake_capture = True
+                    self.named_wake_started.emit(target)
             # Continue listening while a candidate transcript is being decoded.
             # Speech resuming during ASR invalidates that candidate and extends it.
             if is_speech and self._decode_token is not None and not self._capture_forced:
@@ -506,10 +590,10 @@ class AudioListener(QObject):
                 self.has_spoken = self._endpoint.speech > 0
                 if not self._endpoint.overlong:
                     self.speech_frames.append(pcm)
-            if self._endpoint.complete or self._endpoint.idle_expired:
+            if self._endpoint.complete or self._endpoint.idle_expired or self._endpoint.overlong:
                 self._dispatch_capture()
             return
-        if not self.wake_detection_enabled or not self._wake_armed:
+        if not self.wake_detection_enabled or (not self._wake_armed and not (self.named_characters and (self._output_active or self._passive_stop))):
             return
         self._wake_preroll.append(pcm)
         if self.wake_detector.ready:
@@ -518,21 +602,28 @@ class AudioListener(QObject):
             self.last_wake_decision = "waiting-for-keyword"
             if keyword:
                 self.last_wake_matches += 1
-                self._begin_wake_capture(list(self._wake_preroll))
+                from dock_twoo.brain.catalog import keyword_id
+                self._begin_wake_capture(list(self._wake_preroll), keyword_id(keyword) if self.named_characters else None)
                 return
         elif not self.models.recognizer.ready and self._sf_recognizer is None:
             self.last_wake_decision = "wake-model-" + self.wake_detector.state
             return
-        # A partial ASR window may activate listening, but never execute a command.
+        # One backup per utterance, not full Whisper every two seconds during
+        # background conversations/music. The streaming keyword detector above
+        # remains active on every frame, including quiet speech and long audio.
         self._backup_ring.append(pcm)
         self._backup_voice_ring.append(is_speech)
-        self._backup_ticks += 1
-        if self._backup_ticks >= 20:
-            self._backup_ticks = 0
-            if self.endpoint_vad.ready and sum(self._backup_voice_ring) < 2:
-                self.last_wake_decision = "ambient-no-speech"
-            else:
-                self._dispatch_wake_check(list(self._backup_ring))
+        self._backup_silence = 0.0 if is_speech else self._backup_silence+len(pcm)/32000
+        if is_speech or self._backup_ticks:self._backup_ticks += 1
+        voiced = sum(self._backup_voice_ring)
+        retry_without_kws = not self.wake_detector.ready and self._backup_ticks > 0 and self._backup_ticks % 20 == 0
+        if (not self._backup_checked or retry_without_kws) and voiced >= 2 and (self._backup_ticks >= 20 or self._backup_silence >= .4):
+            self._backup_checked = True
+            # A partial backup only activates capture; it never executes text.
+            self._dispatch_wake_check(list(self._backup_ring))
+        if self._backup_silence >= .8:
+            self._backup_ring.clear();self._backup_voice_ring.clear()
+            self._backup_ticks = 0;self._backup_checked = False
 
     def _dispatch_wake_check(self, frames: list[bytes]) -> None:
         if not frames:
@@ -646,12 +737,32 @@ class AudioListener(QObject):
             return
         if not text:
             self.last_wake_decision = "wake-statement-not-understood"
-            self.turn_completed.emit("")
+            self._emit_statement("")
             return
-        accepted, command = command_after_keyword(text, self.wake_word)
+        if self.named_characters:
+            from dock_twoo.brain.catalog import named_prefix
+            found, command = named_prefix(text, acoustic=True)
+            if not self.store.character_awake(found or self._keyword_character_id or self.capture_character_id):
+                self.last_wake_decision = 'character-awake-disabled'
+                self.arm_wake()
+                self.turn_timed_out.emit()
+                return
+            accepted = found is not None
+            # KWS can finish after the name, leaving only the complete command.
+            if not accepted and self._keyword_character_id is not None:
+                from dock_twoo.brain.catalog import character
+                accepted, command = command_after_keyword(text, character(self._keyword_character_id)['name'],strict=True)
+        else:
+            accepted, command = command_after_keyword(text, self.wake_word)
         if not accepted:
             self.last_wake_decision = "keyword-rejected-by-transcript"
+            self.last_error = "I couldn't confirm the assistant name. Please say the name and your request again."
             self.arm_wake()
+            self.error_occurred.emit(self.last_error)
+            # ASR already emitted processing_started. Release the manager's
+            # listening owner/session too, so rejected wakes cannot strand the
+            # avatar in Processing with no queued work and no way to finish.
+            self.turn_timed_out.emit()
             return
         template = self._load_speaker_embedding(self.owner_embedding_path)
         self.last_wake_owner_verified = (
@@ -663,10 +774,10 @@ class AudioListener(QObject):
         self.last_completed_transcript = text
         if command:
             self.last_wake_decision = "wake-command-detected"
-            self.turn_completed.emit(command)
+            self._emit_statement(text, command=command)
         else:
             self.last_wake_decision = "wake-detected"
-            self.wake_detected.emit()
+            self._emit_statement(text, command='', bare=True)
 
     def _check_wake_word(self, frames: list[bytes], generation: Optional[int] = None, frame_end: Optional[int] = None) -> None:
         """Transcribe ambient utterance to detect wake word ('Brain') or full command."""
@@ -684,6 +795,8 @@ class AudioListener(QObject):
             self._wake_check_lock.release()
 
     def _check_wake_word_locked(self, frames: list[bytes], generation: Optional[int] = None, frame_end: Optional[int] = None) -> None:
+        if self.wake_suppressed or (generation is not None and generation != self._capture_generation):
+            return
         raw_pcm = b"".join(frames)
         if len(raw_pcm) < 16000 * 2 * 0.18:
             self.last_wake_decision = "segment-too-short"
@@ -695,13 +808,21 @@ class AudioListener(QObject):
             if clean_pcm != raw_pcm:
                 text = self._transcribe_pcm(clean_pcm).strip()
         self._record_voice_check(text, "utterance backup")
-        if generation is not None and (generation != self._capture_generation or not self._wake_armed):
+        if self.wake_suppressed or (generation is not None and (generation != self._capture_generation or (not self._wake_armed and not (self.named_characters and not self.is_recording and self._decode_token is None)))):
             return
         if not text:
             self.last_wake_decision = "no-transcript"
             return
 
+        from dock_twoo.brain.catalog import named_prefix
+        detected_id, _ = named_prefix(text, acoustic=True) if self.named_characters else (None, '')
+        if detected_id and not self.store.character_awake(detected_id):
+            self.last_wake_decision = 'character-awake-disabled'
+            return
         wake_phrases = {"brain", "brian", "buddy"}
+        if self.named_characters:
+            from dock_twoo.brain.catalog import characters
+            wake_phrases.update(c['name'].lower() for c in characters())
         configured_wake_word = self.wake_word.strip()
         if configured_wake_word:
             wake_phrases.add(configured_wake_word)
@@ -716,27 +837,28 @@ class AudioListener(QObject):
             rf"(?:^\s*|[.!?]\s+)(?:{greeting_pattern})?(?:{phrase_pattern})\b|\b{greeting_pattern}(?:{phrase_pattern})\b",
             re.IGNORECASE,
         )
-        prefix_match = wake_prefix.search(text)
-        if not prefix_match:
+        prefix_match = (detected_id is not None) if self.named_characters else wake_prefix.search(text)
+        if not prefix_match and not self.named_characters:
             # A greeted wake name is sometimes spelled "grain" by Whisper in
             # noise. Require both the greeting and an actionable following verb
             # for this backup; an arbitrary "green" in ambient speech cannot wake.
             prefix_match = re.search(
                 r"^\s*(?:hey|hello|hi)[\s,]+(?:grain|green|plane)[\s,]+(?=(?:open|sing|hum|can|could|what|go|walk|read|please)\b)",
                 text, re.I)
-        if not prefix_match:
+        if not prefix_match or (self.named_characters and detected_id is None):
             self.last_wake_decision = "transcript-without-wake-prefix"
             return
 
         with self._capture_lock:
-            if generation is not None and (generation != self._capture_generation or not self._wake_armed):
+            if self.wake_suppressed or (generation is not None and (generation != self._capture_generation or (not self._wake_armed and not (self.named_characters and not self.is_recording and self._decode_token is None)))):
                 return
             # Preserve the audio that arrived while the backup ASR was decoding.
             following = [(pcm, voiced) for seq, pcm, voiced in self._audio_timeline
                          if frame_end is not None and seq > frame_end]
             self.backup_wake_matches += 1
             self.last_wake_matches += 1
-            self._begin_wake_capture(list(frames) + [pcm for pcm, _voiced in following])
+            if not self._begin_wake_capture(list(frames) + [pcm for pcm, _voiced in following], detected_id):
+                return
             # Replay boundaries as well as PCM. The user may have completed the
             # sentence while backup ASR was running; do not wait for them to
             # speak again just to finish an already-buffered statement.
@@ -759,7 +881,7 @@ class AudioListener(QObject):
             if self._accept_capture(generation, revision):
                 self.last_completed_transcript = transcription or ""
                 self._record_voice_check(transcription, "complete statement")
-                self.turn_completed.emit(transcription.strip() if transcription else "")
+                self._emit_statement(transcription or "")
         except Exception as exc:
             if self._accept_capture(generation, revision):
                 self.last_error = f"Speech recognition failed: {exc}"

@@ -1,0 +1,27 @@
+{
+  "id": "elephant",
+  "source_sha256": "a452cc3a89960a8ecee93069fa713fee164967341ffb8af2965866bf678c24f9",
+  "asset_sha256": "879d9d657f60dad376838b7a04efb6e473f874302b90e328c37122feaa32cddc",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

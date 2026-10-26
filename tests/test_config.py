@@ -15,8 +15,8 @@ def test_default_config_properties():
     assert cfg.dock_height_mode == "fill"
     assert cfg.theme_mode == "system"
     assert cfg.server_port == 28842
-    assert len(cfg.apps) == 9
-    assert [a.id for a in cfg.apps] == ["tasks", "notes", "vault", "div_settings", "keep_awake", "dashboard", "settings", "div_brain", "brain"]
+    assert len(cfg.apps) == 11
+    assert [a.id for a in cfg.apps] == ["scheduler", "tasks", "notes", "vault", "div_settings", "keep_awake", "activity", "dashboard", "settings", "div_brain", "brain"]
 
 
 def test_config_serialization():
@@ -87,3 +87,17 @@ def test_individual_app_settings(tmp_path: Path):
     assert mgr.config.app_settings["notes"]["auto_save_interval_sec"] == 1
     assert mgr.config.app_settings["vault"]["auto_lock_minutes"] == 5
 
+
+
+def test_live_trail_migrates_once_without_changing_existing_apps(tmp_path):
+    path = tmp_path / 'config.json'
+    cfg = DockConfig()
+    cfg.apps = [a for a in cfg.apps if a.id != 'activity']
+    cfg.apps[0].enabled = False
+    original = [(a.id, a.enabled) for a in cfg.apps]
+    path.write_text(json.dumps(cfg.to_dict()))
+    for _ in range(2):
+        restored = ConfigManager(path).config
+        assert [(a.id, a.enabled) for a in restored.apps if a.id != 'activity'] == original
+        assert len([a for a in restored.apps if a.id == 'activity']) == 1
+        assert next(a for a in restored.apps if a.id == 'activity').enabled

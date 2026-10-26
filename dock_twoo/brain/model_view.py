@@ -4,22 +4,25 @@ from __future__ import annotations
 import json
 import time
 from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal, Slot, QFile, QIODevice, QPoint, QRect, QEvent
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QCursor
+from PySide6.QtWidgets import QLabel
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEngineScript
+from PySide6.QtWebEngineCore import QWebEngineScript, QWebEnginePage
+from shiboken6 import isValid
+
+
+def render_budget(visible_count, nearby=False):
+    """Bound the cost of a crowd without slowing the selected character."""
+    if nearby or visible_count <= 3:
+        return dict(maxFps=30, shapeFps=20, pixelRatio=2)
+    return dict(maxFps=24 if visible_count <= 12 else 20,
+                shapeFps=6 if visible_count <= 12 else 4, pixelRatio=1)
 
 
 def listening_aura_allowed(companion):
-    """Only voice wake needs an aura to identify one listener among nearby peers."""
-    manager = getattr(companion, 'manager', None)
-    if (getattr(manager, '_listening_source', None) != 'voice' or
-            getattr(manager, '_listening_actor_id', None) != getattr(companion, 'actor_id', None)):
-        return False
-    actors = getattr(manager, 'companions', {})
-    display = getattr(companion, 'screen_id', None)
-    return sum(actor.isVisible() and getattr(actor, 'screen_id', None) == display
-               for actor in actors.values()) > 1
+    """Names identify the listener; status is shown only on its head light."""
+    return False
 
 
 class ModelBridge(QObject):
@@ -44,6 +47,10 @@ class CharacterView(QWebEngineView):
     def __init__(self, companion):
         super().__init__(companion)
         self.companion = companion
+        self.parked = False
+        self.snapshot = None
+        self._hidden_since = 0.0
+        self._discarded = False
         from dock_twoo.brain.connectivity import Connectivity
         self.connectivity = Connectivity(self)
         self.ready = False
@@ -51,6 +58,13 @@ class CharacterView(QWebEngineView):
         self.version = ''
         self.asset_hash = ''
         self.attempts = 0
+        self._loading = False
+        self._sync_pending = False
+        self._sync_started = 0.0
+        self._epoch = 0
+        self._recoveries = 0
+        self._reload_pending = False
+        self._healthy_since = 0.0
         self.detached = hasattr(companion, 'set_input_shape')
         if self.detached:
             # The complete visual layer (including glow and props) passes all
@@ -81,22 +95,96 @@ class CharacterView(QWebEngineView):
         self.bridge.loaded.connect(self._ready)
         self.bridge.error.connect(self._error)
         if self.detached:
-            self.bridge.shape.connect(companion.set_input_shape)
+            self.bridge.shape.connect(self._shape)
         self.loadFinished.connect(self._loaded)
-        QTimer.singleShot(12000, self, self._check_ready)
+        self.renderProcessTerminated.connect(self._renderer_terminated)
         self.timer = QTimer(self)
         self.timer.setInterval(33)
         self.timer.timeout.connect(self._sync)
         self.hide()
         QTimer.singleShot(800, self, self._load)
 
+    def _shape(self, payload):
+        if not self.ready:
+            return
+        try:
+            if json.loads(payload).get('characterId') != self.companion.character_id:
+                return
+        except (ValueError, TypeError):
+            return
+        self.companion.set_input_shape(payload)
+
+    def change_character(self):
+        # Navigate the same page, disposing the old WebGL scene and its assets.
+        self.timer.stop()
+        self.stop()
+        self.hide()
+        if self.snapshot:
+            self.snapshot.hide()
+            self.snapshot.clear()
+        self.parked = self._discarded = self._loading = self.ready = False
+        self._epoch += 1
+        self._sync_pending = False
+        self._recoveries = self.attempts = 0
+        self.error = self.version = self.asset_hash = ''
+        self.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
+        self._load()
+
+    def set_parked(self, parked):
+        parked = bool(parked and self.ready and self.companion.isVisible())
+        if parked == self.parked:return
+        self.parked = parked
+        if parked:
+            if self.snapshot is None:
+                self.snapshot = QLabel(self.companion)
+                self.snapshot.setWindowFlags(self.windowFlags())
+                self.snapshot.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                self.snapshot.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+                self.snapshot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                self.snapshot.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.snapshot.setPixmap(self.grab())
+            self.snapshot.setGeometry(self.geometry())
+            self.snapshot.show()
+            from dock_twoo.brain.mascot import pin_native
+            pin_native(self.snapshot)
+            self.timer.stop(); self._epoch += 1; self._sync_pending = False
+            self.hide(); self.page().setVisible(False)
+            self.page().setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
+        else:
+            if self.snapshot:self.snapshot.hide()
+            if self.companion.isVisible():self.show_visual()
+
     def sync_geometry(self):
         c = self.companion
         self.setGeometry(QRect(c.mapToGlobal(QPoint()), c.size()) if self.detached else c.rect())
+        if self.snapshot:self.snapshot.setGeometry(self.geometry())
+
+    def release_hidden_page(self, now):
+        if self.companion.isVisible() or not self.ready or not self._hidden_since or now-self._hidden_since<45:return
+        self.page().setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
+        self.ready=False;self._loading=False;self._discarded=True
+        self._epoch+=1;self._sync_pending=False
+        if self.snapshot:self.snapshot.clear()
+        self.parked=False
 
     def show_visual(self):
+        self._hidden_since = 0.0
+        if getattr(self, '_discarded', False):
+            self._discarded=False;self._loading=True;self.attempts+=1
+            attempt=self.attempts
+            QTimer.singleShot(12000,self,lambda:self._check_ready(attempt))
+        if getattr(self, "parked", False):
+            self.sync_geometry()
+            if self.snapshot:self.snapshot.show()
+            return
+        self.page().setLifecycleState(QWebEnginePage.LifecycleState.Active)
         self.sync_geometry()
         self.show()
+        if self.ready:
+            self.timer.start()
+            self._sync()
+        elif not self._loading and (not self.error or self._reload_pending):
+            QTimer.singleShot(0, self, self._load)
         if self.detached:
             from dock_twoo.brain.mascot import pin_native, mac_window
             pin_native(self)
@@ -114,40 +202,73 @@ class CharacterView(QWebEngineView):
             if event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
                 self.sync_geometry()
             elif event.type() == QEvent.Type.Hide:
+                self._hidden_since = time.monotonic()
+                if self.snapshot:self.snapshot.hide()
+                self.timer.stop()
+                self._epoch += 1
+                self._sync_pending = False
                 self.hide()
+                # Hidden WebEngine pages otherwise keep running their RAF,
+                # skeleton and GPU readback loops indefinitely.
+                self.page().setVisible(False)
+                if self.ready:
+                    self.page().setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
             elif event.type() == QEvent.Type.Show:
                 self.show_visual()
         return super().eventFilter(watched, event)
 
     def _load(self):
+        if self._loading or self.ready or not self.companion.isVisible():
+            return
         from dock_twoo.config import ConfigManager
+        self._loading = True
+        self._reload_pending = False
+        self._epoch += 1
+        self._sync_pending = False
         self.attempts += 1
         port = ConfigManager().config.server_port
-        self.load(QUrl(f'http://127.0.0.1:{port}/brain3d/index.html?embedded'))
+        face_only = int(bool(getattr(self.companion, 'resource_capped', False)))
+        self.load(QUrl(f'http://127.0.0.1:{port}/brain3d/index.html?embedded&character={self.companion.character_id}&faceOnly={face_only}'))
+        attempt = self.attempts
+        QTimer.singleShot(12000, self, lambda: self._check_ready(attempt))
 
     def _loaded(self, ok):
         if not ok and self.attempts < 5:
+            self._loading = False
             QTimer.singleShot(1500, self, self._load)
 
-    def _check_ready(self):
-        if not self.ready:
+    def _check_ready(self, attempt=None):
+        if attempt is not None and attempt != self.attempts:
+            return
+        if not self.ready and self._loading:
             self._error(self.error or "The 3D renderer did not become ready; restart Dock to retry.")
 
     def _ready(self, version, asset_hash):
+        expected = self.companion.character.get('asset_sha256', '')
+        if expected and asset_hash != expected:
+            return
         self.version = version
         self.asset_hash = asset_hash
-        self.companion.setToolTip(f"Brain {version} · Glossy Blue")
+        self.companion.setToolTip(f"{self.companion.character_name} {version}")
         self.ready = True
+        self._loading = False
+        self._reload_pending = False
+        self._healthy_since = time.monotonic()
         self.error = ''
         if self.companion.isVisible():
+            self._sync()
             self.show_visual()
-        self.timer.start()
+        else:
+            # It may have been hidden while its assets were still loading.
+            self.page().setVisible(False)
+            self.page().setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
         if hasattr(self.companion, 'set_renderer_status'):
             self.companion.set_renderer_status('')
         self.companion.update()
 
     def _error(self, message):
         self.ready = False
+        self._loading = False
         self.error = message
         if not self.detached:
             self.hide()
@@ -155,18 +276,56 @@ class CharacterView(QWebEngineView):
             self.show_visual()
         self.timer.stop()
         if hasattr(self.companion, 'set_renderer_status'):
-            self.companion.set_renderer_status('Brain 3D could not load.\nRestart Dock to retry.', error=True)
+            self.companion.set_renderer_status(f'{self.companion.character_name} 3D could not load.\nRestart Dock to retry.', error=True)
             self.companion.setToolTip(message)
         self.companion.update()
 
+    def _renderer_terminated(self, _status, _code):
+        self._recover_renderer('The character renderer stopped.')
+
+    def _recover_renderer(self, reason):
+        if getattr(self, "parked", False):self.set_parked(False)
+        # Fail open: a stalled renderer must never leave a stale invisible hit
+        # rectangle above the desktop. Rebuild only this character, not the app.
+        self._epoch += 1
+        self._sync_pending = False
+        self._error(reason)
+        if self._recoveries < 2:
+            self._recoveries += 1
+            # Retain the retry if the character is hidden before it runs.
+            self._reload_pending = True
+            QTimer.singleShot(1000 * self._recoveries, self, self._load)
+
     def _sync(self):
         c = self.companion
-        if not c.isVisible():
+        if not c.isVisible() or getattr(self, "parked", False):
             return
+        if self._healthy_since and time.monotonic()-self._healthy_since > 60:
+            # Bound a crash storm, not the number of recoveries over days of use.
+            self._recoveries = 0
+        if self._sync_pending:
+            if time.monotonic()-self._sync_started > 5:
+                self._recover_renderer('The character renderer stopped responding.')
+            return
+        count=sum(actor.isVisible() for actor in getattr(c.manager,'companions',{}).values())
+        nearby=c.geometry().adjusted(-20,-20,20,20).contains(QCursor.pos())
+        budget=render_budget(count, nearby or c.activity!='idle')
+        budget['maxFps'] = min(budget['maxFps'], getattr(c, 'render_fps', 18))
+        budget['shapeFps'] = min(budget['shapeFps'], 8 if nearby else 3)
+        budget['pixelRatio'] = 1
+        self.timer.setInterval(round(1000/budget['maxFps']))
         progress = min(1, max(0, (time.monotonic() - c.motion_started) / max(.01, c.motion_duration)))
-        state = dict(online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
+        state = dict(**budget, visible=True, faceOnly=getattr(c,'resource_capped',False), online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
                      distance=c.gait_distance, blink=c.blink_amount,
                      mouth=c.mouth_level if c.activity == 'speaking' else 0,
                      gazeX=max(-1, min(1, c._gaze_offset.x() / .018)),
                      gazeY=max(-1, min(1, c._gaze_offset.y() / .014)), activity=c.activity)
-        self.page().runJavaScript('window.setBrainState && window.setBrainState(' + json.dumps(state) + ')')
+        # One outstanding update per view. A delayed renderer used to accumulate
+        # thirty more IPC requests every second, including obsolete poses.
+        self._sync_pending = True
+        self._sync_started = time.monotonic()
+        epoch = self._epoch
+        def acknowledged(_value):
+            if isValid(self) and self._epoch == epoch:
+                self._sync_pending = False
+        self.page().runJavaScript('window.setBrainState && window.setBrainState(' + json.dumps(state) + ')', acknowledged)

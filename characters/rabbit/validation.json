@@ -1,0 +1,27 @@
+{
+  "id": "rabbit",
+  "source_sha256": "41c63bfa5049df883259b0dd802bc45ae3299fd12ceae28824dd924757eb39f4",
+  "asset_sha256": "be21420eae2d2a703d026216275f2a7113ace9951933dfbfe5053ea6c00c0aa2",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

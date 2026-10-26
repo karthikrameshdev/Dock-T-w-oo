@@ -1,0 +1,837 @@
+{
+  "id": "mouse",
+  "name": "Pebble",
+  "family": "quadruped",
+  "species": "mouse",
+  "main": "#C4B4A3",
+  "secondary": "#F7EADB",
+  "accent": "#B8DDFB",
+  "scale": 0.42,
+  "index": 16,
+  "version": "4.0.0",
+  "design": "Mouse",
+  "source": "characters/mouse/mouse.blend",
+  "source_sha256": "584ed2e0317aec61499ffb6212f50dc870f80a92b694cbe30b99b0b65406f948",
+  "asset": "mouse.glb",
+  "asset_sha256": "6f86d17047d5f73944dbfc84170c850cd5a8cec6fab61b04f4864b94961078a9",
+  "bones": 39,
+  "meshes": 95,
+  "actions": {
+    "air_spin": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Air Spin \u00b7 Pebble"
+    },
+    "backstep": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Backstep \u00b7 Pebble"
+    },
+    "balanced_pose": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Balanced Pose \u00b7 Pebble"
+    },
+    "balloon": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Balloon \u00b7 Pebble"
+    },
+    "bank_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Left \u00b7 Pebble"
+    },
+    "bank_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Right \u00b7 Pebble"
+    },
+    "beg": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Beg \u00b7 Pebble"
+    },
+    "bow": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Bow \u00b7 Pebble"
+    },
+    "brake": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Brake \u00b7 Pebble"
+    },
+    "bury": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Bury \u00b7 Pebble"
+    },
+    "camera": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Camera \u00b7 Pebble"
+    },
+    "carry_box": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Carry Box \u00b7 Pebble"
+    },
+    "catch": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Catch \u00b7 Pebble"
+    },
+    "celebrate": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Celebrate \u00b7 Pebble"
+    },
+    "charge": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Charge \u00b7 Pebble"
+    },
+    "chase_ball": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Chase Ball \u00b7 Pebble"
+    },
+    "chase_tail": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Chase Tail \u00b7 Pebble"
+    },
+    "cheer_partner": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cheer Partner \u00b7 Pebble"
+    },
+    "climb": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb \u00b7 Pebble"
+    },
+    "climb_dock": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb Dock \u00b7 Pebble"
+    },
+    "cook": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cook \u00b7 Pebble"
+    },
+    "crawl": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crawl \u00b7 Pebble"
+    },
+    "crouch": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crouch \u00b7 Pebble"
+    },
+    "cry": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cry \u00b7 Pebble"
+    },
+    "dance": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance \u00b7 Pebble"
+    },
+    "dance_together": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance Together \u00b7 Pebble"
+    },
+    "dash": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Dash \u00b7 Pebble"
+    },
+    "dig": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Dig \u00b7 Pebble"
+    },
+    "double_blink": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Double Blink \u00b7 Pebble"
+    },
+    "drag": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Drag \u00b7 Pebble"
+    },
+    "drink": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Drink \u00b7 Pebble"
+    },
+    "ear_flick": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Ear Flick \u00b7 Pebble"
+    },
+    "explore": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Explore \u00b7 Pebble"
+    },
+    "fly": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Fly \u00b7 Pebble"
+    },
+    "fold_arms": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Fold Arms \u00b7 Pebble"
+    },
+    "glance_back": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Glance Back \u00b7 Pebble"
+    },
+    "glide": {
+      "duration": 2.4,
+      "loop": true,
+      "category": "locomotion",
+      "description": "Glide \u00b7 Pebble"
+    },
+    "greet": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Greet \u00b7 Pebble"
+    },
+    "groom": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Groom \u00b7 Pebble"
+    },
+    "hammer": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Hammer \u00b7 Pebble"
+    },
+    "handshake": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Handshake \u00b7 Pebble"
+    },
+    "happy": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Happy \u00b7 Pebble"
+    },
+    "head_tilt": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Head Tilt \u00b7 Pebble"
+    },
+    "hover": {
+      "duration": 3.1333,
+      "loop": true,
+      "category": "acting",
+      "description": "Hover \u00b7 Pebble"
+    },
+    "howl": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Howl \u00b7 Pebble"
+    },
+    "idle": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "acting",
+      "description": "Idle \u00b7 Pebble"
+    },
+    "inspect_icon": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Icon \u00b7 Pebble"
+    },
+    "inspect_window": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Window \u00b7 Pebble"
+    },
+    "jump": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Jump \u00b7 Pebble"
+    },
+    "kick_ball": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Kick Ball \u00b7 Pebble"
+    },
+    "kneel": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Kneel \u00b7 Pebble"
+    },
+    "land": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Land \u00b7 Pebble"
+    },
+    "laugh": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Laugh \u00b7 Pebble"
+    },
+    "lean_back": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Back \u00b7 Pebble"
+    },
+    "lean_forward": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Forward \u00b7 Pebble"
+    },
+    "lie_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Lie Down \u00b7 Pebble"
+    },
+    "lift_object": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Lift Object \u00b7 Pebble"
+    },
+    "listen": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Listen \u00b7 Pebble"
+    },
+    "look_down": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Down \u00b7 Pebble"
+    },
+    "look_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Left \u00b7 Pebble"
+    },
+    "look_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Right \u00b7 Pebble"
+    },
+    "look_up": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Up \u00b7 Pebble"
+    },
+    "magnifier": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Magnifier \u00b7 Pebble"
+    },
+    "nod": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Nod \u00b7 Pebble"
+    },
+    "nuzzle": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Nuzzle \u00b7 Pebble"
+    },
+    "paint": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Paint \u00b7 Pebble"
+    },
+    "parachute": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Parachute \u00b7 Pebble"
+    },
+    "paw_tap": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Paw Tap \u00b7 Pebble"
+    },
+    "peek": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Peek \u00b7 Pebble"
+    },
+    "play_bow": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Play Bow \u00b7 Pebble"
+    },
+    "playful_spar": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Playful Spar \u00b7 Pebble"
+    },
+    "point": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Point \u00b7 Pebble"
+    },
+    "point_down": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Down \u00b7 Pebble"
+    },
+    "point_up": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Up \u00b7 Pebble"
+    },
+    "ponder": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Ponder \u00b7 Pebble"
+    },
+    "pounce": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Pounce \u00b7 Pebble"
+    },
+    "power_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Down \u00b7 Pebble"
+    },
+    "power_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Up \u00b7 Pebble"
+    },
+    "present_left": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Left \u00b7 Pebble"
+    },
+    "present_right": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Right \u00b7 Pebble"
+    },
+    "pull_scroll": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Pull Scroll \u00b7 Pebble"
+    },
+    "push": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Push \u00b7 Pebble"
+    },
+    "read": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Read \u00b7 Pebble"
+    },
+    "replace_text": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Replace Text \u00b7 Pebble"
+    },
+    "roar": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roar \u00b7 Pebble"
+    },
+    "roll": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Roll \u00b7 Pebble"
+    },
+    "roll_back": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roll Back \u00b7 Pebble"
+    },
+    "run": {
+      "duration": 0.8,
+      "loop": true,
+      "category": "acting",
+      "description": "Run \u00b7 Pebble"
+    },
+    "sad": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sad \u00b7 Pebble"
+    },
+    "scan_code": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Code \u00b7 Pebble"
+    },
+    "scan_screen": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Screen \u00b7 Pebble"
+    },
+    "scratch_ear": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Scratch Ear \u00b7 Pebble"
+    },
+    "search": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Search \u00b7 Pebble"
+    },
+    "self_check": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Self Check \u00b7 Pebble"
+    },
+    "sensor_scan": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Sensor Scan \u00b7 Pebble"
+    },
+    "set_object_down": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Set Object Down \u00b7 Pebble"
+    },
+    "shake_body": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Shake Body \u00b7 Pebble"
+    },
+    "shake_head": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Shake Head \u00b7 Pebble"
+    },
+    "shiver": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Shiver \u00b7 Pebble"
+    },
+    "sidestep_left": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Left \u00b7 Pebble"
+    },
+    "sidestep_right": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Right \u00b7 Pebble"
+    },
+    "sit": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sit \u00b7 Pebble"
+    },
+    "sleep": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sleep \u00b7 Pebble"
+    },
+    "smell": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Smell \u00b7 Pebble"
+    },
+    "sneak": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sneak \u00b7 Pebble"
+    },
+    "sneeze": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Sneeze \u00b7 Pebble"
+    },
+    "sniff_ground": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Sniff Ground \u00b7 Pebble"
+    },
+    "snuggle": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Snuggle \u00b7 Pebble"
+    },
+    "spin_left": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Left \u00b7 Pebble"
+    },
+    "spin_right": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Right \u00b7 Pebble"
+    },
+    "stand_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Stand Up \u00b7 Pebble"
+    },
+    "stir": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stir \u00b7 Pebble"
+    },
+    "stretch": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch \u00b7 Pebble"
+    },
+    "stretch_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Left \u00b7 Pebble"
+    },
+    "stretch_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Right \u00b7 Pebble"
+    },
+    "stretch_spine": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Stretch Spine \u00b7 Pebble"
+    },
+    "surprised": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Surprised \u00b7 Pebble"
+    },
+    "tail_wag": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "species",
+      "description": "Tail Wag \u00b7 Pebble"
+    },
+    "takeoff": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Takeoff \u00b7 Pebble"
+    },
+    "talk": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Talk \u00b7 Pebble"
+    },
+    "taste": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Taste \u00b7 Pebble"
+    },
+    "throw": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Throw \u00b7 Pebble"
+    },
+    "tiptoe": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Tiptoe \u00b7 Pebble"
+    },
+    "touchdown": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Touchdown \u00b7 Pebble"
+    },
+    "trip_recover": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Trip Recover \u00b7 Pebble"
+    },
+    "turn_around": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Turn Around \u00b7 Pebble"
+    },
+    "type": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Type \u00b7 Pebble"
+    },
+    "victory_pose": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Victory Pose \u00b7 Pebble"
+    },
+    "wake_up": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Wake Up \u00b7 Pebble"
+    },
+    "walk": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk \u00b7 Pebble"
+    },
+    "walk_window": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk Window \u00b7 Pebble"
+    },
+    "water_plant": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Water Plant \u00b7 Pebble"
+    },
+    "wave": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Wave \u00b7 Pebble"
+    },
+    "whistle": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Whistle \u00b7 Pebble"
+    },
+    "wink": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Wink \u00b7 Pebble"
+    },
+    "yawn": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Yawn \u00b7 Pebble"
+    }
+  }
+}

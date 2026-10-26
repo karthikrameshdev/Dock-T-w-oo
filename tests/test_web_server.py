@@ -101,7 +101,7 @@ def test_web_console_storage_endpoint_and_migration(test_server, tmp_path):
         assert "notes" in data["subsystems"]
         assert "vault" in data["subsystems"]
         assert "models" in data["subsystems"]
-        assert "brain" in data["subsystems"]
+        assert "voice" in data["subsystems"]
 
     # 2. POST /api/storage/change migrates safely to new directory
     target_storage = tmp_path / "custom_dock2_storage"
@@ -116,7 +116,7 @@ def test_web_console_storage_endpoint_and_migration(test_server, tmp_path):
         assert (target_storage / "notes").exists()
         assert (target_storage / "vault").exists()
         assert (target_storage / "models").exists()
-        assert (target_storage / "brain").exists()
+        assert (target_storage / "voice").exists()
 
 
 def test_web_console_brain_providers_catalog(test_server):
@@ -278,7 +278,7 @@ def test_keep_awake_api_requires_explicit_boolean_and_local_origin(test_server,m
 
 def test_console_serves_new_native_icons(test_server):
     _,port,_=test_server
-    for name in ('logo','tasks','coffee'):
+    for name in ('logo','tasks','coffee','activity'):
         with urllib.request.urlopen(f'http://127.0.0.1:{port}/icons/{name}.svg',timeout=3) as response:
             assert response.status==200 and '<svg' in response.read().decode()
 
@@ -408,3 +408,69 @@ def test_request_validates_target_display_before_dispatch(test_server,monkeypatc
         else:
             with pytest.raises(urllib.error.HTTPError):urllib.request.urlopen(request,timeout=3)
     assert calls==[('test turn','console','screen-1')]
+
+
+def test_agent_character_profiles_fallback_validation_and_generated_downloads(test_server,tmp_path,monkeypatch):
+    import sys
+    from dock_twoo.brain.profiles import ProfileManager
+    from dock_twoo.brain.storage import BrainStore
+    from dock_twoo.server import web_server as module
+    _,port,_=test_server;profiles=ProfileManager(BrainStore(tmp_path/'agent'))
+    monkeypatch.setattr(module,'_get_safe_profile_mgr',lambda:profiles)
+    root=f'http://127.0.0.1:{port}'
+    def request(path,body=None,origin=None):
+        headers={'X-Brain-Request':'local','Content-Type':'application/json'}
+        if origin:headers['Origin']=origin
+        req=urllib.request.Request(root+path,data=json.dumps(body).encode() if body is not None else None,headers=headers)
+        with urllib.request.urlopen(req,timeout=3) as response:return response.read()
+    default=profiles.create_profile({'name':'CLI','provider':'custom_cli','model':'fixture','executable':sys.executable,'arguments':['-c','print("Ready")']})
+    profiles.activate_profile(default['id'])
+    saved=json.loads(request('/api/brain/character-profile',{'character_id':'parrot','profile_id':'','tuning':{'voice':'am_adam','speed':1.1,'pitch':1.02}}))
+    assert saved['profile']['id']==default['id']
+    data=json.loads(request('/api/brain/model'))
+    assert len(data['characters'])==30 and data['voices']['parrot']['voice']=='am_adam'
+    for body in ({'character_id':'absent'},{'character_id':'parrot','profile_id':'missing'},{'character_id':'parrot','tuning':{'voice':'absent','speed':1,'pitch':1}}):
+        with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/character-profile',body)
+        assert error.value.code==400
+    with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/character-profile',{'character_id':'parrot'},'https://foreign.example')
+    assert error.value.code==403
+    assert profiles.store.setting('character_voices')['parrot']['voice']=='am_adam'
+    docs=profiles.store.data_dir/'documents';docs.mkdir();document=docs/'report.md';document.write_text('Verified local report')
+    from urllib.parse import quote
+    assert request('/api/brain/artifact?path='+quote(str(document)))==b'Verified local report'
+    other=tmp_path/'private.txt';other.write_text('Private')
+    with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/artifact?path='+quote(str(other)))
+    assert error.value.code==400
+
+
+def test_awake_api_default_persistence_and_brain_guard(test_server,tmp_path,monkeypatch):
+    from dock_twoo.brain.storage import BrainStore
+    import dock_twoo.server.web_server as web
+    store=BrainStore(tmp_path/'voice');monkeypatch.setattr(web,'_get_safe_brain_store',lambda:store)
+    _,port,_=test_server
+    def request(body=None,authorized=True):
+        headers={'Content-Type':'application/json'}
+        if authorized:headers['X-Brain-Request']='local'
+        req=urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/awake',data=json.dumps(body).encode() if body is not None else None,headers=headers)
+        with urllib.request.urlopen(req,timeout=3) as response:return json.load(response)
+    assert len(request()['characters'])==30 and all(c['enabled'] for c in request()['characters'])
+    assert not next(c for c in request({'character_id':'parrot','enabled':False})['characters'] if c['id']=='parrot')['enabled']
+    assert not BrainStore(store.data_dir).character_awake('parrot')
+    for body in ({'character_id':'default','enabled':False},{'character_id':'missing','enabled':False},{'character_id':'parrot','enabled':'false'}):
+        with pytest.raises(urllib.error.HTTPError) as error:request(body)
+        assert error.value.code==400
+    with pytest.raises(urllib.error.HTTPError) as error:request({'character_id':'parrot','enabled':True},False)
+    assert error.value.code==403 and not store.character_awake('parrot')
+
+
+def test_live_trail_moved_to_dock_page(test_server):
+    _, port, _ = test_server
+    def read(path):
+        with urllib.request.urlopen(f'http://127.0.0.1:{port}' + path, timeout=3) as response:
+            return response.read().decode()
+    page = read('/live-trail.html')
+    assert 'id="liveActivity"' in page and 'id="agentTaskTrail"' in page
+    assert 'Request' in read('/activity.js') and 'Waiting for the model response' in read('/activity.js')
+    console = read('/')
+    assert 'page-activity' not in console and 'id="agentTaskTrail"' not in console
+    assert 'src="activity.js"' not in console

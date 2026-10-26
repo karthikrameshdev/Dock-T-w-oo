@@ -22,8 +22,8 @@ def test_second_click_processes_entire_capture_once(qtbot,tmp_path,monkeypatch):
         captured.append(pcm);entered.set();release.wait(2)
         return 'Open Cursor and type hello world'
     monkeypatch.setattr(listener,'_transcribe_pcm',transcribe)
-    listener.turn_completed.disconnect()
-    listener.turn_completed.connect(results.append)
+    listener.named_turn_completed.disconnect()
+    listener.named_turn_completed.connect(lambda ident,command,raw,bare:results.append(command))
     manager.toggle_talking();feed(listener,SPEECH,12)
     manager.toggle_talking()
     assert not listener.is_recording and entered.wait(1)

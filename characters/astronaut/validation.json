@@ -1,0 +1,27 @@
+{
+  "id": "astronaut",
+  "source_sha256": "55ae9b1cafeede96da77ebb895b94497727e332673c5ee158e087afe22404f83",
+  "asset_sha256": "25b5ac3f062cb487a41d27e8011a3eeee673221d5157b82d45135f684c8c6425",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

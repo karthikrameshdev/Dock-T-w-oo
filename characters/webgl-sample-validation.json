@@ -1,0 +1,63 @@
+{
+  "success": true,
+  "characters": [
+    {
+      "id": "owl",
+      "assetHash": "e244cd7c8500463f2628ce2bccf4e5694d0967d915d1799e5d6a07c58db2b955",
+      "clips": 136,
+      "checked": [
+        "idle",
+        "wave",
+        "walk",
+        "fly",
+        "talk",
+        "magnifier",
+        "read",
+        "scan_code"
+      ],
+      "meshes": 90,
+      "triangles": 59198,
+      "antenna": "online",
+      "speechMeshes": 4
+    },
+    {
+      "id": "parrot",
+      "assetHash": "b4838e47fa20d8ed8237210ba82ef47b09fa7936e26194a2452d79dfd074e71b",
+      "clips": 136,
+      "checked": [
+        "idle",
+        "wave",
+        "walk",
+        "fly",
+        "talk",
+        "magnifier",
+        "read",
+        "scan_code"
+      ],
+      "meshes": 90,
+      "triangles": 59430,
+      "antenna": "online",
+      "speechMeshes": 4
+    },
+    {
+      "id": "robin",
+      "assetHash": "52958db367b4844ec8db2d9013c563259c23e9d5f0ff4a8fbeca5d5983d0f227",
+      "clips": 136,
+      "checked": [
+        "idle",
+        "wave",
+        "walk",
+        "fly",
+        "talk",
+        "magnifier",
+        "read",
+        "scan_code"
+      ],
+      "meshes": 92,
+      "triangles": 60662,
+      "antenna": "online",
+      "speechMeshes": 4
+    }
+  ],
+  "errors": []
+}

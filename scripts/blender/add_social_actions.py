@@ -1,6 +1,6 @@
 """Append local playground performances to the saved Brain without changing meshes.
 
-blender --background character/Brain.blend --python scripts/blender/add_social_actions.py
+blender --background characters/default/default.blend --python scripts/blender/add_social_actions.py
 Export afterwards; all clips are dense skeletal keys, including hand articulation.
 """
 import ast,hashlib,json,math,os,shutil
@@ -10,7 +10,7 @@ from mathutils import Quaternion,Vector
 
 ROOT=Path(__file__).resolve().parents[2]
 source=Path(bpy.data.filepath)
-assert source.name=='Brain.blend'
+assert source.name=='default.blend'
 backup=Path(os.environ.get('BRAIN_CHARACTER_BACKUP_DIR',str(Path.home()/'.dock-twoo/character-backups')))
 backup.mkdir(parents=True,exist_ok=True)
 sha=hashlib.sha256(source.read_bytes()).hexdigest();saved=backup/('Brain-'+sha[:12]+'.blend')
@@ -82,7 +82,7 @@ def pose(name,p):
    rotation('hand.'+side,(0,1,0),.2*sway)
  clear_arms()
 
-report={'preserved_mesh_sha256':before,'actions':{},'source':'character/Brain.blend'}
+report={'preserved_mesh_sha256':before,'actions':{},'source':'characters/default/default.blend'}
 for name,frames in [('handshake',75),('dance_together',120),('playful_spar',120),('dash',60),('air_spin',90),('cheer_partner',90)]:
  old=bpy.data.actions.get(name)
  if old:bpy.data.actions.remove(old)
@@ -104,5 +104,5 @@ scene['brain_playground_version']='3.2.0'
 bpy.context.preferences.filepaths.save_version=0
 bpy.ops.wm.save_as_mainfile(filepath=str(source))
 report['source_sha256']=hashlib.sha256(source.read_bytes()).hexdigest()
-(ROOT/'character/social-animation-build.json').write_text(json.dumps(report,indent=2)+'\n')
+(ROOT/'characters/default/social-animation-build.json').write_text(json.dumps(report,indent=2)+'\n')
 print('BRAIN_SOCIAL_ACTIONS',json.dumps(report))

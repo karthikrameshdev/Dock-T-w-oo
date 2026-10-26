@@ -69,7 +69,7 @@ call. Whole requests also have a 120-second scheduling budget; in-flight request
 are bounded by a 25-second transport timeout. Already-submitted calls may still
 be billed after cancellation; their returned usage is recorded when available.
 
-The Activity Tracker stores actual transcribed requests, outgoing conversation
+The dock’s Live Trail drawer stores actual transcribed requests, outgoing conversation
 and tool payloads, returned responses, tool outcomes, retries and stop reasons.
 The fixed system instruction text is represented by length and SHA-256, and
 provider keys/auth fields are redacted. Full input token accounting still uses

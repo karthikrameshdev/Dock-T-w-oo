@@ -1,0 +1,27 @@
+{
+  "id": "explorer",
+  "source_sha256": "936fd1d69da7fe47112db8f897dbc00fc8cdde04ab4bad6efd19aac1d29ce070",
+  "asset_sha256": "bd7bfaac6f040f7ab7b84d4aa03775c3781d6909ed5058c2a3ca34119c4902d2",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

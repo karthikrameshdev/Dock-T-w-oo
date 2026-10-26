@@ -1,0 +1,837 @@
+{
+  "id": "tiger",
+  "name": "Tango",
+  "family": "quadruped",
+  "species": "tiger",
+  "main": "#E3983D",
+  "secondary": "#3F3D3C",
+  "accent": "#A9F4E6",
+  "scale": 1.0,
+  "index": 18,
+  "version": "4.0.0",
+  "design": "Tiger",
+  "source": "characters/tiger/tiger.blend",
+  "source_sha256": "23d2c85c5ec82a56b65c02dabe722a90f103c5692e392d01bac9d372eccb9081",
+  "asset": "tiger.glb",
+  "asset_sha256": "5d75ac7b25aa45e5765d499a56f8a8e9124ad594f1e68ecb4aecc58c81df074d",
+  "bones": 39,
+  "meshes": 105,
+  "actions": {
+    "air_spin": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Air Spin \u00b7 Tango"
+    },
+    "backstep": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Backstep \u00b7 Tango"
+    },
+    "balanced_pose": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Balanced Pose \u00b7 Tango"
+    },
+    "balloon": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Balloon \u00b7 Tango"
+    },
+    "bank_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Left \u00b7 Tango"
+    },
+    "bank_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Bank Right \u00b7 Tango"
+    },
+    "beg": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Beg \u00b7 Tango"
+    },
+    "bow": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Bow \u00b7 Tango"
+    },
+    "brake": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Brake \u00b7 Tango"
+    },
+    "bury": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Bury \u00b7 Tango"
+    },
+    "camera": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Camera \u00b7 Tango"
+    },
+    "carry_box": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Carry Box \u00b7 Tango"
+    },
+    "catch": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Catch \u00b7 Tango"
+    },
+    "celebrate": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Celebrate \u00b7 Tango"
+    },
+    "charge": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Charge \u00b7 Tango"
+    },
+    "chase_ball": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Chase Ball \u00b7 Tango"
+    },
+    "chase_tail": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Chase Tail \u00b7 Tango"
+    },
+    "cheer_partner": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cheer Partner \u00b7 Tango"
+    },
+    "climb": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb \u00b7 Tango"
+    },
+    "climb_dock": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Climb Dock \u00b7 Tango"
+    },
+    "cook": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cook \u00b7 Tango"
+    },
+    "crawl": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crawl \u00b7 Tango"
+    },
+    "crouch": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Crouch \u00b7 Tango"
+    },
+    "cry": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Cry \u00b7 Tango"
+    },
+    "dance": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance \u00b7 Tango"
+    },
+    "dance_together": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Dance Together \u00b7 Tango"
+    },
+    "dash": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Dash \u00b7 Tango"
+    },
+    "dig": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "species",
+      "description": "Dig \u00b7 Tango"
+    },
+    "double_blink": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Double Blink \u00b7 Tango"
+    },
+    "drag": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Drag \u00b7 Tango"
+    },
+    "drink": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Drink \u00b7 Tango"
+    },
+    "ear_flick": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Ear Flick \u00b7 Tango"
+    },
+    "explore": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Explore \u00b7 Tango"
+    },
+    "fly": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Fly \u00b7 Tango"
+    },
+    "fold_arms": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Fold Arms \u00b7 Tango"
+    },
+    "glance_back": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Glance Back \u00b7 Tango"
+    },
+    "glide": {
+      "duration": 2.4,
+      "loop": true,
+      "category": "locomotion",
+      "description": "Glide \u00b7 Tango"
+    },
+    "greet": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Greet \u00b7 Tango"
+    },
+    "groom": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Groom \u00b7 Tango"
+    },
+    "hammer": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Hammer \u00b7 Tango"
+    },
+    "handshake": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Handshake \u00b7 Tango"
+    },
+    "happy": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Happy \u00b7 Tango"
+    },
+    "head_tilt": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Head Tilt \u00b7 Tango"
+    },
+    "hover": {
+      "duration": 3.1333,
+      "loop": true,
+      "category": "acting",
+      "description": "Hover \u00b7 Tango"
+    },
+    "howl": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Howl \u00b7 Tango"
+    },
+    "idle": {
+      "duration": 4.0,
+      "loop": true,
+      "category": "acting",
+      "description": "Idle \u00b7 Tango"
+    },
+    "inspect_icon": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Icon \u00b7 Tango"
+    },
+    "inspect_window": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Inspect Window \u00b7 Tango"
+    },
+    "jump": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Jump \u00b7 Tango"
+    },
+    "kick_ball": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Kick Ball \u00b7 Tango"
+    },
+    "kneel": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Kneel \u00b7 Tango"
+    },
+    "land": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Land \u00b7 Tango"
+    },
+    "laugh": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Laugh \u00b7 Tango"
+    },
+    "lean_back": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Back \u00b7 Tango"
+    },
+    "lean_forward": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Lean Forward \u00b7 Tango"
+    },
+    "lie_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Lie Down \u00b7 Tango"
+    },
+    "lift_object": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Lift Object \u00b7 Tango"
+    },
+    "listen": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Listen \u00b7 Tango"
+    },
+    "look_down": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Down \u00b7 Tango"
+    },
+    "look_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Left \u00b7 Tango"
+    },
+    "look_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Right \u00b7 Tango"
+    },
+    "look_up": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Look Up \u00b7 Tango"
+    },
+    "magnifier": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Magnifier \u00b7 Tango"
+    },
+    "nod": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Nod \u00b7 Tango"
+    },
+    "nuzzle": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Nuzzle \u00b7 Tango"
+    },
+    "paint": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Paint \u00b7 Tango"
+    },
+    "parachute": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Parachute \u00b7 Tango"
+    },
+    "paw_tap": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "species",
+      "description": "Paw Tap \u00b7 Tango"
+    },
+    "peek": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Peek \u00b7 Tango"
+    },
+    "play_bow": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "species",
+      "description": "Play Bow \u00b7 Tango"
+    },
+    "playful_spar": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Playful Spar \u00b7 Tango"
+    },
+    "point": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Point \u00b7 Tango"
+    },
+    "point_down": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Down \u00b7 Tango"
+    },
+    "point_up": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Point Up \u00b7 Tango"
+    },
+    "ponder": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Ponder \u00b7 Tango"
+    },
+    "pounce": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Pounce \u00b7 Tango"
+    },
+    "power_down": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Down \u00b7 Tango"
+    },
+    "power_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Power Up \u00b7 Tango"
+    },
+    "present_left": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Left \u00b7 Tango"
+    },
+    "present_right": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Present Right \u00b7 Tango"
+    },
+    "pull_scroll": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Pull Scroll \u00b7 Tango"
+    },
+    "push": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Push \u00b7 Tango"
+    },
+    "read": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Read \u00b7 Tango"
+    },
+    "replace_text": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Replace Text \u00b7 Tango"
+    },
+    "roar": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roar \u00b7 Tango"
+    },
+    "roll": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Roll \u00b7 Tango"
+    },
+    "roll_back": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Roll Back \u00b7 Tango"
+    },
+    "run": {
+      "duration": 0.8,
+      "loop": true,
+      "category": "acting",
+      "description": "Run \u00b7 Tango"
+    },
+    "sad": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sad \u00b7 Tango"
+    },
+    "scan_code": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Code \u00b7 Tango"
+    },
+    "scan_screen": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Scan Screen \u00b7 Tango"
+    },
+    "scratch_ear": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "species",
+      "description": "Scratch Ear \u00b7 Tango"
+    },
+    "search": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Search \u00b7 Tango"
+    },
+    "self_check": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Self Check \u00b7 Tango"
+    },
+    "sensor_scan": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Sensor Scan \u00b7 Tango"
+    },
+    "set_object_down": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Set Object Down \u00b7 Tango"
+    },
+    "shake_body": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "species",
+      "description": "Shake Body \u00b7 Tango"
+    },
+    "shake_head": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Shake Head \u00b7 Tango"
+    },
+    "shiver": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Shiver \u00b7 Tango"
+    },
+    "sidestep_left": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Left \u00b7 Tango"
+    },
+    "sidestep_right": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sidestep Right \u00b7 Tango"
+    },
+    "sit": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sit \u00b7 Tango"
+    },
+    "sleep": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "acting",
+      "description": "Sleep \u00b7 Tango"
+    },
+    "smell": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Smell \u00b7 Tango"
+    },
+    "sneak": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Sneak \u00b7 Tango"
+    },
+    "sneeze": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Sneeze \u00b7 Tango"
+    },
+    "sniff_ground": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Sniff Ground \u00b7 Tango"
+    },
+    "snuggle": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "species",
+      "description": "Snuggle \u00b7 Tango"
+    },
+    "spin_left": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Left \u00b7 Tango"
+    },
+    "spin_right": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Spin Right \u00b7 Tango"
+    },
+    "stand_up": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Stand Up \u00b7 Tango"
+    },
+    "stir": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stir \u00b7 Tango"
+    },
+    "stretch": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch \u00b7 Tango"
+    },
+    "stretch_left": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Left \u00b7 Tango"
+    },
+    "stretch_right": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Stretch Right \u00b7 Tango"
+    },
+    "stretch_spine": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "species",
+      "description": "Stretch Spine \u00b7 Tango"
+    },
+    "surprised": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Surprised \u00b7 Tango"
+    },
+    "tail_wag": {
+      "duration": 3.0,
+      "loop": true,
+      "category": "species",
+      "description": "Tail Wag \u00b7 Tango"
+    },
+    "takeoff": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Takeoff \u00b7 Tango"
+    },
+    "talk": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Talk \u00b7 Tango"
+    },
+    "taste": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Taste \u00b7 Tango"
+    },
+    "throw": {
+      "duration": 2.7,
+      "loop": false,
+      "category": "acting",
+      "description": "Throw \u00b7 Tango"
+    },
+    "tiptoe": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Tiptoe \u00b7 Tango"
+    },
+    "touchdown": {
+      "duration": 2.8333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Touchdown \u00b7 Tango"
+    },
+    "trip_recover": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "locomotion",
+      "description": "Trip Recover \u00b7 Tango"
+    },
+    "turn_around": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Turn Around \u00b7 Tango"
+    },
+    "type": {
+      "duration": 2.5333,
+      "loop": false,
+      "category": "acting",
+      "description": "Type \u00b7 Tango"
+    },
+    "victory_pose": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Victory Pose \u00b7 Tango"
+    },
+    "wake_up": {
+      "duration": 2.4,
+      "loop": false,
+      "category": "acting",
+      "description": "Wake Up \u00b7 Tango"
+    },
+    "walk": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk \u00b7 Tango"
+    },
+    "walk_window": {
+      "duration": 1.2,
+      "loop": true,
+      "category": "acting",
+      "description": "Walk Window \u00b7 Tango"
+    },
+    "water_plant": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Water Plant \u00b7 Tango"
+    },
+    "wave": {
+      "duration": 3.0,
+      "loop": false,
+      "category": "acting",
+      "description": "Wave \u00b7 Tango"
+    },
+    "whistle": {
+      "duration": 3.1333,
+      "loop": false,
+      "category": "acting",
+      "description": "Whistle \u00b7 Tango"
+    },
+    "wink": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Wink \u00b7 Tango"
+    },
+    "yawn": {
+      "duration": 3.3,
+      "loop": false,
+      "category": "acting",
+      "description": "Yawn \u00b7 Tango"
+    }
+  }
+}

@@ -27,6 +27,7 @@ class WakeDetector:
         self.cache_dir = self.model_dir / "huggingface" / "hub"
         self.wake_word = wake_word
         self.keywords = tuple(keywords) if keywords else None
+        self.names = ()
         self.state = "not started"
         self.error = ""
         self.frames = 0
@@ -85,7 +86,7 @@ class WakeDetector:
             spotter = sherpa_onnx.KeywordSpotter(
                 tokens=str(folder / "tokens.txt"), encoder=str(folder / self.ENCODER),
                 decoder=str(folder / self.DECODER), joiner=str(folder / self.JOINER),
-                keywords_file=str(keywords_path), num_threads=2, provider="cpu",
+                keywords_file=str(keywords_path), num_threads=1, provider="cpu",
                 keywords_score=1.0, keywords_threshold=.45 if self.keywords else .25, num_trailing_blanks=1,
             )
             with self._lock:
@@ -100,7 +101,17 @@ class WakeDetector:
 
     def _new_stream(self) -> None:
         phrase = re.sub(r"^(?:hey|hello|hi|okay|ok|yo)\s+", "", self.wake_word.strip(), flags=re.I).upper()
-        if not self.keywords and phrase and phrase not in ("BRAIN", "BUDDY"):
+        if self.names and not self.keywords:
+            # sherpa's stream API separates multiple inline keywords with '/'.
+            entries = []
+            for name in self.names:
+                if name.upper() in ('BRAIN', 'BUDDY'):
+                    continue
+                variants = {'MOCHI': ('MO CHI','MO CHAI','MO CHEE'), 'ZURI': ('ZOO REE','SURI')}
+                for phrase in (name.upper(), *variants.get(name.upper(), ())):
+                    entries.append(" ".join(self._bpe.encode(phrase, out_type=str)) + " :2.0 #0.15 @" + name.upper().replace(' ', '_'))
+            self._stream = self._spotter.create_stream('/'.join(entries))
+        elif not self.keywords and phrase and phrase not in ("BRAIN", "BUDDY"):
             tokens = " ".join(self._bpe.encode(phrase, out_type=str))
             self._stream = self._spotter.create_stream(f"{tokens} @{phrase.replace(' ', '_')}")
         else:
@@ -110,6 +121,12 @@ class WakeDetector:
     def configure(self, wake_word: str) -> None:
         with self._lock:
             self.wake_word = wake_word
+            if self.ready:
+                self._new_stream()
+
+    def configure_names(self, names):
+        with self._lock:
+            self.names = tuple(dict.fromkeys(names))
             if self.ready:
                 self._new_stream()
 

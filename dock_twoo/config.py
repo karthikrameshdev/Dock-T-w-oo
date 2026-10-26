@@ -40,69 +40,62 @@ def validate_display_settings(changes: Dict[str, Any]) -> None:
 
 
 def migrate_storage_data(old_root: Path, new_root: Path) -> Dict[str, Any]:
-    """Safely migrate all component app data from old storage directory to new storage directory."""
+    """Copy storage without replacing independent data or reviving a legacy backup."""
     import shutil
+    import filecmp
 
     old_path = Path(old_root).expanduser().resolve()
     new_path = Path(new_root).expanduser().resolve()
-    new_path.mkdir(parents=True, exist_ok=True)
+    if old_path != new_path and new_path.is_relative_to(old_path):
+        raise ValueError("Choose a storage folder outside the current storage folder.")
+    planned = {}
+    migrated_items = set()
 
-    # Ensure all target subsystem subdirectories exist
-    for sub in ("notes", "tasks", "vault", "models", "brain"):
-        (new_path / sub).mkdir(parents=True, exist_ok=True)
-
-    migrated_items = []
-    file_count = 0
+    def collect(source, target, *, legacy=False):
+        if source.is_symlink():
+            raise ValueError(f"Storage migration does not follow symbolic links: {source}")
+        if source.is_dir():
+            for child in source.iterdir():
+                collect(child, target / child.name, legacy=legacy)
+            return
+        if not source.is_file():
+            return
+        if legacy and (target.exists() or target in planned):
+            return
+        existing = planned.get(target, target if target.exists() else None)
+        if existing is not None:
+            if not existing.is_file() or not filecmp.cmp(source, existing, shallow=False):
+                raise ValueError(f"Storage conflict at {target}. Existing files were not overwritten.")
+            return
+        planned[target] = source
 
     if old_path.exists() and old_path != new_path:
         for item in old_path.iterdir():
-            target = new_path / item.name
-            try:
-                if item.is_dir():
-                    if not target.exists():
-                        shutil.copytree(str(item), str(target), dirs_exist_ok=True)
-                    else:
-                        for sub_file in item.rglob("*"):
-                            if sub_file.is_file():
-                                rel = sub_file.relative_to(item)
-                                dest = target / rel
-                                dest.parent.mkdir(parents=True, exist_ok=True)
-                                shutil.copy2(str(sub_file), str(dest))
-                                file_count += 1
-                    migrated_items.append(item.name)
-                elif item.is_file():
-                    shutil.copy2(str(item), str(target))
-                    migrated_items.append(item.name)
-                    file_count += 1
-            except Exception as e:
-                print(f"[Dock T(w)oo] Error migrating item {item} to {target}: {e}")
+            if item.name == '.voice-storage-migrated' or item.name.startswith('.voice-migration-'):
+                continue
+            if item.name == 'brain' and (old_path / '.voice-storage-migrated').exists():
+                continue  # A retained recovery copy, not the active data.
+            target = new_path / ('voice' if item.name == 'brain' else item.name)
+            collect(item, target)
+            migrated_items.add(target.name)
 
-    # Also automatically import legacy ~/.dock_twoo contents if target is missing files
-    legacy_dir = Path.home() / ".dock_twoo"
-    if legacy_dir.exists() and legacy_dir != new_path:
-        for sub in ("notes", "vault", "brain"):
-            leg_sub = legacy_dir / sub
-            target_sub = new_path / sub
-            if leg_sub.exists() and leg_sub.is_dir():
-                for leg_file in leg_sub.rglob("*"):
-                    if leg_file.is_file():
-                        rel = leg_file.relative_to(leg_sub)
-                        dest = target_sub / rel
-                        if not dest.exists():
-                            dest.parent.mkdir(parents=True, exist_ok=True)
-                            try:
-                                shutil.copy2(str(leg_file), str(dest))
-                                file_count += 1
-                            except Exception:
-                                pass
+    legacy_dir = Path.home() / '.dock_twoo'
+    if legacy_dir.exists() and legacy_dir not in (old_path, new_path):
+        for sub in ('notes', 'vault', 'brain'):
+            source = legacy_dir / sub
+            if source.exists():
+                collect(source, new_path / ('voice' if sub == 'brain' else sub), legacy=True)
 
-    return {
-        "success": True,
-        "old_path": str(old_path),
-        "new_path": str(new_path),
-        "migrated_items": migrated_items,
-        "file_count": file_count,
-    }
+    # Validate the complete copy before writing any destination files.
+    for target, source in planned.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open('xb') as out, source.open('rb') as inp:
+            shutil.copyfileobj(inp, out)
+        shutil.copystat(source, target)
+    for sub in ('notes', 'tasks', 'scheduler', 'vault', 'models', 'voice'):
+        (new_path / sub).mkdir(parents=True, exist_ok=True)
+    return {'success': True, 'old_path': str(old_path), 'new_path': str(new_path),
+            'migrated_items': sorted(migrated_items), 'file_count': len(planned)}
 
 
 def detect_system_theme() -> str:
@@ -156,6 +149,7 @@ class DockAppItem:
 def get_default_apps() -> List[DockAppItem]:
     """Default dock app items: Notes and Vault at top, Settings and Brain at bottom with 3-dot dividers."""
     return [
+        DockAppItem(id="scheduler",name="Scheduler",icon="scheduler",tooltip="Scheduler"),
         DockAppItem(id="tasks",name="Tasks",icon="tasks",tooltip="Daily Tasks"),
         DockAppItem(
             id="notes",
@@ -183,6 +177,7 @@ def get_default_apps() -> List[DockAppItem]:
             is_bottom=True,
         ),
         DockAppItem(id="keep_awake",name="Keep Awake",icon="coffee",tooltip="Keep Awake · Off",is_bottom=True,action_type="action"),
+        DockAppItem(id="activity",name="Live Trail",icon="activity",tooltip="Live Trail · Model calls and agent tasks",is_bottom=True),
         DockAppItem(id="dashboard",name="Dashboard",icon="dashboard",tooltip="Cloud Usage Dashboard",is_bottom=True),
         DockAppItem(
             id="settings",
@@ -204,9 +199,9 @@ def get_default_apps() -> List[DockAppItem]:
         ),
         DockAppItem(
             id="brain",
-            name="Brain",
+            name="Voice Assistant",
             icon="brain",
-            tooltip="Brain",
+            tooltip="Voice Assistant",
             enabled=True,
             is_bottom=True,
         ),
@@ -248,6 +243,8 @@ def get_default_app_settings() -> Dict[str, Dict[str, Any]]:
 
 @dataclass
 class DockConfig:
+    start_on_boot: bool = False
+    keep_live: bool = False
     # Edge placement
     edge: str = "right"  # "right", "left", "top", "bottom"
     screen_index: int = 0
@@ -343,11 +340,15 @@ class DockConfig:
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def get_brain_dir(self) -> Path:
-        """Return dedicated brain data directory under root storage: <storage_path>/brain."""
-        p = self.get_storage_path() / "brain"
+    def get_voice_dir(self) -> Path:
+        """Voice assistant state shared by all characters."""
+        p = self.get_storage_path() / "voice"
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    def get_brain_dir(self) -> Path:
+        """Compatibility alias for integrations using the original method."""
+        return self.get_voice_dir()
 
     # App items
     apps: List[DockAppItem] = field(default_factory=get_default_apps)
@@ -468,8 +469,8 @@ class ConfigManager(QObject):
                     # Add new apps without resetting the user's order or settings.
                     app_ids = {a.id for a in self._config.apps}
                     for addition in get_default_apps():
-                        if addition.id in ('tasks','keep_awake','dashboard') and addition.id not in app_ids:
-                            index = next((i for i,a in enumerate(self._config.apps) if a.id == ('settings' if addition.id in ('keep_awake','dashboard') else 'vault')),len(self._config.apps))
+                        if addition.id in ('tasks','scheduler','keep_awake','dashboard','activity') and addition.id not in app_ids:
+                            index = next((i for i,a in enumerate(self._config.apps) if a.id == ('settings' if addition.id in ('keep_awake','dashboard','activity') else 'vault')),len(self._config.apps))
                             if addition.id=='dashboard':
                                 settings_index=next((i for i,a in enumerate(self._config.apps) if a.id=='settings'),index)
                                 awake_index=next((i for i,a in enumerate(self._config.apps) if a.id=='keep_awake'),index)
@@ -480,6 +481,9 @@ class ConfigManager(QObject):
                     # Clean up any legacy tooltips or names containing "T(w)oo" for inner apps
                     needs_save = False
                     for app in self._config.apps:
+                        if app.id == 'brain' and (app.name != 'Voice Assistant' or app.tooltip != 'Voice Assistant'):
+                            app.name = app.tooltip = 'Voice Assistant'
+                            needs_save = True
                         if "T(w)oo" in app.tooltip or "T(w)oo" in app.name:
                             needs_save = True
                             if app.id == "notes":
@@ -489,8 +493,8 @@ class ConfigManager(QObject):
                                 app.name = "Vault"
                                 app.tooltip = "Vault"
                             elif app.id == "brain":
-                                app.name = "Brain"
-                                app.tooltip = "Brain"
+                                app.name = "Voice Assistant"
+                                app.tooltip = "Voice Assistant"
                             elif app.id == "settings":
                                 app.name = "Settings"
                                 app.tooltip = "Settings"
@@ -522,6 +526,11 @@ class ConfigManager(QObject):
     def update(self, changes: Dict[str, Any]) -> DockConfig:
         """Update configuration and notify listeners."""
         validate_display_settings(changes)
+        for field in ('start_on_boot','keep_live'):
+            if field in changes and type(changes[field]) is not bool:raise ValueError(field+' must be true or false.')
+        if 'start_on_boot' in changes and changes['start_on_boot']!=self._config.start_on_boot:
+            from dock_twoo.startup import StartupManager
+            StartupManager().set_enabled(changes['start_on_boot'])
         if 'display_mode' in changes or 'display_ids' in changes:
             validate_display_settings({'display_mode': changes.get('display_mode', self._config.display_mode),
                                        'display_ids': changes.get('display_ids', self._config.display_ids)})

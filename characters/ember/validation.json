@@ -1,0 +1,27 @@
+{
+  "id": "ember",
+  "source_sha256": "1ee22895f02573cda65fa65e9c591d2a0efb27acd6359fb8c8b56aa0666cfd6f",
+  "asset_sha256": "d3e04d26595b9cd2efba0753e6f938eeb7211bfad0844e329a7d3c3bb5c18fea",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "chase_ball",
+      "run"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}

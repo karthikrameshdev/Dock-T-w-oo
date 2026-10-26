@@ -1,0 +1,27 @@
+{
+  "id": "tuxedo",
+  "source_sha256": "d1b69b685e22decbaf0325febbefc99ca8f872eb184635b30f508c687a954095",
+  "asset_sha256": "397b9ffd42cb23088e8cc4fb6a2612267d057535e254bc3415a83a141f86195b",
+  "actions": 136,
+  "independent_motion_signatures": 133,
+  "duplicate_motions": [
+    [
+      "climb",
+      "climb_dock"
+    ],
+    [
+      "fly",
+      "takeoff"
+    ],
+    [
+      "walk",
+      "walk_window"
+    ]
+  ],
+  "samples": 3400,
+  "antenna": true,
+  "binding_errors": [],
+  "issues": [],
+  "success": true,
+  "scope": "25 normalized pose samples per action, finite transforms, non-antenna motion uniqueness, skin bindings, antenna presence; not full mesh collision simulation"
+}
