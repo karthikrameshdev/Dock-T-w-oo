@@ -169,6 +169,11 @@ class BrainManager(QObject, BrainSessions):
         from dock_twoo.brain.ecosystem.coordinator import Coordinator
         from dock_twoo.brain.agent_notifications import AgentNotifications
         self.notifications = AgentNotifications(self)
+        from dock_twoo.brain.security.approvals import FileApprovals
+        from dock_twoo.brain.security.files import FileGuard
+        self.file_approvals=FileApprovals(self)
+        self.file_guard=FileGuard(self.store.data_dir/'security'/'analysis-files.json',self.file_approvals.ask)
+        self.agent.tools.guard=self.file_guard
         self.coordinator=Coordinator(self)
         self.agent.coordinator=self.coordinator
         if start_services:self.coordinator.start()
@@ -197,6 +202,8 @@ class BrainManager(QObject, BrainSessions):
         """Keep microphone startup failures available to the settings console."""
         self.audio_listener_error = message
         self.status_changed.emit(message)
+        if hasattr(self, 'notifications'):
+            self.notifications.show(message)
 
     @Slot(str)
     def _do_speech_start(self, reply: str) -> None:
@@ -267,6 +274,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_speech_started(self):
+        self.audio_listener_error = ''
         self.session_timer.stop()
         self._refresh_actor_states()
 
@@ -303,6 +311,11 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot(str)
     def _on_named_keyword_started(self, character_id):
+        if not self.store.character_awake(character_id):
+            self.listener.cancel_recording()
+            self.listener.arm_wake()
+            self._after_capture()
+            return
         owner = self.voice_actor(character_id)
         # A wake can interrupt playback, while the single model worker continues.
         self._listening_actor_id = owner
@@ -320,6 +333,7 @@ class BrainManager(QObject, BrainSessions):
         actor.stop_motion()
         actor.turn_to_user()
         self._refresh_actor_states()
+        self.notifications.show(f'{actor.character_name} is listening…')
 
     @Slot(str, str, str, bool)
     def _on_named_turn_completed(self, character_id, command, transcript, bare):
@@ -730,6 +744,7 @@ class BrainManager(QObject, BrainSessions):
         self.input_router.close()
         self.reminders.close()
         self.resources.close()
+        self.file_approvals.close()
         self.notifications.close()
         self.ecology.close()
         self.coordinator.close()
@@ -809,6 +824,17 @@ class BrainManager(QObject, BrainSessions):
         menu=self._build_context_menu(target)
         menu.exec(global_pos)
 
+    def set_resource_cap(self, enabled):
+        self.store.set_setting('resource_cap_enabled', bool(enabled))
+        self.animation_director.cancel()
+        for actor in self.companions.values():
+            if enabled:
+                actor.stop_motion();actor.motion_timer.stop()
+                actor._yaw=actor.turn_progress=actor.turn_target=0.0
+                actor.roam_timer.stop();actor.follow_timer.stop()
+            if actor.model_view:actor.model_view.set_parked(False)
+        self.resources._budget()
+
     def _build_context_menu(self, target=None) -> QMenu:
         """Create the current profile and action choices on the GUI thread."""
         actor = self.actor_for(target)
@@ -849,6 +875,12 @@ class BrainManager(QObject, BrainSessions):
 
         menu.addSeparator()
 
+        cap = menu.addAction('Cap resource to 25%')
+        cap.setCheckable(True)
+        cap.setChecked(bool(self.store.setting('resource_cap_enabled',False)))
+        cap.setToolTip('Pause body motion; keep eyes, lips, headlight, voice and background tasks active. CPU target, not a hard quota.')
+        cap.toggled.connect(self.set_resource_cap)
+
         # 2. Model Profiles Submenu
         profile_menu = menu.addMenu(f"Agent model for {actor.character_name}")
         profile_menu.addAction("Use default agent model",lambda:self.profile_mgr.bind_character(actor.character_id,""))
@@ -867,6 +899,8 @@ class BrainManager(QObject, BrainSessions):
 
         # 3. Animations Submenu
         anim_menu = menu.addMenu("🎭 Animations")
+        anim_menu.setEnabled(not actor.resource_capped)
+        cap.toggled.connect(lambda enabled:anim_menu.setEnabled(not enabled))
         act_loop = anim_menu.addAction("▶ Play All (Loop)", actor.start_animation_loop)
         act_loop.setEnabled(not actor.reduced_motion)
 
@@ -887,10 +921,14 @@ class BrainManager(QObject, BrainSessions):
         roam_act.setCheckable(True)
         roam_act.setChecked(bool(self.store.setting("roaming", True)))
         roam_act.toggled.connect(lambda v: self.store.set_setting("roaming", v))
+        roam_act.setEnabled(not actor.resource_capped)
+        cap.toggled.connect(lambda enabled:roam_act.setEnabled(not enabled))
         follow_act = menu.addAction("Follow Cursor")
         follow_act.setCheckable(True)
         follow_act.setChecked(actor.follow_cursor_enabled)
         follow_act.toggled.connect(actor.set_follow_cursor)
+        follow_act.setEnabled(not actor.resource_capped)
+        cap.toggled.connect(lambda enabled:follow_act.setEnabled(not enabled))
 
         all_screens = menu.addAction("Roam across all screens")
         all_screens.setCheckable(True)
@@ -1011,6 +1049,8 @@ class BrainManager(QObject, BrainSessions):
 
     def apply_voice_settings(self, changes: Dict[str, Any]) -> None:
         """Apply saved voice controls to the live listener on the GUI thread."""
+        if 'resource_cap_enabled' in changes:
+            self.set_resource_cap(bool(changes['resource_cap_enabled']))
         if "follow_cursor" in changes:
             self.companion.set_follow_cursor(bool(changes["follow_cursor"]))
         if "wake_word" in changes:

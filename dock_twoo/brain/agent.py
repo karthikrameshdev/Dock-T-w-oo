@@ -11,6 +11,12 @@ from dock_twoo.brain.cloud import CloudClient, CloudError, ModelNotConfigured, N
 from dock_twoo.brain.agent_tools import LocalTools, TOOLS, validate_arguments, tools_for
 
 SYSTEM_PROMPT='''You are the user's desktop voice agent. You reason only through the configured cloud model.
+Enforced file/privacy policy: read relevant files and create NEW analysis artifacts automatically.
+Use run_command only for its documented portable commands. Never generate shell/interpreter workarounds.
+User-created files and files created by other applications are protected. update_file/delete_file require native Approve/Deny on the full path.
+Only unchanged analysis files created by Dock tools can be changed without approval. Do not retry a denied operation, redirect it to another worker, or substitute desktop actions.
+Unscoped GUI editing and unrestricted CLI tools are disabled. No model can grant its own approval.
+Private values arrive as [PRIVATE_n] references; preserve these references exactly in tool arguments. Do not infer, decode or request the original values. Summarize around missing details.
 Tasks and Notes are persistent local app data. When a user says they worked on an item, add_task with status=done;
 first check existing entries if they refer to previous work. List_tasks for date-specific questions; never invent remembered tasks.
 For long reports, read and review the workers' verified section files, then use assemble_document to combine them without echoing the entire document in a model response.
@@ -31,7 +37,7 @@ Use fresh desktop observation ids. After a UI change, observe again and verify t
 No screenshots, image bytes, audio or video are sent to this model. Use local describe_image/OCR text when needed.
 Use character_action for explicit character motion; choose a subtle emotion and gesture for your final response.
 Use read_aloud for continuous reading, without selecting or modifying text. Existing selections can be read.
-For opening an application and typing, prefer one open_app call with both name and text.
+For document creation, use write_file. Opening an application is allowed; arbitrary typing into existing documents is disabled.
 Do not keep reopening the app or repeating an action after an error. Make efficient calls; progressive work can continue, while repeated failures are reviewed.
 Use at most eight tools in a turn. If a UI action cannot be verified, explain the limitation instead of looping.
 For singing, finish with delivery=sing and a short original song. Whistling uses gesture=whistle.
@@ -120,7 +126,7 @@ class BrainAgent:
             try:return max(low,min(high,int(self.profiles.store.setting(key,default))))
             except (ValueError,TypeError):return default
         return {'max_calls':integer('agent_task_call_limit',0,0,100000),
-                'no_progress_turns':3,
+                'no_progress_turns':integer('agent_no_progress_turns',3,2,10),
                 'recovery_reviews':integer('agent_recovery_reviews',2,1,5),
                 'token_budget':integer('agent_task_token_limit',0,0,10000000),
                 'max_output_tokens':integer('agent_max_output_tokens',4096,128,16384),
@@ -284,6 +290,8 @@ class BrainAgent:
                                 progress=guard.changed(name,args,output) or progress
                                 reading=reading or name=='read_aloud'
                                 result={'ok':True,'result':output}
+                        except PermissionError as exc:
+                            return finish(AgentReply('I stopped this action: '+str(exc),emotion='concerned'),'stopped',str(exc))
                         except (InterruptedError,CreditLimit):raise
                         except Exception as exc:
                             last_error=str(exc)[:600];result={'ok':False,'error':last_error}

@@ -7,7 +7,10 @@ import threading
 
 class KeepAwake:
     def __init__(self):
-        self.process=None;self.enabled=False;self._lock=threading.RLock();self._windows_stop=threading.Event();self._windows_thread=None;atexit.register(self.close)
+        self.config=None;self.process=None;self.enabled=False;self._lock=threading.RLock();self._windows_stop=threading.Event();self._windows_thread=None;atexit.register(self.close)
+    def bind(self,config):
+        self.config=config
+        self.set_enabled(bool(config.config.keep_live))
     def set_enabled(self,enabled):
         with self._lock:
             if bool(enabled)==self.status()['enabled']:return self.status()
@@ -28,9 +31,16 @@ class KeepAwake:
                         self._windows_stop.set()
                         self._windows_thread.join(timeout=2)
                         raise RuntimeError('Windows could not prevent idle sleep.')
-                else:raise RuntimeError('Keep Awake currently supports macOS and Windows.')
+                elif system=='Linux':
+                    self.process=subprocess.Popen(['systemd-inhibit','--what=idle:sleep','--who=Dock T(w)oo','--why=Keep Live enabled','--mode=block','sleep','infinity'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    try:
+                        code=self.process.wait(timeout=.1)
+                        raise RuntimeError(f'The desktop sleep inhibitor exited ({code}). Check systemd/login permissions.')
+                    except subprocess.TimeoutExpired:pass
+                else:raise RuntimeError('Unsupported Keep Live platform.')
                 self.enabled=True
             else:self.close()
+            if self.config:self.config.update({'keep_live':self.enabled})
             return self.status()
     def close(self):
         with self._lock:

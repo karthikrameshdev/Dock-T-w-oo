@@ -139,7 +139,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             except (BrokenPipeError,ConnectionResetError):pass
             except Exception as exc:self._json(400,{'error':str(exc)})
             return
-        if path in ('/api/brain/model','/api/brain/ecosystem','/api/tasks','/api/keep-awake'):
+        if path in ('/api/brain/model','/api/brain/ecosystem','/api/brain/awake','/api/tasks','/api/keep-awake'):
             if not self._local_control():
                 self._json(HTTPStatus.FORBIDDEN,{'success':False,'error':'Use the local application console.'});return
             try:
@@ -150,6 +150,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     self._json(200,{'model':pm.get_active_profile(),'profiles':pm.get_profiles(),
                         'characters':list(characters()),'bindings':pm.store.setting('character_profiles',{}),
                         'voices':{c['id']:tuning(pm.store,c['id']) for c in characters()},**pm.get_provider_catalog()})
+                elif path=='/api/brain/awake':
+                    self._json(200,{'characters':_get_safe_brain_store().awake_catalog()})
                 elif path=='/api/brain/ecosystem':
                     from dock_twoo.brain.manager import BrainManager
                     manager=BrainManager._instance
@@ -193,7 +195,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 "notes": cfg.get_notes_dir(),
                 "vault": cfg.get_vault_dir(),
                 "models": cfg.get_models_dir(),
-                "brain": cfg.get_brain_dir(),
+                "voice": cfg.get_voice_dir(),
                 "tasks": storage_root / "tasks",
             }
             folder_info = {}
@@ -332,7 +334,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
         if path in ('/api/brain/settings', '/api/brain/profile', '/api/brain/key', '/api/brain/activate-profile', '/api/brain/profile/delete', '/api/brain/profiles') and not self._local_control(write=True):
             self._json(403, {'success': False, 'error': 'Use the local application controls.'})
             return
-        if path in ('/api/brain/model','/api/brain/model/test','/api/brain/stop','/api/tasks','/api/keep-awake','/api/brain/profiles','/api/brain/profile','/api/brain/activate-profile','/api/brain/profile/delete','/api/brain/character-profile','/api/brain/memory/forget'):
+        if path in ('/api/brain/model','/api/brain/model/test','/api/brain/stop','/api/tasks','/api/keep-awake','/api/brain/profiles','/api/brain/profile','/api/brain/activate-profile','/api/brain/profile/delete','/api/brain/character-profile','/api/brain/memory/forget','/api/brain/awake'):
             if not self._local_control(write=True):
                 self._json(403,{'success':False,'error':'Use the local application controls.'});return
             try:
@@ -354,6 +356,10 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     if not ready.wait(5):raise ValueError('The desktop is busy; try again after the current action.')
                     if result.get('error'):raise ValueError(result['error'])
                     self._json(200,{'success':True})
+                elif path=='/api/brain/awake':
+                    if set(body) != {'character_id','enabled'}:raise ValueError('Supply character_id and enabled only.')
+                    store=_get_safe_brain_store();store.set_character_awake(body['character_id'],body['enabled'])
+                    self._json(200,{'success':True,'characters':store.awake_catalog()})
                 elif path=='/api/brain/character-profile':
                     from dock_twoo.brain.catalog import character
                     from dock_twoo.brain.ecosystem.voices import validate_tuning
@@ -460,7 +466,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 updates = json.loads(body)
                 if not isinstance(updates, dict):
                     raise ValueError('Supply a JSON object.')
-                if any(key in updates for key in ('display_mode','display_ids')) and not self._local_control(write=True):
+                if any(key in updates for key in ('display_mode','display_ids','start_on_boot')) and not self._local_control(write=True):
                     self._json(403, {'success': False, 'error': 'Use the local application controls.'})
                     return
 
@@ -524,7 +530,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 store = _get_safe_brain_store()
                 if any(key in body for key in ('cloud_keys', 'cloud_model', 'cloud_profiles', 'profiles', 'active_profile')):
                     raise ValueError('Use Cloud Profiles to configure model profiles securely.')
-                for key,low,high in (('agent_max_steps',1,12),('agent_token_budget',2000,64000),('agent_no_progress_turns',2,3),('agent_max_output_tokens',128,2048)):
+                for key,low,high in (('agent_max_steps',1,12),('agent_token_budget',2000,64000),('agent_no_progress_turns',2,10),('agent_max_output_tokens',128,16384),('agent_task_call_limit',0,100000),('agent_task_token_limit',0,10000000)):
                     if key in body and (type(body[key]) is not int or not low<=body[key]<=high):
                         raise ValueError(f'{key} must be an integer between {low} and {high}.')
                 updated = store.update_settings(body)

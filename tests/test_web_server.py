@@ -101,7 +101,7 @@ def test_web_console_storage_endpoint_and_migration(test_server, tmp_path):
         assert "notes" in data["subsystems"]
         assert "vault" in data["subsystems"]
         assert "models" in data["subsystems"]
-        assert "brain" in data["subsystems"]
+        assert "voice" in data["subsystems"]
 
     # 2. POST /api/storage/change migrates safely to new directory
     target_storage = tmp_path / "custom_dock2_storage"
@@ -116,7 +116,7 @@ def test_web_console_storage_endpoint_and_migration(test_server, tmp_path):
         assert (target_storage / "notes").exists()
         assert (target_storage / "vault").exists()
         assert (target_storage / "models").exists()
-        assert (target_storage / "brain").exists()
+        assert (target_storage / "voice").exists()
 
 
 def test_web_console_brain_providers_catalog(test_server):
@@ -441,3 +441,23 @@ def test_agent_character_profiles_fallback_validation_and_generated_downloads(te
     other=tmp_path/'private.txt';other.write_text('Private')
     with pytest.raises(urllib.error.HTTPError) as error:request('/api/brain/artifact?path='+quote(str(other)))
     assert error.value.code==400
+
+
+def test_awake_api_default_persistence_and_brain_guard(test_server,tmp_path,monkeypatch):
+    from dock_twoo.brain.storage import BrainStore
+    import dock_twoo.server.web_server as web
+    store=BrainStore(tmp_path/'voice');monkeypatch.setattr(web,'_get_safe_brain_store',lambda:store)
+    _,port,_=test_server
+    def request(body=None,authorized=True):
+        headers={'Content-Type':'application/json'}
+        if authorized:headers['X-Brain-Request']='local'
+        req=urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/awake',data=json.dumps(body).encode() if body is not None else None,headers=headers)
+        with urllib.request.urlopen(req,timeout=3) as response:return json.load(response)
+    assert len(request()['characters'])==30 and all(c['enabled'] for c in request()['characters'])
+    assert not next(c for c in request({'character_id':'parrot','enabled':False})['characters'] if c['id']=='parrot')['enabled']
+    assert not BrainStore(store.data_dir).character_awake('parrot')
+    for body in ({'character_id':'default','enabled':False},{'character_id':'missing','enabled':False},{'character_id':'parrot','enabled':'false'}):
+        with pytest.raises(urllib.error.HTTPError) as error:request(body)
+        assert error.value.code==400
+    with pytest.raises(urllib.error.HTTPError) as error:request({'character_id':'parrot','enabled':True},False)
+    assert error.value.code==403 and not store.character_awake('parrot')

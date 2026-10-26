@@ -53,6 +53,15 @@ http.createServer((req,res)=>{
     if(!name){res.writeHead(400);return res.end('Missing character identity');}
     calls.push(make('finish',{text:'Verified character '+name,emotion:'happy'}));
   }
+  else if(text.includes('privacy-check')){
+    const body=JSON.stringify(data);
+    if(['Jane Smith','alice@example.org','4111 1111 1111 1111','danger-secret','opaque-test-key'].some(secret=>body.includes(secret))){res.writeHead(400);return res.end('Privacy fixture received sensitive data');}
+    calls.push(make('finish',{text:'Privacy checked: '+text}));
+  }
+  else if(/open my notes/i.test(text)){
+    if(!responses.length)calls.push(make('open_dock_app',{app:'notes'}));
+    else calls.push(make('finish',{text:'Your notes are open.',emotion:'happy',gesture:'wave'}));
+  }
   else if(text.includes('loop-errors'))calls.push(make('read_file',{invalid:'argument '+responses.length}));
   else if(text.includes('loop-observe'))calls.push(make('observe_desktop',{}));
   else if(text.includes('progress-budget'))calls.push(make('read_file',{path:text.match(/folder=(.+)/)?.[1]+'/one.txt',offset:responses.length}));

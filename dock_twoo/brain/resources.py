@@ -2,7 +2,8 @@
 from concurrent.futures import ThreadPoolExecutor
 import time
 from PySide6.QtCore import QObject, QTimer
-from PySide6.QtGui import QCursor
+
+CPU_TARGET_PERCENT = 25.0
 
 
 class ProcessMeter:
@@ -40,7 +41,8 @@ class ResourceKeeper(QObject):
         self.manager = manager; self.closed = False
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='dock-housekeeping')
         self.meter = ProcessMeter(); self.pending = None
-        self.stats = {'cpu_percent':0.,'target_cpu_percent':20.,'resting_characters':0}
+        self.stats = {'cpu_percent':0.,'target_cpu_percent':None,'resting_characters':0,
+                      'cap_enabled':False}
         self.level = 1; self.low_samples = 0; self.next_prune = 0
         self.timer = QTimer(self); self.timer.setInterval(2000); self.timer.timeout.connect(self.tick)
         if enabled:self.timer.start()
@@ -59,11 +61,14 @@ class ResourceKeeper(QObject):
             except Exception as exc:self.stats['cleanup_error'] = str(exc)[:200]
             self.pending = None
             cpu = self.stats['cpu_percent']
-            if cpu > 20:
+            if not manager.store.setting('resource_cap_enabled',False):
+                self.level = self.low_samples = 0
+            elif cpu > CPU_TARGET_PERCENT:
                 self.level = min(4, self.level+1); self.low_samples = 0
-            elif cpu < 17:
+            elif cpu < CPU_TARGET_PERCENT * .85:
                 self.low_samples += 1
-                if self.low_samples >= 10:self.level = max(0,self.level-1);self.low_samples=0
+                if self.low_samples >= 3:self.level = max(0,self.level-1);self.low_samples=0
+            else:self.low_samples = 0
         self._budget()
         if self.pending is None:
             prune = time.monotonic() >= self.next_prune
@@ -77,37 +82,32 @@ class ResourceKeeper(QObject):
         return result
 
     def _budget(self):
+        capped = bool(self.manager.store.setting('resource_cap_enabled',False))
+        self.stats.update(cap_enabled=capped, target_cpu_percent=CPU_TARGET_PERCENT if capped else None)
+        if not capped:self.level=0
         actors = [a for a in self.manager.companions.values() if a.isVisible()]
         if not actors:return
-        now = time.monotonic(); cursor = QCursor.pos()
-        idle = [a for a in actors if a.activity in ('idle','processing','thinking','queued') and not a.origin and not a.follow_cursor_enabled
-                and now >= getattr(a,'resource_active_until',0)
-                and not a.input_hit_region().contains(cursor-a.pos())]
-        # Idle characters take turns when a crowd exceeds the budget. They rest
-        # in an actual rendered pose, with no replacement/legacy artwork.
-        slots = max(0, (3,2,1,1,0)[self.level]-(len(actors)-len(idle)))
-        if idle:
-            offset = int(now//20)%len(idle)
-            chosen = {a.actor_id for a in (idle[offset:]+idle[:offset])[:slots]}
-        else:chosen = set()
-        resting = 0
+        now = time.monotonic()
         for actor in actors:
-            park = actor in idle and actor.actor_id not in chosen
             view = actor.model_view
             if view is None:continue
-            actor.resource_resting = park
-            actor.render_fps = (24,18,12,8,6)[self.level]
-            if park and view.ready and not getattr(view,'parked',False):
-                actor.stop_motion()
-            view.set_parked(park)
-            if park:
-                actor.activity_timer.stop(); actor.roam_timer.stop(); resting += 1
-            else:
-                actor.activity_timer.setInterval(round(1000/actor.render_fps))
-                if not actor.reduced_motion:
-                    actor.activity_timer.start()
+            # There is only one presentation now. Never freeze it into a static
+            # screenshot, including while waiting for speech/model results.
+            # Budget visual quality only; audio, task execution and UI stay live.
+            active = (actor.activity != 'idle' or actor.origin or actor.follow_cursor_enabled
+                      or now < getattr(actor,'resource_active_until',0))
+            actor.resource_resting = False
+            actor.render_fps = ((24,22,20,18,18)[self.level] if active else (20,18,16,14,12)[self.level]) if capped else 30
+            view.set_parked(False)
+            actor.activity_timer.setInterval(round(1000/actor.render_fps))
+            if not actor.reduced_motion:
+                actor.activity_timer.start()
+                if capped:
+                    actor.roam_timer.stop();actor.follow_timer.stop()
+                else:
                     if not actor.roam_timer.isActive():actor.roam_timer.start()
-        self.stats.update(resting_characters=resting, quality_level=self.level)
+                    if actor.follow_cursor_enabled and not actor.follow_timer.isActive():actor.follow_timer.start()
+        self.stats.update(resting_characters=0, quality_level=self.level)
 
     def close(self):
         self.closed = True; self.timer.stop()

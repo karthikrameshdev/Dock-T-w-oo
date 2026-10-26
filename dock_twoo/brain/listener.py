@@ -279,6 +279,7 @@ class AudioListener(QObject):
     @capture_locked
     def start_recording(self) -> None:
         """Listen for a complete turn; silence timeout starts before speech only."""
+        self.last_error = ''
         self._capture_generation += 1
         self._capture_revision = 0
         self._decode_token = None
@@ -297,7 +298,11 @@ class AudioListener(QObject):
         self.speech_started.emit()
 
     @capture_locked
-    def _begin_wake_capture(self, frames: list[bytes], character_id=None) -> None:
+    def _begin_wake_capture(self, frames: list[bytes], character_id=None) -> bool:
+        if self.named_characters and character_id and not self.store.character_awake(character_id):
+            self.last_wake_decision = 'character-awake-disabled'
+            self.wake_detector.reset()
+            return False
         if character_id is not None:
             self.capture_character_id = character_id
         self._output_active = False
@@ -312,6 +317,7 @@ class AudioListener(QObject):
         self.wake_started.emit()  # Visual acknowledgement only, never speech.
         if self.named_characters:
             self.named_wake_started.emit(self.capture_character_id)
+        return True
 
     @capture_locked
     def stop_recording(self) -> None:
@@ -430,6 +436,11 @@ class AudioListener(QObject):
             from dock_twoo.brain.catalog import named_prefix
             found, rest = named_prefix(text, acoustic=True)
             target = found or character_id or self.capture_character_id
+            if not self.store.character_awake(target) and (self._wake_capture or target != self.capture_character_id):
+                self.last_wake_decision = 'character-awake-disabled'
+                self.arm_wake()
+                self.turn_timed_out.emit()
+                return
             value = rest if found else (command if command is not None else text.strip())
             self.named_turn_completed.emit(target, value, text, bare or (found is not None and not rest))
         elif bare:
@@ -547,7 +558,7 @@ class AudioListener(QObject):
                 from dock_twoo.brain.catalog import keyword_id
                 keyword = self.wake_detector.feed(pcm) if self.wake_detector.ready else ''
                 target = keyword_id(keyword) if keyword else None
-                if target is not None:
+                if target is not None and self.store.character_awake(target):
                     self.capture_character_id = target
                     self._keyword_character_id = target
                     self._wake_capture = True
@@ -713,6 +724,11 @@ class AudioListener(QObject):
         if self.named_characters:
             from dock_twoo.brain.catalog import named_prefix
             found, command = named_prefix(text, acoustic=True)
+            if not self.store.character_awake(found or self._keyword_character_id or self.capture_character_id):
+                self.last_wake_decision = 'character-awake-disabled'
+                self.arm_wake()
+                self.turn_timed_out.emit()
+                return
             accepted = found is not None
             # KWS can finish after the name, leaving only the complete command.
             if not accepted and self._keyword_character_id is not None:
@@ -722,7 +738,13 @@ class AudioListener(QObject):
             accepted, command = command_after_keyword(text, self.wake_word)
         if not accepted:
             self.last_wake_decision = "keyword-rejected-by-transcript"
+            self.last_error = "I couldn't confirm the assistant name. Please say the name and your request again."
             self.arm_wake()
+            self.error_occurred.emit(self.last_error)
+            # ASR already emitted processing_started. Release the manager's
+            # listening owner/session too, so rejected wakes cannot strand the
+            # avatar in Processing with no queued work and no way to finish.
+            self.turn_timed_out.emit()
             return
         template = self._load_speaker_embedding(self.owner_embedding_path)
         self.last_wake_owner_verified = (
@@ -774,6 +796,9 @@ class AudioListener(QObject):
 
         from dock_twoo.brain.catalog import named_prefix
         detected_id, _ = named_prefix(text, acoustic=True) if self.named_characters else (None, '')
+        if detected_id and not self.store.character_awake(detected_id):
+            self.last_wake_decision = 'character-awake-disabled'
+            return
         wake_phrases = {"brain", "brian", "buddy"}
         if self.named_characters:
             from dock_twoo.brain.catalog import characters
@@ -812,7 +837,8 @@ class AudioListener(QObject):
                          if frame_end is not None and seq > frame_end]
             self.backup_wake_matches += 1
             self.last_wake_matches += 1
-            self._begin_wake_capture(list(frames) + [pcm for pcm, _voiced in following], detected_id)
+            if not self._begin_wake_capture(list(frames) + [pcm for pcm, _voiced in following], detected_id):
+                return
             # Replay boundaries as well as PCM. The user may have completed the
             # sentence while backup ASR was running; do not wait for them to
             # speak again just to finish an already-buffered statement.

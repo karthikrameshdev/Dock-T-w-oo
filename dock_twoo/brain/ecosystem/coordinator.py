@@ -47,6 +47,8 @@ class Coordinator:
                     self.state(character_id,'processing')
                 if parent_id:
                     self.manager.run_on_main_thread(lambda: self.manager.notifications.task_started(character(assigning_identity)['name'], character(character_id)['name'], prompt))
+                else:
+                    self.manager.notifications.show(f"{character(character_id)['name']} is working: {' '.join(prompt.split())[:140]}")
                 return task_id,Path(folder.name)
             if parent_id:
                 raise ValueError(f'{character(character_id)["name"]} is busy. Choose an available peer or finish another subtask first.')
@@ -78,6 +80,7 @@ class Coordinator:
                 if used>50_000_000:break
                 target=destination/source.relative_to(root);target.parent.mkdir(parents=True,exist_ok=True)
                 shutil.copy2(source,target);paths.append(str(target))
+                if getattr(self.manager,"file_guard",None):self.manager.file_guard.remember(target)
         for path in artifacts or []:
             if Path(path).is_file() and (not folder or not Path(path).resolve().is_relative_to(Path(folder.name).resolve())) and path not in paths:paths.append(path)
         self.client(character_id).call('Report',{'task_id':task_id,'state':state,'result':str(result)[:200_000],'artifacts':paths})
@@ -99,6 +102,9 @@ class Coordinator:
             parent = next((item for item in jobs if item['id'] == job['parent_id']), None)
             if parent:
                 self.manager.run_on_main_thread(lambda: self.manager.notifications.task_finished(character(parent['character_id'])['name'], character(character_id)['name'], state))
+        elif job:
+            status = 'finished' if state == 'complete' else state
+            self.manager.notifications.show(f"{character(character_id)['name']} {status} the request.")
         return paths
 
     def cleanup_finished_workspaces(self):

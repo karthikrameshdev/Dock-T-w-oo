@@ -29,5 +29,13 @@ export class ActionPlayer {
     this.mixer.update(dt);
     if(this.previous && this.mixer.time>=this.until){this.retire(this.previous);this.previous=null;}
   }
+  setStationary(enabled) {
+    if(Boolean(enabled)===Boolean(this.stationary))return;
+    this.dispose();this.stationary=Boolean(enabled);
+    if(this.stationary){
+      const action=this.select('idle');action.time=0;
+      this.mixer.update(0);action.paused=true;
+    }
+  }
   dispose(){this.mixer.stopAllAction();this.mixer.uncacheRoot(this.mixer.getRoot());this.current=this.previous=null;}
 }

@@ -162,6 +162,7 @@ async function loadConfig() {
 
 // Populate UI Elements from Config
 function initForm(cfg) {
+  document.getElementById("startOnBoot").checked = cfg.start_on_boot === true;
   if (!cfg.app_settings) {
     cfg.app_settings = {
       notes: {},
@@ -958,10 +959,11 @@ async function initStorageConsole() {
         if (storageModelsCount) storageModelsCount.textContent = `${subs.models.file_count} files`;
         if (storageModelsSize) storageModelsSize.textContent = `${subs.models.size_mb} MB`;
       }
-      if (subs.brain) {
-        if (storageBrainPath) storageBrainPath.textContent = subs.brain.path;
-        if (storageBrainCount) storageBrainCount.textContent = `${subs.brain.file_count} files`;
-        if (storageBrainSize) storageBrainSize.textContent = `${subs.brain.size_mb} MB`;
+      if (subs.voice) {
+        const voiceVault=document.getElementById("voiceVaultLocation");if(voiceVault)voiceVault.textContent=subs.voice.path;
+        if (storageBrainPath) storageBrainPath.textContent = subs.voice.path;
+        if (storageBrainCount) storageBrainCount.textContent = `${subs.voice.file_count} files`;
+        if (storageBrainSize) storageBrainSize.textContent = `${subs.voice.size_mb} MB`;
       }
     } catch (err) {
       console.warn('Could not load storage data:', err);
@@ -1143,7 +1145,7 @@ async function initBrainConsole() {
     try{
       const data=await (await fetch('/api/brain/status',{headers:{'X-Brain-Request':'local'}})).json();
       const input=data.voice_input||{},diag=input.wake_diagnostics||{},model=data.language_model||{};
-      byId('brainAgentStatusBadge').textContent=`Brain ${data.character?.version||''} · ${data.activity||'idle'}`;
+      byId('brainAgentStatusBadge').textContent=`Voice Assistant ${data.character?.version||''} · ${data.activity||'idle'}`;
       byId('brainTalkBtn').textContent=diag.recording?'✓ Finish speaking':(diag.decoding?'Processing speech…':'🎤 Talk to Brain');
       byId('brainTalkBtn').disabled=Boolean(diag.decoding);
       const devices=diag.audio_devices||{};
@@ -1240,3 +1242,13 @@ document.getElementById('displayMode')?.addEventListener('change',event=>{
 });
 // Hot-plug updates the checklist while preserving unsaved in-flight edits.
 setInterval(()=>{if(document.visibilityState==='visible' && currentConfig && document.getElementById('page-placement')?.classList.contains('active'))loadDisplays().catch(()=>{});},5000);
+
+// Preview is deliberately per-tab and off on every console open.
+document.getElementById('startOnBoot').addEventListener('change', async event => {
+  const previous=currentConfig.start_on_boot;
+  try {
+    const response=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json','X-Brain-Request':'local'},body:JSON.stringify({start_on_boot:event.target.checked})});
+    const data=await response.json();if(!response.ok || !data.success)throw new Error(data.error||'Startup setting could not be applied');
+    currentConfig.start_on_boot=event.target.checked;showToast('Startup setting saved');
+  } catch(error){event.target.checked=previous===true;showToast(error.message,true);}
+});

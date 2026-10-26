@@ -251,14 +251,16 @@ Every agent can delegate to available peers; background workers have no characte
 renderer, microphone or audio output. Brief top-of-screen toasts report assignment
 and completion. Completed work and live progress remain in the console task trail.
 
-Dock samples its own process tree every two seconds and cooperatively targets
-20% CPU, where 100% means one CPU core. Under load it reduces frame/readback rates
-and lets the idle assistant rest in its current rendered pose when necessary. Clicking or addressing a character resumes it. Hidden
-character pages are discarded after 45 seconds and reload when shown. This is
-not a hard OS quota: startup, local speech inference, active interactions and
-external model CLIs can exceed the target. Housekeeping removes completed worker
-projects, retired view state and expired activity traces; it does not kill other
-applications, clear user documents or repeatedly unload active speech models.
+The right-click **Cap resource to 25%** option is unchecked by default. When
+checked, the character stands still: body, hands, head turns and roaming stop.
+Eye movement, blinking, lip sync, headlight, listening, toasts and parallel agent
+work remain active. Dock samples its process tree every two seconds and adjusts
+visual frame/readback rates toward 25% of one CPU core. This is a cooperative
+visual budget, not an OS CPU or RAM quota; speech inference and task execution can
+exceed it. Turning the option off restores full animation. Hidden pages are
+discarded after 45 seconds; visible characters are never parked behind a snapshot.
+Housekeeping cleans completed temporary work and expired activity traces without
+killing other applications or repeatedly unloading active speech models.
 
 The **Keep Awake** coffee icon above Settings toggles idle system/display sleep
 prevention (`caffeinate -d -i` on macOS). It releases its own assertion when disabled
@@ -432,14 +434,14 @@ worker reports over authenticated gRPC without another model call. The console
 provides the durable task trail and downloadable outputs. **Stop** cancels running
 and queued work, including descendants.
 
-In **AI Voice Assistant → Agent Models**, configure API, explicit network/Ollama,
-or installed headless Gemini, Codex, Claude Code, Kilo and custom CLI profiles.
-Assign a profile per character; an unassigned character uses the active default.
-Accepted tasks retain their captured profile and credentials. Each CLI task gets
-an isolated temporary working directory and process, with cancellation propagated
-to its process tree. Generated outputs are copied to local document storage before
-the temporary project is removed. CLI native permissions still apply; temporary
-working directories do not provide an OS sandbox.
+In **AI Voice Assistant → Agent Models**, configure an HTTPS API, an explicit
+network/Ollama endpoint, or the guarded Claude Code CLI adapter. Assign profiles
+per character; an unassigned character uses the active default. Accepted tasks
+retain their profile and credentials. Claude Code requires a saved API key and
+runs without native tools, hooks, MCP servers or user/project configuration; it
+returns decisions to Dock's guarded tools. Gemini, Codex, Kilo and custom CLI
+adapters are disabled until equivalent enforcement is available. Temporary
+working directories are not OS sandboxes. Outputs are retained before cleanup.
 
 Speech recognition, Kokoro speech synthesis, speaker tuning, species sound cues,
 semantic ranking, extractive memory compaction and failure review run locally.
@@ -466,3 +468,58 @@ Head lights: **green** online/idle, **yellow** listening, **purple** processing,
 **cyan** responding, **orange** queued, **red** offline. Head effects respect reduced
 motion. Desktop reading/automation availability depends on the platform adapter.
 See [the implementation and verification notes](docs/agent-ecosystem.md).
+
+## Installed application and restart behavior
+
+Run `./install.sh` on macOS/Linux, or `install.cmd` on Windows, to build and install
+for the current user. Python 3.11+ is required to build; recipients of a packaged
+bundle do not need Python or the source checkout. The installer enables startup
+at user login by default. Use `--no-autostart` or disable **Start on system boot**
+in the console to opt out. Use `--no-start` to install without launching.
+
+Native packages must be built on their target OS. The manual **Native application
+packages** GitHub workflow builds macOS `.app`, Windows `.exe` plus its support
+folder, and Linux bundles. Distribute the entire archive, not the executable
+alone. macOS packages are currently ad-hoc signed, not Developer ID notarized;
+Windows packages are not Authenticode signed. OS trust prompts can apply.
+Keep Live intent, selected character, visibility and resource-cap preference
+survive restart. Quitting releases sleep prevention without clearing the saved
+intent. Pending approvals are never restored or automatically accepted. The
+console always opens with Live Preview off; enabling it affects that tab only.
+
+## Guarded actions and private model input
+
+Portable `pwd`, `ls`/`dir`, `cat`/`type`, `mkdir`, `touch`, `cp` and single-file
+`rm`/`del` are implemented through guarded tools, not an unrestricted shell.
+Agents may read documents and create new analysis files. Updating or deleting a
+pre-existing/user-edited file needs a native **Approve once / Deny** bar showing
+its full path. An unchanged file created by Dock's analysis tools may be revised
+or removed automatically. Approval is bound to the unchanged file identity and
+expires after three minutes. Directory deletion, credential/startup writes,
+symlink mutations, arbitrary executables, and unscoped CUA clicking/typing/keys
+are disabled because they can bypass these protections. App opening, read-only
+observation and scrolling remain available.
+
+Model input passes through a local quantized BERT entity scanner and structured
+secret/PII filters, including memory and tool output. Opaque references are
+restored locally for subsequent tools. Scanner failure stops transmission.
+Entity detection is English-focused and heuristic; it is not a guarantee of
+complete anonymization for arbitrary text or every language. API authentication
+necessarily sends the configured credential to its provider in the authentication
+header, never in the model prompt. Local activity/tool details can contain private
+information and stay on this computer.
+
+Assistant data now lives in `<storage root>/voice`. Startup copies legacy `brain`
+data once and retains the old directory as a recovery backup; conflicting data
+is never overwritten. The console names this **Voice Assistant Memory & Storage**.
+Activity Tracker provides readable requests/responses, per-call profiles and
+agents, input/output tokens, retries, timing and expandable events. Live polling
+preserves expanded details; it can also be paused while inspecting a request.
+
+**AI Voice Assistant → Awake** lists every mini assistant, with search and an
+individual wake-by-name switch. All identities start enabled. Brain is the default
+and cannot be disabled individually. Disabling Rio prevents both keyword and
+fallback speech recognition from summoning Rio, including an automatic wake still
+being decoded. Manual selection/listening, current work and background delegation
+continue. Preferences persist after restart. The main microphone wake-listener
+switch remains a separate global privacy control.

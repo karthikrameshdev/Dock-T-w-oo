@@ -10,6 +10,9 @@ from tests.test_multi_brain import manager_at, inventory
 
 
 def test_parallel_cli_tasks_default_fallback_status_and_cleanup(qtbot, tmp_path, monkeypatch):
+    # Test process lifecycle with a local inert fixture, not a production CLI permission bypass.
+    from dock_twoo.brain.ecosystem.cli import CLIClient
+    monkeypatch.setattr(CLIClient,'command',lambda self:[self.config['executable'],*self.config['arguments']])
     manager = manager_at(tmp_path / 'app', inventory()[:1])
     manager.listener.start = lambda: None
     manager.store.set_setting('voice_reply', True)
@@ -24,6 +27,7 @@ name=next(m['content'] for m in payload['system_and_conversation'] if m['role']=
 (Path(sys.argv[1])/(name+'.json')).write_text(json.dumps({'workspace':str(workspace),'model':payload['model'],'pid':os.getpid()}))
 while not Path(sys.argv[2]).exists():time.sleep(.02)
 (workspace/'result.md').write_text('Verified local fixture for '+name)
+(Path(os.environ['HOME'])/'runtime-cache.txt').write_text('Private CLI state, not a deliverable')
 print(json.dumps({'text':'Completed '+name,'calls':[]}))
 ''')
     default = manager.profile_mgr.create_profile({'name': 'Default CLI', 'provider': 'custom_cli', 'model': 'fixture-model', 'executable': sys.executable, 'arguments': [str(script), str(runs), str(gate)]})
@@ -56,6 +60,7 @@ print(json.dumps({'text':'Completed '+name,'calls':[]}))
         assert all(not p.exists() for p in workspaces)
         assert len(list((manager.store.data_dir / 'documents').rglob('result.md'))) == 2
         assert not list((manager.store.data_dir / 'documents').rglob('task.json'))
+        assert not list((manager.store.data_dir / 'documents').rglob('runtime-cache.txt'))
         manager._on_speech_finished()
         assert len(spoken)==2 and spoken[-1][0]=='orbit'
         assert 'Completed rio-work' in manager.coordinator.describe_status('parrot')
@@ -87,7 +92,9 @@ def test_brain_status_reports_owned_downstream_progress_without_new_lease(qapp, 
 
 
 
-def test_stop_cancels_parallel_cli_processes_and_removes_workspaces(qtbot,tmp_path):
+def test_stop_cancels_parallel_cli_processes_and_removes_workspaces(qtbot,tmp_path,monkeypatch):
+    from dock_twoo.brain.ecosystem.cli import CLIClient
+    monkeypatch.setattr(CLIClient,'command',lambda self:[self.config['executable'],*self.config['arguments']])
     manager=manager_at(tmp_path/'app',inventory()[:1]);manager.listener.start=lambda:None
     manager.store.set_setting('voice_reply',False)
     marker=tmp_path/'started';marker.mkdir()

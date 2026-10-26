@@ -55,9 +55,11 @@ retrieval, job and memory context belong after the stable prompt prefix. Compact
 must not rewrite the stable system/tool prefix. Cache keys are scoped by profile,
 model, character, prompt version and credential identity, without storing secrets.
 
-CLI work is launched with argv and stdin, never generated shell command text. No
-permission-bypass flags are added. Temporary projects are working directories, not
-a promise of OS confinement; native CLI permission/sandbox policy still applies.
+The current guarded CLI transport is Claude Code with an explicit profile API
+key. Native tools, MCP, hooks and external settings are disabled; returned tool
+decisions go through Dock's approval layer. Other CLI adapters fail closed until
+they can enforce the same boundary. There is no generated shell execution.
+Temporary projects are working directories, not an OS sandbox.
 
 
 ## Verification and runtime boundaries
@@ -129,19 +131,19 @@ and clean process exit. Keep `pyproject.toml` and `requirements.txt` aligned whe
 updating Qt, and run that regression on Python 3.11 as well as newer Python.
 
 `ResourceKeeper` samples the Python process and all descendants using process CPU
-time deltas on macOS, Windows and Linux. The target is 20% of one core, matching
-Activity Monitor's process units, not 20% divided by the machine's core count.
+time deltas on macOS, Windows and Linux. The optional target is 25% of one core, matching Activity Monitor's process units.
+It is unchecked by default and does not cap task workers or RAM.
 The two-second GUI timer only applies bounded decisions; process sampling,
 completed-project cleanup and hourly trace pruning run in one background worker.
 No unbounded cleanup jobs accumulate when that worker is busy. Completed projects
 temporarily locked by a CLI or scanner retry after 30 seconds without holding the
 agent's work lease or deleting an active project's contents.
 
-Five quality levels reduce rendering/readback frequency. An idle assistant may
-freeze behind a snapshot of its own current 3D render; interacting resumes the
-same rig. Listening, speaking, dragging, cursor following and short explicitly
-requested animations take priority. Long-hidden pages are discarded after 45
-seconds. Speech, vision and semantic ONNX sessions use one intra-op inference
+With the cap enabled, five visual quality levels reduce render frequency while
+the idle skeleton remains fixed. Face overlays and headlight remain live,
+including lip sync during speech. No visible view is parked behind a snapshot.
+Without the cap, normal body animation and roaming run at up to 30 FPS.
+Long-hidden pages are discarded after 45 seconds. Speech, vision and semantic ONNX sessions use one intra-op inference
 thread. Streaming keyword detection runs on every microphone frame. Full Whisper
 fallback checks once per ambient utterance, including short utterances, rather
 than repeatedly transcribing overlapping background speech. When the keyword
@@ -196,3 +198,21 @@ RSS. The first post-launch sample averaged 23.07%, peaking at 1.58 GiB RSS. The
 previous crowded baseline was 282.4% CPU and 2.32 GiB RSS. These are observed local
 samples, not a cross-device guarantee or hard ceiling; speech/CLI work can exceed
 the target. Shared-memory pages may be counted in more than one process's RSS.
+
+## Current release verification
+
+`verify_assistant_responsiveness.py` drives generated Brain/Rio speech through
+production KWS, Silero VAD and Whisper ONNX, real HTTP to the Postman fixture,
+Notes dispatch and Kokoro synthesis. Native toasts and facial motion are observed
+while the resource cap is on; hardware microphone/speaker access is replaced only
+at the audio device boundary. This does not prove acoustic performance in a room.
+`verify_console_workspace.py` renders the real console and APIs and checks that
+job details retain both node identity and expanded state across live polls.
+`verify_privacy_transport.py` uses the real local NER model and rejects synthetic
+PII on the fixture's receiving HTTP boundary for chat and Anthropic formats.
+
+File mutation approval and redaction are enforced before transport/tool execution.
+Unscoped CUA mutation and unverified CLI adapters are disabled rather than being
+allowed to bypass these controls. See the README for exact capabilities and
+limitations. Installer and startup logic have simulated Linux/Windows tests;
+actual native device testing remains OS-specific.

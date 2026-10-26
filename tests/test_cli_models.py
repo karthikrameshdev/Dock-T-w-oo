@@ -16,6 +16,7 @@ def test_cli_profile_binding_and_real_subprocess_tool_roundtrip(tmp_path):
     assert saved['kind']=='cli' and saved['status']=='configured' and not saved['key_configured']
     profiles.bind_character('parrot',saved['id']);assert profiles.character_profile('parrot')['id']==saved['id']
     client=CLIClient(saved)
+    client.command=lambda:[sys.executable,"-c",code]
     try:
         assert client.workspace.is_dir()
         result=client.turn([{'role':'user','content':'No shell $() `code`'}],[],threading.Event())
@@ -29,6 +30,7 @@ def test_cli_profile_binding_and_real_subprocess_tool_roundtrip(tmp_path):
 
 def test_cli_stop_terminates_owned_process_promptly(tmp_path):
     client=CLIClient({'provider':'custom_cli','model':'fixture','executable':sys.executable,'arguments':['-c','import time; time.sleep(60)']})
+    client.command=lambda:[sys.executable,'-c','import time; time.sleep(60)']
     token=threading.Event();timer=threading.Timer(.3,token.set);timer.start();started=time.monotonic()
     try:
         with pytest.raises(InterruptedError):client.turn([{'role':'user','content':'Wait'}],[],token)
@@ -75,5 +77,6 @@ def test_cli_task_does_not_inherit_another_provider_credential(monkeypatch):
     monkeypatch.setenv('AGENT_MODEL_API_KEY','stale-model-key')
     code="import os,json;assert all(k not in os.environ for k in ('HF_TOKEN','OPENAI_API_KEY','AGENT_MODEL_API_KEY'));print(json.dumps({'text':'Isolated','calls':[]}))"
     client=CLIClient({'provider':'custom_cli','model':'fixture','executable':sys.executable,'arguments':['-c',code]})
+    client.command=lambda:[sys.executable,'-c',code]
     try:assert client.turn([{'role':'user','content':'Test'}],[]).text=='Isolated'
     finally:client.close()

@@ -456,6 +456,10 @@ class Companion(QWidget):
     def reduced_motion(self) -> bool:
         return bool(self.store.setting("reduced_motion", False))
 
+    @property
+    def resource_capped(self) -> bool:
+        return bool(self.store.setting('resource_cap_enabled', False))
+
     def set_activity(self, state: str) -> None:
         """Update robot state: idle, listening, thinking, speaking, error."""
         if QThread.currentThread() != self.thread():
@@ -509,6 +513,9 @@ class Companion(QWidget):
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.turn_to_side(facing, on_turned))
             return
+        if self.resource_capped:
+            if on_turned:on_turned()
+            return
         self.stop_motion()
         self.facing = facing
         self.turn_target = 1.0
@@ -534,6 +541,10 @@ class Companion(QWidget):
         if not self.isVisible():
             self.show()
         self.stop_motion()
+        if self.resource_capped:
+            self._yaw=self.turn_progress=self.turn_target=0.0
+            if on_turned:on_turned()
+            return
         self.gaze = None  # Direct eye contact with user
         self.turn_target = 0.0
         self.play_action("turn_around", duration=0.85)
@@ -566,6 +577,7 @@ class Companion(QWidget):
             return
         if action not in self.actions:
             return
+        if self.resource_capped:return
         if action == 'parachute' and not self._parachute_prepared:
             self._prepare_parachute(destination, duration, sequence)
             return
@@ -688,6 +700,9 @@ class Companion(QWidget):
         self.play_action(self.playlist[0], sequence=True)
 
     def _advance_motion(self) -> None:
+        if self.resource_capped:
+            self.stop_motion();self.motion_timer.stop()
+            return
         generation = self.motion_generation
         self._step_turn_progress()
         if generation != self.motion_generation:
@@ -753,7 +768,7 @@ class Companion(QWidget):
     def _animate_activity(self) -> None:
         if not self.isVisible():
             return
-        self._step_turn_progress()
+        if not self.resource_capped:self._step_turn_progress()
         self.phase = (self.phase + 1) % 24
         self._update_gaze(time.monotonic(), QCursor.pos())
         if self.blinking:
@@ -840,7 +855,7 @@ class Companion(QWidget):
         self._follow_last_tick = now
         if not self.follow_cursor_enabled or not self.isVisible():
             return
-        if self.reduced_motion or self.activity != "idle" or self.origin is not None:
+        if self.resource_capped or self.reduced_motion or self.activity != "idle" or self.origin is not None:
             if self._following_motion:
                 self.stop_motion()
             return
@@ -895,6 +910,7 @@ class Companion(QWidget):
             self.blink_timer.start(random.randint(2800, 5600))
 
     def _roam(self) -> None:
+        if self.resource_capped:return
         if getattr(self, 'resource_resting', False):return
         if time.monotonic() < getattr(self, 'social_until', 0):
             return
@@ -1100,7 +1116,7 @@ class Companion(QWidget):
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.walk_window_surface(target_type=target_type))
             return
-        if self.reduced_motion:
+        if self.resource_capped or self.reduced_motion:
             return
         from dock_twoo.brain.vision import get_primary_surface, get_text_box_surface
 
@@ -1229,6 +1245,7 @@ class Companion(QWidget):
         self.set_activity('idle')
 
     def _idle_gesture(self) -> None:
+        if self.resource_capped:return
         if time.monotonic() < getattr(self, 'social_until', 0):
             return
         if (
@@ -1306,5 +1323,5 @@ class Companion(QWidget):
         return super().event(event)
 
     def contextMenuEvent(self, event) -> None:
-        # Mini Agent should not have any right-click context menu
-        event.ignore()
+        self.manager.show_context_menu(event.globalPos(), self.actor_id)
+        event.accept()

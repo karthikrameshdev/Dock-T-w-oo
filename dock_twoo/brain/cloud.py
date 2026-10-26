@@ -53,8 +53,12 @@ class CloudClient:
         from dock_twoo.brain.ecosystem.models import validate_agent_model
         self.config=validate_agent_model(config,allow_test_endpoint=allow_test_endpoint)
         self.key=key.strip();self.timeout=timeout
+        from dock_twoo.brain.security.privacy import PrivacyFilter
+        self.privacy=PrivacyFilter([self.key])
 
     def payload(self, messages, tools):
+        messages=self.privacy.messages(messages)
+        tools=self.privacy.clean(tools,ner=False)
         maximum = max(128, min(16384, int(getattr(self, 'max_output_tokens', 4096))))
         if self.config['protocol'] == 'anthropic':
             payload = {'model':self.config['model'],'max_tokens':maximum,
@@ -122,6 +126,9 @@ class CloudClient:
                     result=ModelTurn(message,calls,message.get('content') or '',choice.get('finish_reason')=='length',usage)
             except (KeyError,IndexError,TypeError):
                 raise CloudError('The provider response did not match the selected API protocol.') from None
+            result.message=self.privacy.restore(result.message)
+            result.calls=self.privacy.restore(result.calls)
+            result.text=self.privacy.restore(result.text)
             status='success'
             return result
         except Exception as exc:

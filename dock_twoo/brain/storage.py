@@ -31,6 +31,7 @@ class BrainStore:
         return {
             "voice_reply": True,
             "reduced_motion": False,
+            "resource_cap_enabled": False,
             "roaming": False,
             "follow_cursor": False,
             "companion_visible": True,
@@ -45,6 +46,7 @@ class BrainStore:
             "voice_style": "Warm, natural and conversational, clear pacing.",
             "speech_rate": 1.0,
             "wake_word_enabled": True,
+            "character_awake": {},
             "wake_word": "Brain",
             "owner_first_name": "Karthik",
             "voice_enrolled": False,
@@ -133,6 +135,8 @@ class BrainStore:
 
     def set_setting(self, key: str, value: Any) -> None:
         with self.lock:
+            if key == 'character_awake':
+                self.validate_awake(value)
             self._settings[key] = value
             self._save_raw(self._settings)
 
@@ -143,8 +147,42 @@ class BrainStore:
     def get_all_settings(self) -> Dict[str, Any]:
         return self.get_all()
 
+    @staticmethod
+    def validate_awake(values):
+        from dock_twoo.brain.catalog import character
+        if not isinstance(values, dict):
+            raise ValueError('Character Awake settings must be an object.')
+        for identity, enabled in values.items():
+            character(identity)
+            if type(enabled) is not bool:
+                raise ValueError('Awake must be true or false.')
+            if identity == 'default' and not enabled:
+                raise ValueError('Brain is the default assistant and must remain Awake.')
+
+    def character_awake(self, identity):
+        if identity == 'default':
+            return True
+        with self.lock:
+            values = self._settings.get('character_awake', {})
+            return not isinstance(values, dict) or values.get(identity, True) is not False
+
+    def set_character_awake(self, identity, enabled):
+        self.validate_awake({identity: enabled})
+        with self.lock:
+            values = dict(self._settings.get('character_awake') or {})
+            values[identity] = enabled
+            self.set_setting('character_awake', values)
+
+    def awake_catalog(self):
+        from dock_twoo.brain.catalog import characters
+        return [{'id': c['id'], 'name': c['name'], 'species': c['species'],
+                 'enabled': self.character_awake(c['id']), 'locked': c['id'] == 'default'}
+                for c in characters()]
+
     def update_settings(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
+            if 'character_awake' in updates:
+                self.validate_awake(updates['character_awake'])
             self._settings.update(updates)
             self._save_raw(self._settings)
             return dict(self._settings)

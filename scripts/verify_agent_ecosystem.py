@@ -17,6 +17,7 @@ app=QApplication([]);app.setQuitOnLastWindowClosed(False)
 folder=tempfile.TemporaryDirectory(prefix='dock-ecosystem-verification-');root=Path(folder.name)
 store=BrainStore(root/'brain');store.update_settings({'voice_reply':False,'roaming':False,'wake_word_enabled':False})
 manager=BrainManager(store=store,start_services=False);manager.listener.start=lambda:None
+manager.set_resource_cap(True)
 screen=SimpleNamespace(availableGeometry=lambda:QRect(0,0,1440,900),geometry=lambda:QRect(0,0,1440,900))
 manager.configure_displays([{'id':'fixture-screen','screen':screen}])
 a=manager.profile_mgr.save_profile({'name':'Primary fixture','provider':'custom','model':'fixture','base_url':'https://fixture.example/v1','api_key':'fixture-key'})
@@ -49,7 +50,7 @@ def tick():
    events=manager.coordinator.snapshot()['events'];assert sum(e['kind']=='task_started' for e in events)==5
    assert len(manager.companions)==1 and manager.companion.character_id=='orbit'
    assert not manager.coordinator.workspaces
-   result.update(success=True,agents=4,jobs=5,concurrent_workers=peak,model_calls=18,reported_tokens=4880,documents=len(outputs),grpc_events=len(events),single_visible_character=True,workspaces_released=True,live_provider_calls=0)
+   result.update(success=True,agents=4,jobs=5,concurrent_workers=peak,model_calls=18,reported_tokens=4880,documents=len(outputs),grpc_events=len(events),single_visible_character=True,resource_cap_enabled=True,workspaces_released=True,live_provider_calls=0)
   except Exception as exc:result.update(success=False,error=repr(exc),agent=manager.agent.status())
   finish()
 def finish():

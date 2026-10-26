@@ -1,10 +1,12 @@
 """Brief, nonactivating orchestration updates; background agents have no views."""
 from collections import deque
-from PySide6.QtCore import QObject, QTimer, Qt
+from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
 
 class AgentNotifications(QObject):
+    requested = Signal(str)
+
     def __init__(self, manager):
         super().__init__(manager)
         self.manager = manager
@@ -14,6 +16,7 @@ class AgentNotifications(QObject):
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.clear)
+        self.requested.connect(self.show, Qt.ConnectionType.QueuedConnection)
 
     def task_started(self, parent_name, worker_name, prompt):
         self.show(f'{parent_name} assigned {worker_name}: {" ".join(prompt.split())[:140]}')
@@ -22,8 +25,12 @@ class AgentNotifications(QObject):
         status = 'finished' if state == 'complete' else state
         self.show(f'{worker_name} {status} its task for {parent_name}.')
 
+    @Slot(str)
     def show(self, text):
         if self.closed:return
+        if QThread.currentThread() != self.thread():
+            self.requested.emit(str(text))
+            return
         if self.card is None:
             self.card = QFrame()
             self.card.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
@@ -39,14 +46,19 @@ class AgentNotifications(QObject):
             self.label.setTextFormat(Qt.TextFormat.PlainText)
             self.label.setWordWrap(True)
             layout.addWidget(self.label)
-            self.card.setFixedWidth(430)
+        screen = self.manager.companion.assigned_screen or self.manager.companion.screen()
+        area = screen.availableGeometry()
+        self.card.setFixedWidth(min(430, max(180, area.width() - 32)))
         self.lines.append(str(text)[:240])
         self.label.setText('\n'.join(self.lines))
         self.card.adjustSize()
-        screen = self.manager.companion.assigned_screen or self.manager.companion.screen()
-        area = screen.availableGeometry()
         self.card.move(area.center().x() - self.card.width() // 2, area.top() + 18)
         self.card.show()
+        # Qt's Tool window alone does not join another app's fullscreen Space
+        # on macOS. Use the same native floating policy as the assistant.
+        from dock_twoo.brain.mascot import pin_native
+        pin_native(self.card)
+        self.card.raise_()
         self.timer.start(3000)
 
     def clear(self):

@@ -14,12 +14,12 @@ app=QCoreApplication([]);engine=get_local_tts();assert engine.load(allow_downloa
 listener=AudioListener(store=BrainStore());listener.enable_character_names()
 assert listener.wake_detector.load(allow_download=False),listener.wake_detector.error
 assert listener.models.recognizer.load(allow_download=False),listener.models.recognizer.error
+assert listener.endpoint_vad.load(allow_download=False),listener.endpoint_vad.error
 def transcribe(pcm):
  text=listener.models.recognizer.transcribe(pcm)
  if os.environ.get('NAMED_VOICE_TRACE'):print('ASR',repr(text),flush=True)
  return text
 listener._transcribe_pcm=transcribe
-listener._is_speech_frame=lambda pcm,*_:float(np.sqrt(np.mean(np.frombuffer(pcm,dtype='<i2').astype(float)**2)))>20
 found=[];listener.named_turn_completed.connect(lambda *args:found.append(args));report=[]
 for entry in [c for c in characters() if not sys.argv[1:] or c['name'] in sys.argv[1:]]:
  listener.arm_wake();listener.set_output_active(False);found.clear()

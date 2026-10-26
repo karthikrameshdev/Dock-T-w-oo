@@ -14,7 +14,7 @@ if (embedded) document.querySelector('#controls').style.display = 'none';
 else document.body.classList.add('preview');
 let bridge, model, mixer, player, current, clips = {}, bones = {}, mouth, mouthIndex, bulb, face, speech, flash, release, indicator;
 const mouthMeshes=[];
-let state = {online:embedded?null:true, listeningAuraAllowed:false, action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
+let state = {online:embedded?null:true, faceOnly:params.get('faceOnly')==='1', listeningAuraAllowed:false, action:'idle', yaw:0, progress:0, distance:0, blink:0, mouth:0, gazeX:0, gazeY:0, activity:'idle'};
 const scene = new THREE.Scene();
 const camera = new THREE.OrthographicCamera(-3.3,3.3,3.3,-3.3,.1,50);
 camera.position.set(0,2.45,10); camera.lookAt(0,2.45,0);
@@ -109,24 +109,27 @@ function frame(){
   requestAnimationFrame(frame);
   if(state.visible===false)return;
   const now=performance.now();if(now-lastRender<1000/(state.maxFps||60))return;lastRender=now;
-  clock.update();const dt=Math.min(clock.getDelta(),.05);previewTime+=dt;
+  // Keep authored animation speed at reduced FPS; a 50ms clamp slowed the
+  // character to a crawl when the resource budget reduced rendering frequency.
+  clock.update();const dt=Math.min(clock.getDelta(),.25);previewTime+=dt;
   if(!model)return;
   const activityClip={speaking:'talk',listening:'listen',thinking:'ponder',processing:'ponder',error:'sad'}[state.activity];
-  const automatic=['idle','listen'].includes(state.action) && clips[activityClip];
-  const name=automatic?activityClip:(clips[state.action]?state.action:'idle'), action=player.select(name);
-  current=action;
   face.beforeMixer();speech.beforeMixer();
-  player.update(state.reducedMotion?0:dt);
-  if(state.reducedMotion){action.time=0;mixer.update(0);}
+  const stationary=Boolean(state.faceOnly || state.reducedMotion);
+  player.setStationary(stationary);
+  const automatic=['idle','listen'].includes(state.action) && clips[activityClip];
+  const name=stationary?'idle':(automatic?activityClip:(clips[state.action]?state.action:'idle')), action=player.select(name);
+  current=action;
+  if(!stationary)player.update(dt);
   // Drive locomotion by distance travelled rather than the cursor's speed.
-  if(embedded && name!=='idle' && !automatic && !state.reducedMotion){
+  if(embedded && name!=='idle' && !automatic && !stationary){
     const duration=action.getClip().duration;
     const locomotion=['walk','walk_window','run','dash','chase_ball','explore','climb','climb_dock'].includes(name);
     const stride=['run','dash','chase_ball'].includes(name)?90:(['climb','climb_dock'].includes(name)?44:68);
     action.time=locomotion?((state.distance/stride)%1)*duration:Math.min(.999,state.progress)*duration;
     mixer.update(0);
   }
-  model.rotation.y=state.yaw*Math.PI/2;
+  model.rotation.y=state.faceOnly?0:state.yaw*Math.PI/2;
   const previewBlink = embedded ? state.blink : Math.max(0, 1-Math.abs((previewTime%4.2)-3.8)/.085);
   const previewGaze = embedded ? state.gazeX : Math.sin(previewTime*.7)*.25;
   face.afterMixer({...state, blink:previewBlink, gazeX:previewGaze});
@@ -143,6 +146,7 @@ function frame(){
   window.brainDiagnostics.cachedActions=mixer.stats.actions.total;
   window.brainDiagnostics.eyeScales = face.scales();
   window.brainDiagnostics.action = name;
+  window.brainDiagnostics.faceOnly=Boolean(state.faceOnly);
   window.brainDiagnostics.mouth = mouth?.morphTargetInfluences[mouthIndex] || 0;
   window.brainDiagnostics.actionTime = action.time;
   window.brainDiagnostics.speechMeshes=mouthMeshes.length;

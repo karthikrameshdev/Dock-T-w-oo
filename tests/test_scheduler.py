@@ -71,7 +71,9 @@ def test_tools_attach_addressed_character_without_cloud_call(qapp,tmp_path):
     row=tools.execute('create_reminder',{'title':'Meeting','when':future.isoformat()},cancel)
     assert row['character_id']=='fox'
     assert len(tools.execute('list_reminders',{},cancel)['reminders'])==1
-    assert tools.execute('delete_reminder',{'id':row['id']},cancel)['deleted']==row['id']
+    tools.guard.approve=lambda *args:False
+    with pytest.raises(PermissionError):tools.execute('delete_reminder',{'id':row['id']},cancel)
+    assert len(tools.execute('list_reminders',{},cancel)['reminders'])==1
     manager.shutdown()
 
 

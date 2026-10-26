@@ -158,7 +158,7 @@ def test_hidden_crash_retains_retry_until_next_show(qapp):
 
 def test_lost_mouse_release_recovers_without_triggering_listening(qapp,tmp_path,monkeypatch):
     manager=manager_at(tmp_path,inventory()[:1]);actor=manager.companion
-    router=manager.input_router;router.timer.stop();router.enabled=True
+    router=manager.input_router;router.close();router.enabled=True
     held=[True]
     monkeypatch.setitem(sys.modules,'AppKit',NS(NSEvent=NS(pressedMouseButtons=lambda:int(held[0]))))
     monkeypatch.setattr('dock_twoo.brain.mascot.mac_window',lambda _:(None,None))

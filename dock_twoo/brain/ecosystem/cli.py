@@ -16,21 +16,24 @@ from dock_twoo.brain.ecosystem.models import validate_agent_model
 class CLIClient:
     def __init__(self, config, key='', *, timeout=600):
         self.config=validate_agent_model(config);self.key=key;self.timeout=timeout
+        from dock_twoo.brain.security.privacy import PrivacyFilter
+        self.privacy=PrivacyFilter([key])
         self._folder=tempfile.TemporaryDirectory(prefix='dock-agent-')
         self.workspace=Path(self._folder.name);self.closed=False
 
     def payload(self,messages,tools):
+        messages=self.privacy.messages(messages)
         return {'model':self.config['model'],'protocol':'dock-agent-json-v1','system_and_conversation':messages,'tools':tools,
                 'response_contract':{'text':'User-facing answer, or empty while making tool calls','calls':[{'name':'tool name','arguments':{}}]},
-                'instructions':'Read the conversation and act on the final user request. Return one JSON object matching response_contract. Tool calls are executed by Dock. File artifacts may be created inside this working directory. Never claim an unverified action.'}
+                'instructions':'Read the conversation and act on the final user request. Return one JSON object matching response_contract. Tool calls are executed by Dock. Do not execute tools or read local files. Return Dock tool requests for execution by its permission layer. Never claim an unverified action.'}
 
     def command(self):
         c=self.config;provider=c['provider'];model=c['model'];exe=c['executable']
-        if provider=='gemini_cli':return [exe,'-p','Read the complete task JSON on stdin. Return the requested response_contract JSON.','--output-format','json','--model',model]
-        if provider=='claude_cli':return [exe,'-p','--output-format','json','--model',model,'--tools','']
-        if provider=='codex_cli':return [exe,'exec','--json','--model',model,'--skip-git-repo-check','--sandbox','workspace-write','--output-last-message',str(self.workspace/'last-message.txt'),'-']
-        if provider=='kilo_cli':return [exe,'run','Read task.json and return the response_contract JSON.','--file',str(self.workspace/'task.json'),'--format','json','--model',model]
-        return [exe,*[a.replace('{model}',model).replace('{workspace}',str(self.workspace)) for a in c.get('arguments',[])]]
+        if provider!='claude_cli':raise CloudError('This CLI adapter is disabled by the file/privacy guard: it cannot guarantee all reads and writes pass through Dock. Use an API/network profile or Claude CLI with an explicit API key.')
+        if not self.key:raise CloudError('Guarded Claude CLI requires a profile API key; home-directory authentication and configuration are not inherited.')
+        return [exe,'-p','--output-format','json','--model',model,'--tools','',
+                '--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--disable-slash-commands',
+                '--setting-sources','','--settings','{"disableAllHooks":true}','--no-session-persistence']
 
     @staticmethod
     def _terminate(process):
@@ -48,13 +51,17 @@ class CLIClient:
     def turn(self,messages,tools,cancel=None):
         cancel=cancel or threading.Event()
         if cancel.is_set():raise InterruptedError('Request stopped.')
+        command=self.command()
         payload=self.payload(messages,tools)
         (self.workspace/'task.json').write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
         tracker=getattr(self,'tracker',None)
         call_id=tracker.begin_call(self.run_id,self.config,payload,getattr(self,'step',1),getattr(self,'retry',False),self.key) if tracker else None
         started=time.monotonic();status='success';error='';reported={};process=None
         try:
-            environment=dict(os.environ)
+            environment={k:v for k,v in os.environ.items() if k in ('PATH','SYSTEMROOT','WINDIR','LANG','LC_ALL','TMP','TEMP')}
+            # Hidden runtime state is excluded from task artifacts and reports.
+            private_home=self.workspace/'.cli-home';private_home.mkdir(exist_ok=True)
+            environment.update(HOME=str(private_home),USERPROFILE=str(private_home),XDG_CONFIG_HOME=str(private_home/'config'),CLAUDE_CONFIG_DIR=str(private_home/'claude'))
             # Do not forward unrelated provider keys to a CLI task process.
             selected_keys={'gemini_cli':{'GEMINI_API_KEY','GOOGLE_API_KEY'},'codex_cli':{'OPENAI_API_KEY'},'claude_cli':{'ANTHROPIC_API_KEY','CLAUDE_CODE_OAUTH_TOKEN'},'kilo_cli':{'KILO_API_KEY'}}.get(self.config['provider'],set())
             for name in list(environment):
@@ -70,7 +77,7 @@ class CLIClient:
             if self.key and key_name:environment[key_name]=self.key
             environment['AGENT_MODEL_ID']=self.config['model']
             kwargs={'start_new_session':True} if os.name!='nt' else {'creationflags':subprocess.CREATE_NEW_PROCESS_GROUP}
-            process=subprocess.Popen(self.command(),cwd=self.workspace,env=environment,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,**kwargs)
+            process=subprocess.Popen(command,cwd=self.workspace,env=environment,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,**kwargs)
             buffers=[bytearray(),bytearray()];overflow=threading.Event()
             def read(pipe,buffer):
                 while True:
@@ -111,7 +118,7 @@ class CLIClient:
             if calls:message['tool_calls']=[{'id':c['id'],'type':'function','function':{'name':c['name'],'arguments':json.dumps(c['arguments'])}} for c in calls]
             artifacts=[str(p) for p in self.workspace.rglob('*') if p.is_file() and not p.is_symlink() and p.name not in ('last-message.txt','task.json') and not any(part.startswith('.') or part in ('node_modules','__pycache__') for part in p.relative_to(self.workspace).parts)][:100]
             if tracker and artifacts:tracker.event(self.run_id,'cli_artifacts',{'paths':artifacts})
-            return ModelTurn(message,calls,reply,usage=reported.get('usage',{}))
+            return ModelTurn(self.privacy.restore(message),self.privacy.restore(calls),self.privacy.restore(reply),usage=reported.get('usage',{}))
         except InterruptedError as exc:status='cancelled';error=str(exc);raise
         except Exception as exc:status='error';error=str(exc);raise
         finally:

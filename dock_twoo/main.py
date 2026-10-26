@@ -44,7 +44,24 @@ def main() -> int:
         help="Reset configuration to defaults",
     )
 
+    parser.add_argument('--install',action='store_true',help='Install this native bundle for the current user')
+    parser.add_argument('--no-autostart',action='store_true')
+    parser.add_argument('--no-start',action='store_true')
+    parser.add_argument('--verify-installation',action='store_true',help='Verify packaged runtime and assets without starting the dock')
     args = parser.parse_args()
+    if args.install:
+        if not getattr(sys,'frozen',False):parser.error('Use install.sh or install.ps1 from a source checkout.')
+        from dock_twoo.installation import install_bundle
+        source=Path(sys.executable).parent
+        if sys.platform=='darwin':source=source.parent.parent
+        install_bundle(source,autostart=not args.no_autostart,start=not args.no_start)
+        return 0
+    if args.verify_installation:
+        import grpc,onnxruntime,sherpa_onnx,kokoro_onnx,sounddevice
+        from dock_twoo.brain.catalog import characters
+        import json
+        print(json.dumps({'characters':len(characters()),'runtime':'ready','frozen':bool(getattr(sys,'frozen',False))}),flush=True)
+        return 0
 
     # Enable high-DPI scaling
     QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -81,8 +98,14 @@ def main() -> int:
     if args.theme:
         config_mgr.update({"theme_mode": args.theme})
 
+    from dock_twoo.storage_migration import migrate_voice_storage
+    migrate_voice_storage(config_mgr.config.get_storage_path())
+
     from dock_twoo.brain import get_brain_manager
     brain=get_brain_manager()
+    from dock_twoo.keep_awake import get_keep_awake
+    try:get_keep_awake().bind(config_mgr)
+    except Exception as exc:brain.notifications.show('Could not restore Keep Live: '+str(exc))
     app.aboutToQuit.connect(brain.shutdown)
     app.aboutToQuit.connect(lambda:print("[Dock T(w)oo] Clean application shutdown",flush=True))
 
@@ -108,6 +131,7 @@ def main() -> int:
 
     # Clean termination on SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, lambda *args: app.quit())
+    signal.signal(signal.SIGTERM, lambda *args: app.quit())
 
     try:
         ret = app.exec()

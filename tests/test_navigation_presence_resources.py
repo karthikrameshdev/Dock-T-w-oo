@@ -54,24 +54,47 @@ def test_temporary_file_lock_does_not_leave_completed_worker_busy(qapp,tmp_path,
     manager.shutdown()
 
 
-def test_budget_resumes_roaming_and_prioritizes_the_listener(qapp,tmp_path,monkeypatch):
-    from PySide6.QtGui import QCursor
+def test_budget_never_freezes_the_visible_assistant(qapp,tmp_path):
     manager=manager_at(tmp_path,inventory()[1:2]);actor=manager.companion
     # No GPU is needed to check the timer lifecycle; native soak checks pixels.
     class View:
         ready=True;parked=False
         def set_parked(self,value):self.parked=value
     actor.model_view=View()
-    monkeypatch.setattr(QCursor,'pos',lambda:QPoint(-5000,-5000))
     try:
-        manager.resources.level=4;manager.resources._budget()
-        assert actor.resource_resting and not actor.roam_timer.isActive()
-        manager.resources.level=0;manager.resources._budget()
-        assert not actor.resource_resting and actor.roam_timer.isActive()
-        actor.activity='listening';manager.resources.level=4;manager.resources._budget()
-        assert not actor.resource_resting and not actor.model_view.parked
+        assert manager.resources.stats['target_cpu_percent'] is None
+        for state in ('idle','listening','processing','thinking','queued','speaking'):
+            actor.activity=state;manager.resources.level=4;manager.resources._budget()
+            assert not actor.resource_resting and not actor.model_view.parked
+            assert actor.activity_timer.isActive() and actor.roam_timer.isActive()
+            assert actor.render_fps >= (10 if state=='idle' else 18)
     finally:
         actor.model_view=None;manager.shutdown()
+
+
+def test_optional_cap_stops_only_body_motion_and_survives_restart(qapp,tmp_path):
+    from dock_twoo.brain.storage import BrainStore
+    manager=manager_at(tmp_path,inventory()[1:2]);actor=manager.companion
+    try:
+        menu=manager._build_context_menu()
+        cap=next(a for a in menu.actions() if a.text()=='Cap resource to 25%')
+        assert cap.isCheckable() and not cap.isChecked()
+        actor.play_action('walk',actor.pos()+QPoint(100,0))
+        assert actor.action=='walk'
+        cap.setChecked(True)
+        assert actor.resource_capped and not actor.motion_timer.isActive() and actor.action is None
+        position=actor.pos()
+        actor.play_action('wave');actor._roam();actor.turn_to_side()
+        actor._follow_cursor_step(position+QPoint(150,100),.1)
+        assert actor.pos()==position and actor.action is None and actor._yaw==0
+        actor.set_activity('speaking');actor.set_mouth(.9);actor._blink();actor._animate_activity()
+        assert actor.mouth_level>0 and actor.blinking and actor.activity_timer.isActive()
+        assert BrainStore(tmp_path).setting('resource_cap_enabled') is True
+        cap.setChecked(False)
+        actor.play_action('wave');assert actor.action=='wave'
+        assert manager.resources.stats['target_cpu_percent'] is None
+        assert BrainStore(tmp_path).setting('resource_cap_enabled') is False
+    finally:manager.shutdown()
 
 def test_housekeeper_and_background_leases_never_create_character_windows(qapp,tmp_path):
     import threading

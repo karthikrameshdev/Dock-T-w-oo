@@ -27,6 +27,9 @@ TOOLS=[
  tool('read_file','Read local text, PDF, DOCX or HTML. Continue at next_offset until done; image bytes are never sent to cloud.',{'path':S,'offset':I},['path']),
  tool('write_file','Create a new UTF-8 document. Existing files are never overwritten.',{'path':S,'text':S},['path','text']),
  tool('assemble_document','Create a new Markdown/text report by combining verified local section files in order, with an optional introduction. Use for large delegated reports instead of resending every section to the model.',{'path':S,'sections':{'type':'array','items':S,'minItems':1,'maxItems':30},'introduction':S},['path','sections']),
+ tool('run_command','Run guarded portable commands: pwd, ls/dir, cat/type, mkdir [-p], touch, cp, rm/del. Supply argv, never a shell string. Unsupported programs fail closed.',{'argv':{'type':'array','items':S,'minItems':1,'maxItems':50},'cwd':S},['argv']),
+ tool('update_file','Replace file contents. Existing user files require a one-time exact-path approval; unchanged agent-created analysis files can be edited automatically.',{'path':S,'text':S},['path','text']),
+ tool('delete_file','Delete a single regular file. User files require native approval. Never retry a denied request.',{'path':S},['path']),
  tool('open_app','Open an installed app. For open-and-type requests supply text in this same call; supported editors get a new scratch document.',{'name':S,'text':S},['name']),
  tool('open_url','Open a user-requested HTTPS web page in the browser.',{'url':S},['url']),
  tool('observe_desktop','Get a fresh text accessibility tree with control ids; no screenshot is uploaded.'),
@@ -61,7 +64,12 @@ DELEGATE_TOOL=tool('delegate_tasks','Delegate independent subtasks to available 
 
 def tools_for(character_id):
     import copy
-    tools = copy.deepcopy(TOOLS)
+    # Do not advertise operations the file-approval boundary cannot enforce.
+    tools = copy.deepcopy([t for t in TOOLS if t['function']['name'] not in {'click','type_text','press_key','drag'}])
+    for entry in tools:
+        if entry['function']['name']=='open_app':
+            entry['function']['description']='Open an installed application. To create text, use write_file for a new analysis document; automatic typing into another application is unavailable.'
+            entry['function']['parameters']['properties'].pop('text',None)
     delegation = copy.deepcopy(DELEGATE_TOOL)
     delegation['function']['parameters']['properties']['tasks']['items']['properties']['character_id']['enum'] = [c['id'] for c in characters() if c['id'] != character_id]
     tools.append(delegation)
@@ -97,6 +105,18 @@ class LocalTools:
     def __init__(self,manager=None,driver=None):
         from dock_twoo.brain.desktop_driver import DesktopDriver
         self.manager=manager;self.driver=driver or DesktopDriver()
+        from dock_twoo.brain.security.files import FileGuard
+        self.guard=getattr(manager,'file_guard',None) or FileGuard()
+
+    def mutation_path(self,value):
+        path=Path(value).expanduser()
+        workspace=getattr(self.manager,'workspace',None)
+        if not path.is_absolute() and workspace is not None:path=Path(workspace)/path
+        self.guard.path(path)
+        data=getattr(getattr(self.manager,'store',None),'data_dir',None)
+        if data and path.resolve().is_relative_to(Path(data).resolve()) and not path.resolve().is_relative_to(Path(data).resolve()/'documents'):
+            raise PermissionError('Agent writes to application state are disabled. Use the dedicated application tools.')
+        return allowed_file(str(path))
 
     def file_path(self, value):
         path=Path(value).expanduser()
@@ -146,6 +166,12 @@ class LocalTools:
             from dock_twoo.brain.ecosystem.coordinator import DESKTOP_TOOLS
             if name in DESKTOP_TOOLS:self.manager.acquire_desktop()
             if name=='read_aloud' and not self.manager.foreground:raise ValueError('Background workers return results to their parent; spoken output belongs to the addressed foreground agent.')
+        if name in ('click','type_text','press_key','drag'):
+            raise PermissionError('Unscoped desktop changes are disabled: they could edit, save, delete or submit a user document without an exact-path approval. Use guarded file tools instead.')
+        if name=='run_command':
+            return self.guard.command(args['argv'],self.file_path(args.get('cwd') or str(getattr(self.manager,'workspace',None) or Path.cwd())),cancel,self.execute)
+        if name in ('update_file','delete_file'):
+            return self.guard.change(self.mutation_path(args['path']),'update' if name=='update_file' else 'delete',cancel,args.get('text'))
         if name in ('web_search','read_webpage'):
             from dock_twoo.brain.ecosystem.web import PublicWeb
             web=getattr(self,'web_client',None) or getattr(self.manager,'research_client',None) or PublicWeb()
@@ -203,7 +229,7 @@ class LocalTools:
             offset=max(0,args.get('offset',0));end=offset+16000
             return {'path':str(path),'text':text[offset:end],'total_characters':len(text),'next_offset':end if end<len(text) else None,'untrusted_content':True}
         if name=='assemble_document':
-            output=self.file_path(args['path'])
+            output=self.mutation_path(args['path'])
             if output.suffix.lower() not in ('.md','.txt'):raise ValueError('Use a Markdown or text output document.')
             parts=[args.get('introduction','').strip()];size=0;sections=[]
             for value in args['sections']:
@@ -215,13 +241,24 @@ class LocalTools:
                 if size>5_000_000:raise ValueError('The combined report exceeds the 5 MB document limit.')
                 parts.append(path.read_text(encoding='utf-8'));sections.append(str(path))
             text='\n\n'.join(part for part in parts if part)+'\n'
-            output.parent.mkdir(parents=True,exist_ok=True)
-            with output.open('x',encoding='utf-8') as target:target.write(text)
-            return {'created':str(output),'sections':sections,'verified':output.read_text(encoding='utf-8')==text}
+            return {**self.guard.create(output,text),'sections':sections}
         if name=='write_file':
-            path=self.file_path(args['path']);path.parent.mkdir(parents=True,exist_ok=True)
-            with path.open('x',encoding='utf-8') as target:target.write(args['text'])
-            return {'created':str(path),'verified':path.read_text()==args['text']}
+            return self.guard.create(self.mutation_path(args['path']),args['text'])
+        if name in ('update_task','delete_reminder','set_reminder_enabled'):
+            if name=='update_task':
+                from dock_twoo.tasks import TaskStore
+                store=TaskStore(self.manager.store.data_dir.parent/'tasks')
+                item=store.get(args['id'])
+            else:
+                store=self.manager.reminders.store
+                item=next((r for r in store.list() if r['id']==args['id']),None)
+                if item is None:raise ValueError('The reminder was not found.')
+            path=store.path.resolve();before=self.guard.fingerprint(path)
+            summary=f"{name.replace('_',' ').capitalize()}: {item.get('title','')} (record {args['id']})."
+            if not self.guard.approve or not self.guard.approve('delete record' if name=='delete_reminder' else 'update record',str(path),summary,cancel):
+                raise PermissionError('Record change denied or expired. Do not retry.')
+            if cancel.is_set():raise InterruptedError('Record change stopped.')
+            if self.guard.fingerprint(path)!=before:raise PermissionError('Records changed while awaiting approval. Request approval again.')
         if name in ('create_reminder','list_reminders','delete_reminder','set_reminder_enabled'):
             if self.manager is None:raise RuntimeError('Dock must be running to manage reminders.')
             store=self.manager.reminders.store
@@ -262,6 +299,8 @@ class LocalTools:
                 import platform
                 if platform.system()!='Windows':raise RuntimeError('Windows Settings is available on a Windows computer. This computer runs '+platform.system()+'.')
                 os.startfile('ms-settings:');return {'opened':'Windows Settings'}
+            if args.get('text'):
+                raise PermissionError('Automatic typing into another application cannot guarantee a new document. Create a new analysis document with write_file instead, then open it yourself.')
             from dock_twoo.brain.computer_actions import run_desktop_request
             result=run_desktop_request(args['name'],args.get('text'))
             if not result:raise RuntimeError(result.message)
@@ -301,6 +340,8 @@ class LocalTools:
                 return {'started_reading':args['source']}
             if hasattr(self.manager,'foreground') and (not self.manager.foreground or self.manager.base.companion.character_id != self.manager.identity):
                 return {'animation_suppressed':True,'reason':'Background workers return their results without taking foreground UI control.'}
+            if self.manager.store.setting('resource_cap_enabled',False):
+                return {'animation_suppressed':True,'reason':'Cap resource to 25% is enabled. Body motion is paused; voice and tasks remain active.'}
             action=args['action']
             from dock_twoo.brain.animation import ACTIONS
             if action=='follow_cursor':

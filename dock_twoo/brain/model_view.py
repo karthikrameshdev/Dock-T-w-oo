@@ -227,7 +227,8 @@ class CharacterView(QWebEngineView):
         self._sync_pending = False
         self.attempts += 1
         port = ConfigManager().config.server_port
-        self.load(QUrl(f'http://127.0.0.1:{port}/brain3d/index.html?embedded&character={self.companion.character_id}'))
+        face_only = int(bool(getattr(self.companion, 'resource_capped', False)))
+        self.load(QUrl(f'http://127.0.0.1:{port}/brain3d/index.html?embedded&character={self.companion.character_id}&faceOnly={face_only}'))
         attempt = self.attempts
         QTimer.singleShot(12000, self, lambda: self._check_ready(attempt))
 
@@ -255,6 +256,7 @@ class CharacterView(QWebEngineView):
         self._healthy_since = time.monotonic()
         self.error = ''
         if self.companion.isVisible():
+            self._sync()
             self.show_visual()
         else:
             # It may have been hidden while its assets were still loading.
@@ -313,7 +315,7 @@ class CharacterView(QWebEngineView):
         budget['pixelRatio'] = 1
         self.timer.setInterval(round(1000/budget['maxFps']))
         progress = min(1, max(0, (time.monotonic() - c.motion_started) / max(.01, c.motion_duration)))
-        state = dict(**budget, visible=True, online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
+        state = dict(**budget, visible=True, faceOnly=getattr(c,'resource_capped',False), online=self.connectivity.online, listeningAuraAllowed=listening_aura_allowed(c), reducedMotion=c.reduced_motion, action=c.action or 'idle', yaw=c._yaw, progress=progress,
                      distance=c.gait_distance, blink=c.blink_amount,
                      mouth=c.mouth_level if c.activity == 'speaking' else 0,
                      gazeX=max(-1, min(1, c._gaze_offset.x() / .018)),

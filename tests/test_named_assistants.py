@@ -113,3 +113,83 @@ def test_delayed_reply_gesture_does_not_follow_character_switch(qtbot,tmp_path):
     qtbot.wait(220)
     assert manager.companion.character_id=='owl' and manager.companion.action is None
     manager.shutdown()
+
+
+def test_rejected_wake_releases_processing_state_and_explains_retry(qtbot,tmp_path,monkeypatch):
+    manager=manager_at(tmp_path,inventory()[:1]);listener=manager.listener
+    monkeypatch.setattr(listener,'_transcribe_pcm',lambda _: 'unrelated background sound')
+    try:
+        listener._begin_wake_capture([b'\x64\x00'*1600],'parrot')
+        token=(listener._capture_generation,listener._capture_revision)
+        listener._decode_token=token
+        listener._complete_keyword_wake([b'\x64\x00'*1600],*token)
+        qtbot.waitUntil(lambda:manager._listening_actor_id is None)
+        assert manager.companion.activity=='idle'
+        assert listener._wake_armed and not listener.is_recording
+        assert not manager._processing_turns and not manager._turn_queue
+        assert any('confirm the assistant name' in line for line in manager.notifications.lines)
+        listener.start_recording()
+        assert not listener.last_error and not manager.audio_listener_error
+    finally:manager.shutdown()
+
+
+def test_awake_preference_blocks_kws_fallback_and_inflight_names_but_not_manual(qapp,tmp_path,monkeypatch):
+    manager=manager_at(tmp_path,inventory()[:1]);listener=manager.listener
+    try:
+        manager.listener.start=lambda:None
+        store=manager.store
+        assert all(entry['enabled'] for entry in store.awake_catalog())
+        store.set_character_awake('parrot',False)
+        wakes=[];turns=[]
+        listener.named_wake_started.connect(wakes.append)
+        listener.named_turn_completed.connect(lambda *args:turns.append(args))
+        listener._begin_wake_capture([], 'parrot')
+        assert not listener.is_recording and not wakes and manager.companion.character_id=='default'
+        monkeypatch.setattr(listener,'_transcribe_pcm',lambda _: 'Hey Rio, open my notes')
+        listener._check_wake_word([b'\0'*16000])
+        assert not listener.is_recording and not wakes
+        listener._wake_capture=True;listener.capture_character_id='parrot'
+        listener._emit_statement('Hey Rio, open my notes')
+        assert not turns
+        assert len(manager.companions)==1
+        # Manual selection/listening remains available, and no worker is stopped.
+        actor=manager.select_character('parrot');listener.start_recording()
+        listener.capture_character_id='parrot';listener._emit_statement('Hello Rio')
+        assert actor.character_id=='parrot' and turns[-1][0]=='parrot'
+        listener.cancel_recording();listener.arm_wake()
+        listener._begin_wake_capture([], 'default')
+        assert wakes[-1]=='default' and listener.is_recording
+        with pytest.raises(ValueError):store.set_character_awake('default',False)
+        assert store.character_awake('default')
+        from dock_twoo.brain.storage import BrainStore
+        assert not BrainStore(tmp_path).character_awake('parrot')
+        store.set_character_awake('parrot',True);listener._begin_wake_capture([], 'parrot')
+        assert wakes[-1]=='parrot'
+    finally:manager.shutdown()
+
+
+def test_disabling_awake_during_asr_drops_pending_auto_wake(qapp,tmp_path,monkeypatch):
+    manager=manager_at(tmp_path,inventory()[:1]);listener=manager.listener;manager.listener.start=lambda:None
+    try:
+        listener._begin_wake_capture([], 'parrot')
+        generation,revision=listener._capture_generation,listener._capture_revision
+        listener._decode_token=(generation,revision)
+        manager.store.set_character_awake('parrot',False)
+        monkeypatch.setattr(listener,'_transcribe_pcm',lambda _:'Hey Rio, open my notes')
+        turns=[];listener.named_turn_completed.connect(lambda *args:turns.append(args))
+        listener._complete_keyword_wake([b'\0'*16000],generation,revision)
+        assert not turns and not listener.is_recording and listener._decode_token is None
+        assert listener.last_wake_decision=='character-awake-disabled'
+    finally:manager.shutdown()
+
+
+def test_session_restart_preserves_selected_character_hidden_state_and_cap(qapp,tmp_path):
+    entries=inventory()[:1];manager=manager_at(tmp_path,entries);manager.listener.start=lambda:None
+    manager.select_character('parrot');manager.set_resource_cap(True);manager.hide_mini_agent();manager.shutdown()
+    restarted=manager_at(tmp_path,entries)
+    try:
+        assert restarted.companion.character_id=='parrot'
+        assert not restarted.is_mini_agent_visible()
+        assert restarted.store.setting('resource_cap_enabled') is True
+        assert not restarted._processing_turns and not restarted._turn_queue
+    finally:restarted.shutdown()

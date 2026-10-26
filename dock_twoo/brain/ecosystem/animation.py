@@ -17,7 +17,7 @@ class EcologyDirector(QObject):
 
     def tick(self):
         model=self.manager.semantic_model
-        if self.closed or not model.ready or not self.manager.store.setting('roaming',True):return
+        if self.closed or self.manager.store.setting('resource_cap_enabled',False) or not model.ready or not self.manager.store.setting('roaming',True):return
         now=time.monotonic()
         if now>self.next_sound:
             self.next_sound=now+random.uniform(18,40)
@@ -54,7 +54,7 @@ class EcologyDirector(QObject):
         self.next[identity]=time.monotonic()+random.uniform(2,7)
         try:action=future.result()
         except Exception:return
-        if getattr(actor,'resource_resting',False):return
+        if getattr(actor,'resource_resting',False) or actor.resource_capped:return
         if actor.activity!='idle' or actor.action or actor.on_turn_finished or actor.origin or actor.reduced_motion or not actor.isVisible() or not self.manager.store.setting('roaming',True):return
         self.recent[identity]=[*self.recent.get(identity,[]),action][-5:]
         if action in LOCOMOTION and actor.assigned_screen:

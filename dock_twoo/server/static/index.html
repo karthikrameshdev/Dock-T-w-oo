@@ -76,7 +76,7 @@
     </header>
 
     <!-- Multi-Page Workspace Grid -->
-    <main class="console-body" id="consoleBody">
+    <main class="console-body hide-preview" id="consoleBody">
 
       <!-- Left Navigation Sidebar -->
       <aside class="console-sidebar">
@@ -160,6 +160,11 @@
             <p>Configure screen edge anchoring, dock width, height modes, and screen positioning</p>
           </div>
 
+          <div class="settings-card">
+            <h3 class="card-subheading">Startup</h3>
+            <label class="toggle-row"><span>Start on system boot</span><input type="checkbox" id="startOnBoot"></label>
+            <p class="field-desc">Launch Dock automatically after you sign in. Restores Keep Live and your last selected assistant's visibility. Closing the console keeps Dock running; use Quit in the tray menu to stop it.</p>
+          </div>
           <div class="settings-card">
             <div class="form-group">
               <label for="displayMode">Show Dock on</label>
@@ -480,20 +485,31 @@
           <div class="brain-tab-bar">
             <button type="button" class="brain-tab-btn active" data-tab="brain-tab-voice">
               <span class="tab-icon">🎙️</span>
-              <span>Voice & Wake Word</span>
+              <span>Voice</span>
             </button>
+            <button type="button" class="brain-tab-btn" data-tab="brain-tab-awake"><span class="tab-icon">◉</span><span>Awake</span></button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-profiles">
               <span class="tab-icon">🧠</span>
               <span>Agent Models</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-motions">
               <span class="tab-icon">🤖</span>
-              <span>Robot Companion & Motions</span>
+              <span>Mini Assistant &amp; Motions</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-actions">
               <span class="tab-icon">⚡</span>
               <span>Native Actions & Vault</span>
             </button>
+          </div>
+
+          <div class="brain-tab-panel" id="brain-tab-awake">
+            <div class="settings-card" id="assistantAwakeSettings">
+              <h3>Mini assistant Awake settings</h3>
+              <p class="field-desc">Choose which names can wake an assistant. All start on. Brain stays on as the default assistant. Turning Awake off does not stop background tasks, delegation or manual selection. The microphone's main wake-listener switch still controls hands-free listening globally.</p>
+              <input type="search" id="assistantAwakeSearch" class="text-input" placeholder="Find an assistant…" aria-label="Find an assistant in Awake settings">
+              <p id="assistantAwakeStatus" class="field-desc" role="status">Loading assistants…</p>
+              <div id="assistantAwakeList" class="assistant-awake-list"></div>
+            </div>
           </div>
 
           <!-- Tab 1: Voice & Wake Word -->
@@ -628,13 +644,13 @@
               <form id="brainCloudForm">
                 <div class="form-group"><label for="brainCloudName">Profile name</label><input id="brainCloudName" class="text-input" maxlength="80" placeholder="For example, Everyday or Research" required></div>
                 <div class="form-row">
-                  <div class="form-group flex-1"><label for="brainCloudProvider">Provider</label><select id="brainCloudProvider" class="select-input"><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="deepseek">DeepSeek</option><option value="xai">xAI</option><option value="huggingface">Hugging Face</option><option value="custom">Custom API provider</option><option value="ollama">Ollama server</option><option value="network">Network model server</option><option value="gemini_cli">Gemini CLI</option><option value="codex_cli">Codex CLI</option><option value="claude_cli">Claude Code CLI</option><option value="kilo_cli">Kilo CLI</option><option value="custom_cli">Other CLI</option></select></div>
+                  <div class="form-group flex-1"><label for="brainCloudProvider">Provider</label><select id="brainCloudProvider" class="select-input"><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic Claude</option><option value="deepseek">DeepSeek</option><option value="xai">xAI</option><option value="huggingface">Hugging Face</option><option value="custom">Custom API provider</option><option value="ollama">Ollama server</option><option value="network">Network model server</option><option value="gemini_cli" disabled>Gemini CLI · guarded adapter unavailable</option><option value="codex_cli" disabled>Codex CLI · guarded adapter unavailable</option><option value="claude_cli">Claude Code CLI</option><option value="kilo_cli" disabled>Kilo CLI · guarded adapter unavailable</option><option value="custom_cli" disabled>Other CLI · guarded adapter unavailable</option></select></div>
                   <div class="form-group flex-1"><label for="brainCloudProtocol">API format</label><select id="brainCloudProtocol" class="select-input"><option value="openai">OpenAI compatible</option><option value="anthropic">Anthropic Messages</option></select></div>
                 </div>
                 <div class="form-group"><label for="brainCloudUrl">Provider base URL</label><input id="brainCloudUrl" type="url" class="text-input" placeholder="https://provider.example/v1" required></div>
                 <div id="agentCliFields" hidden>
                   <div class="form-group"><label for="agentCliExecutable">CLI executable</label><input id="agentCliExecutable" class="text-input" placeholder="Executable name or full path"></div>
-                  <div class="form-group"><label for="agentCliArguments">Custom CLI arguments (JSON array)</label><input id="agentCliArguments" class="text-input" value="[]"><p class="field-desc">For Other CLI only. The task is passed on stdin; return the documented JSON result. No shell is launched. Custom CLIs receive the selected model in AGENT_MODEL_ID and the saved key in AGENT_MODEL_API_KEY. Use {model} or {workspace} in argument values when needed.</p></div>
+                  <div class="form-group"><label for="agentCliArguments">Custom CLI arguments (JSON array)</label><input id="agentCliArguments" class="text-input" value="[]"><p class="field-desc">Only Claude Code currently has a guarded CLI adapter. It requires a saved API key and runs with native tools, hooks and external configuration disabled. Other CLI adapters remain unavailable until they can enforce file approvals and outbound redaction. API and network profiles remain available.</p></div>
                 </div>
                 <div class="form-group"><label for="agentCacheMode">Provider prefix caching</label><select id="agentCacheMode" class="select-input"><option value="auto">Automatic · native support where available</option><option value="off">Local templates only</option></select></div>
                 <div class="form-group"><label for="brainCloudModel">Model ID</label><input id="brainCloudModel" class="text-input" placeholder="Enter the provider's tool-capable model ID" required></div>
@@ -645,7 +661,7 @@
             </div>
             <div class="settings-card" id="agentCharacterSettings">
               <h3>Characters &amp; model assignments</h3>
-              <p class="field-desc">One logical agent per character, with one task at a time. Displayed copies share its task state.</p>
+              <p class="field-desc">One logical agent per character, with one task at a time. Only the selected character is displayed; peers work in the background.</p>
               <div class="form-row"><div class="form-group flex-1"><label for="agentCharacter">Character</label><select id="agentCharacter" class="select-input"></select></div><div class="form-group flex-1"><label for="agentCharacterProfile">Agent model</label><select id="agentCharacterProfile" class="select-input"></select></div></div>
               <p id="agentCharacterRole" class="field-desc"></p>
               <div class="form-row"><div class="form-group flex-1"><label for="agentCharacterVoice">Local voice</label><select id="agentCharacterVoice" class="select-input"></select></div><div class="form-group flex-1"><label for="agentCharacterSpeed">Pace</label><input id="agentCharacterSpeed" class="text-input" type="number" min="0.75" max="1.4" step="0.01"></div><div class="form-group flex-1"><label for="agentCharacterPitch">Pitch</label><input id="agentCharacterPitch" class="text-input" type="number" min="0.85" max="1.2" step="0.01"></div></div>
@@ -787,13 +803,13 @@
 
             <!-- Model Storage & Memory Vault -->
             <div class="settings-card">
-              <h3 class="card-subheading">Brain Memory & Storage</h3>
+              <h3 class="card-subheading">Voice Assistant Memory & Storage</h3>
               <p class="field-desc">Local encrypted memory vault and retention management</p>
 
               <div class="info-box">
                 <div class="info-box-icon">🧠</div>
                 <div class="info-box-content">
-                  <strong>Brain Vault Location:</strong> <code>~/.dock_twoo/brain/</code>
+                  <strong>Voice Assistant Vault Location:</strong> <code><span id="voiceVaultLocation">~/.dock2/voice/</span></code>
                   <p>Voice preferences, model profiles, conversation memory, and encryption keys are stored locally on your machine.</p>
                 </div>
               </div>
@@ -975,17 +991,17 @@
                 <div class="storage-card-path" id="storageModelsPath">~/.dock2/models</div>
                 <div class="storage-card-stats">
                   <span>Size: <strong id="storageModelsSize">0.0 MB</strong></span>
-                  <span>Local LLMs & Weights</span>
+                  <span>Local speech, privacy & animation models</span>
                 </div>
               </div>
 
               <!-- Brain -->
               <div class="storage-subsystem-card">
                 <div class="storage-card-header">
-                  <span class="storage-card-title">🧠 Brain Assistant</span>
+                  <span class="storage-card-title">Voice Assistant</span>
                   <span class="badge" id="storageBrainCount">0 files</span>
                 </div>
-                <div class="storage-card-path" id="storageBrainPath">~/.dock2/brain</div>
+                <div class="storage-card-path" id="storageBrainPath">~/.dock2/voice</div>
                 <div class="storage-card-stats">
                   <span>Size: <strong id="storageBrainSize">0.0 MB</strong></span>
                   <span>Memory, Settings & Profiles</span>
@@ -1123,5 +1139,6 @@
   <script src="activity.js"></script>
   <script src="app.js"></script>
 <script src="/ecosystem.js"></script>
+  <script src="/awake.js"></script>
 </body>
 </html>
