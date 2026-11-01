@@ -58,6 +58,9 @@ def main() -> int:
         return 0
     if args.verify_installation:
         import grpc,onnxruntime,sherpa_onnx,kokoro_onnx,sounddevice
+        if sys.platform == 'darwin':
+            import AppKit
+            import ApplicationServices as AX
         from dock_twoo.brain.catalog import characters
         raw_logo = IconManager.get_instance().get_raw_svg('logo')
         if not raw_logo:

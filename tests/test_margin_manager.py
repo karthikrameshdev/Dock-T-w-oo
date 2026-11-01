@@ -163,3 +163,88 @@ def test_margin_manager_desktop_icon_restoration_on_edge_vacated(qapp, monkeypat
     assert "Screenshot.png" not in mgr._adjusted_icons
     assert any("set desktop position of item \"Screenshot.png\" of desktop to {1446, 73}" in s for s in mock_executed_scripts)
 
+
+def test_margin_manager_native_clamping_and_restoration(qapp, monkeypatch):
+    from types import SimpleNamespace
+    from dock_twoo.os_integration import margin_manager
+
+    set_attributes = []
+    window_obj = "mock_window_ptr"
+
+    class MockPoint:
+        x = 100
+        y = 50
+
+    class MockSize:
+        width = 1400
+        height = 900
+
+    mock_ax = SimpleNamespace(
+        AXIsProcessTrusted=lambda: True,
+        kAXValueCGPointType=1,
+        kAXValueCGSizeType=2,
+        AXUIElementCreateApplication=lambda pid: "mock_app",
+        AXUIElementCopyAttributeValue=lambda obj, attr, val: (
+            0,
+            window_obj if attr == "AXFocusedWindow" else ("pos_token" if attr == "AXPosition" else "size_token"),
+        ),
+        AXValueGetValue=lambda token, val_type, ptr: (
+            True,
+            MockPoint() if val_type == 1 else MockSize(),
+        ),
+        AXValueCreate=lambda val_type, val: ("created_val", val),
+        AXUIElementSetAttributeValue=lambda win, attr, val: (set_attributes.append((win, attr, val)) or 0),
+    )
+
+    class MockApp:
+        def bundleIdentifier(self):
+            return "com.google.Chrome"
+
+        def localizedName(self):
+            return "Google Chrome"
+
+        def processIdentifier(self):
+            return 12345
+
+    mock_workspace = SimpleNamespace(
+        frontmostApplication=lambda: MockApp(),
+        runningApplications=lambda: [MockApp()],
+    )
+    mock_appkit = SimpleNamespace(
+        NSWorkspace=SimpleNamespace(sharedWorkspace=lambda: mock_workspace)
+    )
+
+    monkeypatch.setattr(margin_manager, "_HAS_NATIVE_AX", True)
+    monkeypatch.setattr(margin_manager, "AX", mock_ax)
+    monkeypatch.setattr(margin_manager, "AppKit", mock_appkit)
+
+    cfg = DockConfig(reserve_screen_space=True, edge="right", screen_margin_gap=8)
+    mgr = DesktopMarginManager(cfg)
+    screen = QRect(0, 0, 1512, 982)
+    # Dock on right edge: max_right = 1360
+    handled = mgr._check_and_clamp_frontmost_native(
+        max_right=1360,
+        min_left=0,
+        min_top=0,
+        max_bottom=0,
+        edge="right",
+        screen=screen,
+    )
+
+    assert handled is True
+    assert "Google Chrome" in mgr._adjusted_windows
+    assert mgr._adjusted_windows["Google Chrome"]["orig_w"] == 1400
+    # Clamped width: max_right - wx = 1360 - 100 = 1260
+    assert len(set_attributes) == 1
+    win, attr, (tag, sz) = set_attributes[0]
+    assert attr == "AXSize"
+    assert sz == (1260, 900)
+
+    # Now test restore_adjusted_window
+    mgr.restore_adjusted_window("Google Chrome")
+    assert "Google Chrome" not in mgr._adjusted_windows
+    # Restoration sets AXSize and AXPosition back
+    restored_sizes = [val for win, attr, (tag, val) in set_attributes if attr == "AXSize"]
+    assert (1400, 900) in restored_sizes
+
+

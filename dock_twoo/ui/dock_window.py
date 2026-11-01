@@ -244,6 +244,7 @@ class DockWindow(QWidget):
         self._setup_ui()
         self.reposition_dock()
         ScreenManager.apply_window_levels(self)
+        self.margin_manager.start()
 
         # Thread-safe Qt Signal dispatch guarantees GUI updates occur strictly on the main thread
         self.config_manager.config_updated.connect(self.on_config_updated)

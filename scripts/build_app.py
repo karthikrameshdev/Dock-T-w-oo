@@ -48,6 +48,8 @@ def main():
     icon_darwin = ROOT / 'assets' / 'DockTwoo.icns'
     icon_win = ROOT / 'assets' / 'DockTwoo.ico'
     imports=['dock_twoo','sherpa_onnx','kokoro_onnx','espeakng_loader','onnxruntime','sounddevice','tokenizers','grpc','truststore']
+    if system == 'Darwin':
+        imports += ['objc', 'AppKit', 'ApplicationServices', 'HIServices', 'Quartz', 'CoreText']
     spec=f'''from PyInstaller.utils.hooks import collect_all, collect_submodules
 from pathlib import Path
 import importlib.util
@@ -61,7 +63,7 @@ datas=[({str(ROOT/'assets')!r}, 'assets')];binaries=[];hiddenimports=collect_sub
     spec+=f"exe=EXE(pyz,a.scripts,[],exclude_binaries=True,name='DockTwoo',console=False{exe_icon})\ncoll=COLLECT(exe,a.binaries,a.datas,name='DockTwoo')\n"
     if system=='Darwin':
         bundle_icon = f",icon={str(icon_darwin)!r}" if icon_darwin.exists() else ""
-        spec+=f"app=BUNDLE(coll,name='DockTwoo.app',bundle_identifier='dev.karthikramesh.DockTwoo'{bundle_icon},info_plist={{'CFBundleIconFile':'DockTwoo.icns','CFBundleDisplayName':'Dock T(w)oo','CFBundleName':'Dock T(w)oo','LSUIElement':True,'NSMicrophoneUsageDescription':'Listen for your chosen assistant name and spoken requests.','NSSpeechRecognitionUsageDescription':'Convert your requests into text locally.'}})\n"
+        spec+=f"app=BUNDLE(coll,name='DockTwoo.app',bundle_identifier='dev.karthikramesh.DockTwoo'{bundle_icon},info_plist={{'CFBundleIconFile':'DockTwoo.icns','CFBundleDisplayName':'Dock T(w)oo','CFBundleName':'Dock T(w)oo','LSUIElement':True,'NSMicrophoneUsageDescription':'Listen for your chosen assistant name and spoken requests.','NSSpeechRecognitionUsageDescription':'Convert your requests into text locally.','NSAppleEventsUsageDescription':'Automate windows and desktop items so they stay clear of Dock T(w)oo.','NSAccessibilityUsageDescription':'Dock T(w)oo requires Accessibility access to reserve screen space and prevent windows from overlapping the dock.'}})\n"
     file=build/'DockTwoo.spec';file.write_text(spec)
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--distpath',str(ROOT/'dist'),'--workpath',str(build/'freeze'),str(file)],check=True,cwd=ROOT)
     bundle=ROOT/'dist'/('DockTwoo.app' if system=='Darwin' else 'DockTwoo')
