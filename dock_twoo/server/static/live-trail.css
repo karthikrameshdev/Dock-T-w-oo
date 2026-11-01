@@ -1,29 +1,11 @@
-body{margin:0;padding:14px;background:#101217;color:#e9edf9;color-scheme:dark}
-body.theme-light{background:#fff;color:#182238;color-scheme:light}
-main{display:flex;flex-direction:column;gap:22px;max-width:1200px;margin:auto}
-.live-agents{padding:16px;border:1px solid var(--usage-border);border-radius:14px;background:var(--usage-card)}
-.trail-heading{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center}
-.trail-heading h3{font-size:17px}.trail-heading span{font-size:12px;color:var(--usage-muted)}
-#agentTaskTrail{max-height:350px;overflow:auto}
-#agentTaskTrail details{border-color:var(--usage-border);margin:0 0 8px}
-#agentTaskTrail summary strong{display:block;font-size:13px}#agentTaskTrail summary span{font-size:12px;color:var(--usage-muted)}
-.trail-job-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
-.trail-job-content p{margin:12px 0}.trail-job-content a{color:#93bcff;display:block;margin-top:12px}.theme-light .trail-job-content a{color:#2859b6}
-.activity-tracker .activity-layout{grid-template-columns:1fr}.activity-tracker .activity-list{max-height:220px}
-.activity-tracker .activity-detail{padding:14px}.activity-tracker .activity-detail pre{max-height:320px;margin:10px 0}
-.activity-tracker h4{margin:12px 0 0}.activity-call summary{line-height:1.6}.activity-call summary span{display:block;font-size:12px;color:var(--usage-muted)}
-.activity-call[data-state="in_flight"]{border-left:3px solid #a696ff}.activity-call[data-state="error"]{border-left:3px solid #e38a82}
-.activity-tracker .activity-toolbar{gap:8px}.activity-toolbar button{flex:1}.activity-limits{order:5;border-top:1px solid var(--usage-border);padding-top:12px}
-body::-webkit-scrollbar{width:6px}body::-webkit-scrollbar-thumb{background:#606879;border-radius:6px}
-@media(min-width:900px){.activity-tracker .activity-layout{grid-template-columns:280px minmax(0,1fr)}.activity-tracker .activity-list{max-height:75vh}}
-
-.activity-tracker .activity-list{max-height:none;overflow:visible;gap:12px}
-.activity-run>summary{cursor:pointer;list-style-position:inside;overflow-wrap:anywhere}
-.activity-run>summary .activity-row-heading{display:inline-flex;width:calc(100% - 24px);margin-left:5px}
-.activity-run>summary strong{margin-top:4px}.activity-run>summary small{font-size:11px}
-.activity-run[open]>summary{padding-bottom:14px;border-bottom:1px solid var(--usage-border)}
-.activity-run[open]>.activity-detail{border:0;padding:14px 0 0;border-radius:0}
-.activity-run[hidden]{display:none}
-
-.usage-shell button:disabled{opacity:.45;cursor:default}
-.activity-call summary strong{text-transform:none}
+.workspace-page main{display:flex;flex-direction:column;gap:20px}
+.live-agents{padding:16px 18px;border:1px solid var(--usage-border);border-radius:14px;background:var(--usage-card);gap:12px}
+.trail-heading{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center}.trail-heading h2{font-size:15px;font-weight:600;margin:0}.trail-heading span{font-size:12px;color:var(--usage-muted)}
+.trail-heading{cursor:pointer;list-style:none}.trail-heading::-webkit-details-marker{display:none}.trail-heading h2:after{content:'⌄';margin-left:8px;color:var(--usage-muted);font-weight:400}.live-agents[open] .trail-heading h2:after{content:'⌃'}.live-agents[open]>#agentTaskTrail{margin-top:12px}
+#agentTaskTrail{max-height:280px;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px}
+#agentTaskTrail details{border:1px solid var(--usage-border);border-radius:10px;background:var(--usage-subtle);padding:12px 14px}
+#agentTaskTrail summary{cursor:pointer;list-style:none;position:relative;padding-right:18px;line-height:1.6}#agentTaskTrail summary::-webkit-details-marker{display:none}#agentTaskTrail summary:after{content:'+';position:absolute;right:0;top:0;font-size:16px;color:var(--usage-muted)}#agentTaskTrail details[open]>summary:after{content:'−'}
+.trail-job-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}#agentTaskTrail summary strong{font-size:13px;font-weight:550}#agentTaskTrail summary>span{display:block;font-size:12px;color:var(--usage-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trail-job-content{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.8;margin-top:12px;padding-top:2px;border-top:1px solid var(--usage-border)}.trail-job-content p{margin:10px 0}.trail-job-content b{font-weight:550;color:var(--usage-muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}.trail-job-content button{font-size:12px;margin-top:8px}.trail-job-content a{color:var(--usage-accent)}
+.trail-empty{font-size:12px;color:var(--usage-muted);padding:6px 0}.trail-connection{display:flex;align-items:center;gap:6px}.trail-connection:before{content:'';width:6px;height:6px;background:var(--usage-positive);border-radius:50%}
+@media(max-width:540px){.live-agents{padding:14px}.workspace-page main{gap:16px}}

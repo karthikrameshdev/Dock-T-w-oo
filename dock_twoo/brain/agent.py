@@ -78,7 +78,7 @@ class ProgressGuard:
             if name==operation and not output.get(field):return False
         if name=='type_text' and not (output.get('verified') and output.get('changed')):return False
         stable_args={key:value for key,value in args.items() if key!='observation'}
-        signature=json.dumps([name,stable_args,output],sort_keys=True,default=str)
+        signature=hashlib.sha256(json.dumps([name,stable_args,output],sort_keys=True,default=str).encode()).digest()
         if signature in self.seen:return False
         self.seen.add(signature)
         return output.get('verified') is not False
@@ -97,26 +97,51 @@ class BrainAgent:
         self.client_factory=client_factory or model_client
         self.tracker=tracker or ActivityStore(profile_manager.store.data_dir/'activity')
         self.cancel=threading.Event();self._lock=threading.Lock();self._transport_lock=threading.Lock();self._context=threading.local()
+        self._stop_lock=threading.Lock();self._stop_pending=None;self._stop_worker=None
         self._state={'state':'idle','step':0,'tool':'','message':'','error':'','events':[]}
 
     def stop(self):
-        self.cancel.set()
-        state=self.status();run_id=state.get('run_id')
-        if run_id and state.get('state') in ('thinking','acting'):
-            self.tracker.event(run_id,'stop',{'reason':'Stopped by the user.'})
-            self.tracker.finish(run_id,'stopped',reason='Stopped by the user.')
-        self._update(state='stopped',message='Request stopped.')
+        # Native UI cancellation must not wait for a model's gRPC update or
+        # SQLite lock. Cancel immediately, then record the captured generation.
+        token=self.cancel;token.set()
+        with self._stop_lock:
+            self._stop_pending=token
+            if self._stop_worker is not None:return
+            self._stop_worker=threading.Thread(target=self._record_stops,name='agent-stop',daemon=True)
+            self._stop_worker.start()
+
+    def _record_stops(self):
+        while True:
+            with self._stop_lock:
+                token,self._stop_pending=self._stop_pending,None
+                if token is None:
+                    self._stop_worker=None
+                    return
+            with self._lock:
+                # An old delayed stop cannot change a newly started request.
+                if token is not self.cancel:continue
+                state=dict(self._state);run_id=state.get('run_id')
+                self._state.update(state='stopped',message='Request stopped.')
+            if run_id and state.get('state') in ('thinking','acting'):
+                try:
+                    self.tracker.event(run_id,'stop',{'reason':'Stopped by the user.'})
+                    self.tracker.finish(run_id,'stopped',reason='Stopped by the user.')
+                except Exception as exc:
+                    self._stop_error=str(exc)[:300]
 
     def _update(self,**values):
+        progress=None
         with self._lock:
             if hasattr(self._context,'token') and self._context.token is not self.cancel:return
             self._state.update(values)
             coordinator=getattr(self,'coordinator',None)
             if coordinator and not coordinator.closed and getattr(self._context,'task_id',None) and values.get('state') in ('thinking','acting'):
-                coordinator.publish(self._context.character_id,self._context.task_id,'progress',
-                                    {k:v for k,v in values.items() if k in ('state','step','tool','message')})
+                progress=(self._context.character_id,self._context.task_id,
+                          {k:v for k,v in values.items() if k in ('state','step','tool','message')})
             if 'message' in values:
                 self._state['events']=(self._state['events']+[{'step':self._state['step'],'tool':self._state['tool'],'message':values['message']}])[-30:]
+        if progress and not self.cancel.is_set():
+            coordinator.publish(progress[0],progress[1],'progress',progress[2])
 
     def status(self):
         with self._lock:return {**self._state,'events':list(self._state['events'])}
@@ -138,7 +163,8 @@ class BrainAgent:
         if token.is_set():
             if run_id:self.tracker.finish(run_id,'stopped',reason='Stopped before a cloud call was made.')
             raise InterruptedError('Request stopped.')
-        self.cancel=token;self._context.token=token
+        with self._lock:self.cancel=token
+        self._context.token=token
         self._context.task_id=task_id;self._context.character_id=character_id
         run_id=run_id or self.tracker.start(prompt,source)
         available_tools=tools_for(character_id)

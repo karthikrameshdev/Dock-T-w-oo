@@ -251,6 +251,34 @@ Every agent can delegate to available peers; background workers have no characte
 renderer, microphone or audio output. Brief top-of-screen toasts report assignment
 and completion. Completed work and live progress remain in the console task trail.
 
+Right-click the character or the dock's **Voice Assistant** icon for listening
+and visibility controls. **Listening mode** is independent of character visibility:
+
+- **Automatic — wake words** listens for enabled character names.
+- **Manual — click or shortcut** keeps the microphone closed until you click the
+  character or use the configured push-to-talk shortcut. Click again or release
+  the shortcut to finish. After capture, the microphone closes while processing
+  and speaking; click to interrupt a response.
+- **Microphone off** blocks wake words, character clicks and shortcut capture.
+  The character remains visible and text requests, reading and spoken responses
+  still work. Select Automatic or Manual to enable voice input again.
+
+The selected mode is saved across restarts. Visibility controls are separate:
+
+- **Hide assistant (keep voice wake)** stops the current conversation and hides
+  the character; in Automatic mode, calling an enabled character name brings it
+  back. Manual and Microphone off modes remain silent when hidden.
+- **Close assistant (microphone off)** cancels assistant requests, reading and
+  speech, closes microphone/speaker streams and shortcut listening, and releases
+  the character renderer. Idle speech models are released after any in-flight
+  inference finishes. Wake words cannot reopen a closed assistant. Click the
+  dock icon, choose **Open assistant**, **Choose assistant**, or **Talk** to reopen
+  it explicitly. Closed state survives a restart.
+
+The dock, Notes, Tasks, Scheduler and other drawers remain usable while the
+assistant is closed. Reminders still display notifications, but do not speak or
+open the assistant. Previously saved wake-word preferences are restored on reopen.
+
 The right-click **Cap resource to 25%** option is unchecked by default. When
 checked, the character stands still: body, hands, head turns and roaming stop.
 Eye movement, blinking, lip sync, headlight, listening, toasts and parallel agent
@@ -261,6 +289,11 @@ exceed it. Turning the option off restores full animation. Hidden pages are
 discarded after 45 seconds; visible characters are never parked behind a snapshot.
 Housekeeping cleans completed temporary work and expired activity traces without
 killing other applications or repeatedly unloading active speech models.
+Document/embedding caches have bounded entries without retaining whole source
+documents as keys. Hidden presentation timers stop, the Dashboard browser loads
+only when opened, and hidden drawers suspend their browser pages. Speech
+interruptions keep one synthesis worker and at most the latest replacement,
+instead of piling up workers behind an active model.
 
 The **Keep Awake** coffee icon above Settings toggles idle system/display sleep
 prevention (`caffeinate -d -i` on macOS). It releases its own assertion when disabled
@@ -414,7 +447,8 @@ The selected character uses its own rig and animation library. Local ONNX semant
 ranking varies idle actions. There is no listening body aura; the head light shows
 state. The live body silhouette controls clicks, leaving transparent margins,
 effects and props click-through. **Hide assistant** and **Show assistant** control
-that single window. The parachute action includes descent, landing and retraction.
+that single window; **Close assistant** also disables microphone wake. The
+parachute action includes descent, landing and retraction.
 
 ### Peer agent ecosystem
 
@@ -482,7 +516,7 @@ packages** GitHub workflow builds macOS `.app`, Windows `.exe` plus its support
 folder, and Linux bundles. Distribute the entire archive, not the executable
 alone. macOS packages are currently ad-hoc signed, not Developer ID notarized;
 Windows packages are not Authenticode signed. OS trust prompts can apply.
-Keep Live intent, selected character, visibility and resource-cap preference
+Keep Live intent, selected character, visibility, assistant closed state and resource-cap preference
 survive restart. Quitting releases sleep prevention without clearing the saved
 intent. Pending approvals are never restored or automatically accepted. The
 console always opens with Live Preview off; enabling it affects that tab only.

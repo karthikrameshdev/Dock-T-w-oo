@@ -4,7 +4,8 @@ Patterns cover structured identifiers/secrets; a local quantized NER model adds
 names, organisations and places. Detection is defence in depth, not a proof that
 arbitrary text is anonymous. Scanner failures stop transmission.
 """
-from functools import lru_cache
+from collections import OrderedDict
+import hashlib
 import json
 import os
 import re
@@ -16,7 +17,10 @@ REVISION='9faa2f4a2d59b396888b318f596ff719cc893f1e'
 class PrivacyUnavailable(RuntimeError):pass
 
 class LocalEntities:
-    def __init__(self):self.lock=threading.RLock();self.session=None
+    def __init__(self):
+        self.lock=threading.RLock();self.session=None
+        self._spans=OrderedDict();self._cache_bytes=0
+        self.cache_limit=256;self.cache_byte_limit=1024*1024
     def load(self):
         if self.session is not None:return
         from huggingface_hub import hf_hub_download
@@ -29,10 +33,15 @@ class LocalEntities:
         options=ort.SessionOptions();options.intra_op_num_threads=1;options.inter_op_num_threads=1
         session=ort.InferenceSession(file('onnx/model_quantized.onnx'),sess_options=options,providers=['CPUExecutionProvider'])
         self.tokenizer,self.labels,self.session=tokenizer,labels,session
-    @lru_cache(maxsize=256)
     def spans(self,text):
         import numpy as np
+        # A digest avoids retaining private document text between requests.
+        # Do not truncate: redaction must scan every overflow token window.
+        key=hashlib.sha256(text.encode()).digest()
         with self.lock:
+            if key in self._spans:
+                self._spans.move_to_end(key)
+                return self._spans[key][0]
             try:
                 self.load();encoded=self.tokenizer.encode(text);spans=[]
                 for item in [encoded,*encoded.overflowing]:
@@ -44,8 +53,19 @@ class LocalEntities:
                 for start,end in spans:
                     if merged and start<=merged[-1][1]+1:merged[-1]=(merged[-1][0],max(end,merged[-1][1]))
                     else:merged.append((start,end))
-                return tuple(merged)
+                result=tuple(merged)
+                # Include Python tuple/int overhead, not merely two integers'
+                # payload bytes. Very large results are returned but not cached.
+                size=128+len(result)*128
+                if size<=self.cache_byte_limit:
+                    self._spans[key]=(result,size);self._cache_bytes+=size
+                    while len(self._spans)>self.cache_limit or self._cache_bytes>self.cache_byte_limit:
+                        self._cache_bytes-=self._spans.popitem(last=False)[1][1]
+                return result
             except Exception as exc:raise PrivacyUnavailable('The local privacy scanner is unavailable. No model request was sent. Check model download/connectivity and retry.') from exc
+
+    def clear_cache(self):
+        with self.lock:self._spans.clear();self._cache_bytes=0
 
 _entities=LocalEntities()
 PATTERNS=[

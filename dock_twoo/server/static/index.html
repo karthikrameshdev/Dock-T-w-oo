@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="usage.css">
   <link rel="stylesheet" href="controls.css">
+  <link rel="stylesheet" href="console-workspace.css">
   <link rel="icon" type="image/svg+xml" href="/icons/logo.svg">
   <style>
     /* High-priority hand symbol (cursor: pointer) across all interactive console elements */
@@ -33,7 +34,7 @@
         </div>
         <div class="brand-text">
           <h1>Dock T(w)oo</h1>
-          <span class="badge">Console v0.1.0</span>
+          <span class="brand-caption">Workspace settings</span>
         </div>
       </div>
 
@@ -43,7 +44,7 @@
             <circle cx="11" cy="11" r="8"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" id="settingsSearch" placeholder="Search settings & apps...">
+          <input type="search" id="settingsSearch" placeholder="Search settings and apps" aria-label="Search settings and apps">
         </div>
       </div>
 
@@ -85,43 +86,43 @@
           <div class="nav-group">
             <span class="nav-group-title">Dock Settings</span>
             <button class="nav-item active" data-page="page-placement">
-              <span class="nav-icon">📍</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/sliders.svg')"></span>
               <span class="nav-label">Placement & Sizing</span>
             </button>
             <button class="nav-item" data-page="page-appearance">
-              <span class="nav-icon">🎨</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/star.svg')"></span>
               <span class="nav-label">Appearance & Theme</span>
             </button>
             <button class="nav-item" data-page="page-desktop">
-              <span class="nav-icon">🪟</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/apps.svg')"></span>
               <span class="nav-label">Desktop & Work Area</span>
             </button>
             <button class="nav-item" data-page="page-drawers">
-              <span class="nav-icon">📐</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/notes.svg')"></span>
               <span class="nav-label">Companion Drawers</span>
             </button>
-            <button class="nav-item" data-page="page-dashboard"><span class="nav-icon">◴</span><span class="nav-label">Dashboard</span></button>
+            <button class="nav-item" data-page="page-dashboard"><span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/dashboard.svg')"></span><span class="nav-label">Dashboard</span></button>
             <button class="nav-item" data-page="page-brain">
-              <span class="nav-icon">🧠</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/brain.svg')"></span>
               <span class="nav-label">AI Voice Assistant</span>
-              <span class="nav-tag">Core Feature</span>
+
             </button>
           </div>
 
           <div class="nav-group">
             <span class="nav-group-title">Companion Apps</span>
-            <button class="nav-item" data-page="page-tasks"><span class="nav-icon">✓</span><span class="nav-label">Tasks</span><span class="nav-tag">Daily work log</span></button>
+            <button class="nav-item" data-page="page-tasks"><span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/tasks.svg')"></span><span class="nav-label">Tasks</span></button>
             <button class="nav-item" data-page="page-notes">
-              <span class="nav-icon">📝</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/notes.svg')"></span>
               <span class="nav-label">Notes</span>
-              <span class="nav-tag">Top App</span>
+
             </button>
             <button class="nav-item" data-page="page-vault">
-              <span class="nav-icon">🛡️</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/vault.svg')"></span>
               <span class="nav-label">Vault Security</span>
             </button>
             <button class="nav-item" data-page="page-apps">
-              <span class="nav-icon">📱</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/apps.svg')"></span>
               <span class="nav-label">Dock Apps Manager</span>
             </button>
           </div>
@@ -129,12 +130,12 @@
           <div class="nav-group">
             <span class="nav-group-title">System</span>
             <button class="nav-item" data-page="page-storage">
-              <span class="nav-icon">💾</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/bookmark.svg')"></span>
               <span class="nav-label">Global Storage & Data</span>
-              <span class="nav-tag">Unified</span>
+
             </button>
             <button class="nav-item" data-page="page-about">
-              <span class="nav-icon">ℹ️</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/feedback.svg')"></span>
               <span class="nav-label">About & Status</span>
             </button>
           </div>
@@ -479,20 +480,20 @@
           <!-- Brain Multi-Tab Navigation Bar -->
           <div class="brain-tab-bar">
             <button type="button" class="brain-tab-btn active" data-tab="brain-tab-voice">
-              <span class="tab-icon">🎙️</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/brain.svg')"></span>
               <span>Voice</span>
             </button>
-            <button type="button" class="brain-tab-btn" data-tab="brain-tab-awake"><span class="tab-icon">◉</span><span>Awake</span></button>
+            <button type="button" class="brain-tab-btn" data-tab="brain-tab-awake"><span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/bell.svg')"></span><span>Awake</span></button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-profiles">
-              <span class="tab-icon">🧠</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/team.svg')"></span>
               <span>Agent Models</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-motions">
-              <span class="tab-icon">🤖</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/star.svg')"></span>
               <span>Mini Assistant &amp; Motions</span>
             </button>
             <button type="button" class="brain-tab-btn" data-tab="brain-tab-actions">
-              <span class="tab-icon">⚡</span>
+              <span class="nav-icon" aria-hidden="true" style="--nav-icon:url('/icons/vault.svg')"></span>
               <span>Native Actions & Vault</span>
             </button>
           </div>
@@ -500,7 +501,7 @@
           <div class="brain-tab-panel" id="brain-tab-awake">
             <div class="settings-card" id="assistantAwakeSettings">
               <h3>Mini assistant Awake settings</h3>
-              <p class="field-desc">Choose which names can wake an assistant. All start on. Brain stays on as the default assistant. Turning Awake off does not stop background tasks, delegation or manual selection. The microphone's main wake-listener switch still controls hands-free listening globally.</p>
+              <p class="field-desc">Choose which names can wake an assistant in Automatic listening mode. All start on. Brain stays on as the default assistant. Turning Awake off does not stop background tasks, delegation or manual selection. Manual and Microphone off modes disable every wake name.</p>
               <input type="search" id="assistantAwakeSearch" class="text-input" placeholder="Find an assistant…" aria-label="Find an assistant in Awake settings">
               <p id="assistantAwakeStatus" class="field-desc" role="status">Loading assistants…</p>
               <div id="assistantAwakeList" class="assistant-awake-list"></div>
@@ -524,17 +525,18 @@
               <p class="field-desc" id="brainVoiceCheckStatus" role="status">Runs a 30-second local check and shows what was recognized. No audio file is saved.</p>
               <div class="action-btn-row">
                 <button type="button" id="brainSummonBtn" class="btn btn-primary">
-                  <span>✨ Summon Mini Agent</span>
+                  <span>Show assistant</span>
                 </button>
                 <button type="button" id="brainTalkBtn" class="btn btn-secondary">
-                  <span>🎤 Talk to assistant</span>
+                  <span>Talk to assistant</span>
                 </button>
                 <button type="button" id="brainLoopAnimBtn" class="btn btn-secondary">
-                  <span>🎭 Play Animations</span>
+                  <span>Play animations</span>
                 </button>
                 <button type="button" id="brainHideBtn" class="btn btn-secondary">
                   <span>✕ Hide Mini Agent</span>
                 </button>
+                <button type="button" id="brainCloseBtn" class="btn btn-secondary">Close assistant · microphone off</button>
               </div>
               <form id="brainRequestForm" class="form-row" style="margin-top: 16px;">
                 <div class="form-group flex-1">
@@ -551,15 +553,17 @@
 
             <!-- Hands-Free Wake Word -->
             <div class="settings-card">
-              <h3 class="card-subheading">Voice Wake Word Activation</h3>
-              <p class="field-desc">Hands-free detection accepts the wake name with natural greetings, such as "Brain", "Hey Brain", "Hello Brain", or "Hey Buddy".</p>
-
-              <div class="toggle-card-item">
-                <div>
-                  <label class="toggle-title" for="brainWakeWordToggle">Enable Wake Word Detection</label>
-                  <p class="field-desc">Activate the addressed character when speaking its name</p>
-                </div>
-                <input type="checkbox" id="brainWakeWordToggle" checked class="modern-toggle">
+              <h3 class="card-subheading">Microphone & Activation</h3>
+              <p class="field-desc">Choose when your assistant can listen. Closing the assistant always shuts down the microphone, regardless of this saved preference.</p>
+              <div class="form-group">
+                <label for="brainListeningMode">Listening mode</label>
+                <select id="brainListeningMode" class="select-input" aria-describedby="brainListeningModeHelp brainListeningModeStatus">
+                  <option value="automatic">Automatic · wake by name</option>
+                  <option value="manual">Manual · click or shortcut</option>
+                  <option value="off">Microphone off</option>
+                </select>
+                <p id="brainListeningModeHelp" class="field-desc">Automatic keeps the microphone ready for a character’s name, including while hidden. Manual opens it only when you click the character or use the configured push-to-talk shortcut. Microphone off disables all listening; typed requests and speech output remain available.</p>
+                <p id="brainListeningModeStatus" class="field-desc" role="status">Loading microphone settings…</p>
               </div>
 
               <div class="form-row">

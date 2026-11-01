@@ -120,6 +120,34 @@ class LocalVoiceModels:
             else "install voice extra",
         }
 
+    def release_if_idle(self) -> bool:
+        """Close-mode cleanup; the owner must first stop capture and decoders.
+
+        Never wait for active inference or downloads on the UI/cleanup path.
+        A False result asks the owner to retry after those workers have exited.
+        Downloaded checkpoint files remain available for reopening offline.
+        """
+        acquired = []
+        try:
+            for lock in (self._download_lock, self._lock, self._asr_lock,
+                         self._enhance_lock, self._speaker_lock):
+                if not lock.acquire(blocking=False):return False
+                acquired.append(lock)
+            if any(worker.is_alive() for worker in self._download_threads.values()):return False
+            recognizer_released = self.recognizer.release_if_idle()
+            denoiser_released = self.denoiser.release_if_idle()
+            if recognizer_released:
+                self._asr = None
+                self.download_state['recognizer'] = 'not started'
+            if denoiser_released:
+                self._enhancer = None
+                self.download_state['denoiser'] = 'not started'
+            self._speaker = self._processor = None
+            self._download_threads.clear()
+            return recognizer_released and denoiser_released
+        finally:
+            for lock in reversed(acquired):lock.release()
+
     def checkpoint_cached(self, model_id: str, filename: str) -> bool:
         """Return whether a complete checkpoint file exists in the configured HF cache."""
         cache = Path(os.environ.get("HUGGINGFACE_HUB_CACHE", self.model_dir / "huggingface" / "hub"))
@@ -255,6 +283,7 @@ class LocalVoiceModels:
                 return None
             embeddings = []
             with self._speaker_lock, torch.inference_mode():
+                if self._speaker is None or self._processor is None:return None
                 for piece in pieces:
                     inputs = self._processor(piece, sampling_rate=16000, return_tensors="pt", padding=True)
                     output = self._speaker(**inputs).embeddings

@@ -1,6 +1,7 @@
 /* One local task stream, suspended with the native drawer. Never replace open rows. */
 (() => {
   if(new URLSearchParams(location.search).get('theme')==='light')document.body.classList.add('theme-light','usage-light');
+  if(new URLSearchParams(location.search).get('embedded')==='1'){document.body.classList.add('workspace-embedded');document.getElementById('agentTaskPanel').open=false;}
   const activity=window.BrainActivity.mount(document.getElementById('liveActivity'));
   const target=document.getElementById('agentTaskTrail'),status=document.getElementById('trailConnection'),rows=new Map();
   const headers={'X-Brain-Request':'local'};
@@ -18,13 +19,14 @@
       const ids=new Set(visible.map(job=>job.id));
       for(const [id,row] of rows)if(!ids.has(id)){row.remove();rows.delete(id);}
       if(empty){empty.remove();empty=null;}
-      if(!visible.length){empty=element('p','No agent tasks yet. Ask an assistant to begin.');empty.className='usage-muted';target.append(empty);}
+      if(!visible.length){empty=element('p','Your agents are ready. Tasks appear here when work begins.');empty.className='trail-empty';target.append(empty);}
       for(const job of visible){
         let row=rows.get(job.id);
-        if(!row){row=element('details');row.dataset.task=job.id;const summary=element('summary');summary.append(element('strong'),element('span'));const content=element('div');content.className='trail-job-content';row.append(summary,content);rows.set(job.id,row);target.append(row);}
+        if(!row){row=element('details');row.dataset.task=job.id;const summary=element('summary'),heading=element('div'),badge=element('span');heading.className='trail-job-heading';badge.className='activity-badge';heading.append(element('strong'),badge);summary.append(heading,element('span'));const content=element('div');content.className='trail-job-content';row.append(summary,content);rows.set(job.id,row);target.append(row);}
         const name=catalog.find(c=>c.id===job.character_id)?.name||job.character_id;
-        row.querySelector('strong').textContent=`${name} · ${job.state}`;
-        row.querySelector('summary span').textContent=(job.prompt||'Agent task').slice(0,110);
+        row.querySelector('strong').textContent=name;
+        const badge=row.querySelector('.activity-badge');badge.textContent=job.state;badge.dataset.state=job.state;
+        row.querySelector('summary>span').textContent=(job.prompt||'Agent task').slice(0,110);
         const signature=JSON.stringify(job);
         if(row._signature!==signature){
           const content=row.lastElementChild,selection=window.getSelection();
@@ -40,9 +42,10 @@
           }
         }
       }
-      status.textContent=active.length?`${active.length} tasks in progress`:'No active tasks';
+      status.textContent=active.length?`${active.length} ${active.length===1?'task':'tasks'} in progress`:'No active tasks';
     }catch(error){status.textContent=error.message;}finally{busy=false;}
   }
-  refresh();setInterval(refresh,2500);
+  refresh();const timer=setInterval(refresh,2500);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();activity.refresh();}});
+  window.addEventListener('pagehide',()=>{clearInterval(timer);activity.dispose();},{once:true});
 })();

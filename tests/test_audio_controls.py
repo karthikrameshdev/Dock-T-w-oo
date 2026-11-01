@@ -188,11 +188,11 @@ def test_bluetooth_format_change_on_same_device_reopens_route(qapp,monkeypatch):
     route.close()
 
 
-def test_spoken_stop_remains_available_when_automatic_wake_is_disabled(qapp,tmp_path,monkeypatch):
+def test_manual_mode_does_not_open_microphone_for_spoken_stop(qapp,tmp_path,monkeypatch):
     store=BrainStore(tmp_path);store.set_setting('wake_word_enabled',False)
     manager=BrainManager(store=store,start_services=False);started=[]
     monkeypatch.setattr(manager.listener,'start',lambda:started.append(True))
     manager._on_speech_activity('speaking')
-    assert started==[True] and manager.listener._passive_stop
+    assert started==[] and not manager.listener._passive_stop
     assert not manager.listener.wake_detection_enabled
     manager.shutdown()

@@ -9,6 +9,9 @@ export class InputShape {
     this.material=new THREE.MeshBasicMaterial({color:0xffffff});
     this.lastTime=-Infinity;this.lastBits='';this.samples=0;this.elapsed=0;
   }
+  dispose() {
+    this.target.dispose();this.material.dispose();this.pixels=null;this.lastBits='';
+  }
   sample(scene,camera,model,width,height,time,fps=30) {
     if(time-this.lastTime<1/Math.max(2,Math.min(30,fps)))return null;
     this.lastTime=time;

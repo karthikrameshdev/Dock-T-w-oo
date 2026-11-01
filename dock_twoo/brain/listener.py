@@ -28,6 +28,10 @@ def capture_locked(method):
     return wrapped
 
 
+class _StaleAudioFrame(Exception):
+    """Native inference completed after the capture session changed."""
+
+
 def _patch_speech_recognition_flac() -> None:
     """Ensure SpeechRecognition uses native macOS afconvert instead of obsolete x86 flac-mac on ARM64."""
     try:
@@ -138,11 +142,14 @@ class AudioListener(QObject):
         self.audio_devices.input_state.connect(self._input_state)
         self.audio_devices.error.connect(self.error_occurred)
         self._capture_lock = threading.RLock()
+        self._frame_lock = threading.Lock()
+        self._reset_wake = self._reset_stop = self._reset_vad = True
         self.named_characters = False
         self.capture_character_id = "default"
         self._keyword_character_id = None
         self.wake_word = wake_word.lower().strip()
         self.is_running = False
+        self.closed = False
         self.is_recording = False
         self.noise_floor = 30.0
         self.speech_frames = []
@@ -168,12 +175,17 @@ class AudioListener(QObject):
         self._diagnostic_peak = 0.0
         self._wake_check_lock = threading.Lock()
         self.worker_thread: Optional[threading.Thread] = None
+        self._decode_workers = set()
+        self._decode_workers_lock = threading.Lock()
+        self._audio_workers = set()
+        self._audio_workers_lock = threading.Lock()
         self.stop_event = threading.Event()
         self.audio_queue = queue.Queue(maxsize=40)
         self._sf_recognizer = None
         from dock_twoo.brain.voice_models import LocalVoiceModels, load_embedding
         from dock_twoo.brain.storage import BrainStore
         self.store = store or BrainStore()
+        self.listening_mode = self.store.setting('listening_mode', 'automatic')
         self.models = LocalVoiceModels(model_dir or self.store.data_dir / "models")
         from dock_twoo.brain.wake import WakeDetector
         self.wake_detector = WakeDetector(self.models.model_dir, self.wake_word)
@@ -197,8 +209,8 @@ class AudioListener(QObject):
         self._decode_token = None
         self._capture_forced = False
         self._audio_timeline = deque(maxlen=160)
-        self._wake_armed = True
-        self.wake_detection_enabled = True
+        self._wake_armed = self.listening_mode == 'automatic'
+        self.wake_detection_enabled = self.listening_mode == 'automatic'
         self._output_active = False
         self._wake_suspended = False
         self._ignore_audio_until = 0.0
@@ -247,6 +259,8 @@ class AudioListener(QObject):
 
     def start(self) -> None:
         """Start background microphone monitoring."""
+        if self.closed or self.listening_mode == 'off':return
+        if self.listening_mode == 'manual' and not self.is_recording:return
         import os
         if "PYTEST_CURRENT_TEST" in os.environ:
             return
@@ -258,28 +272,47 @@ class AudioListener(QObject):
                 self.audio_queue.get_nowait()
             except queue.Empty:
                 break
-        self.wake_detector.start()
-        self.stop_detector.start()
-        self.endpoint_vad.start()
+        # Ready models may be inside native inference on a retired audio worker.
+        # Do not acquire their inference locks on the GUI thread during reopen.
+        for detector in (self.wake_detector, self.stop_detector, self.endpoint_vad):
+            if not detector.ready:detector.start()
         self.models.start_model_downloads()
         self.is_running = True
-        self.stop_event.clear()
-        self.worker_thread = threading.Thread(target=self._run_loop, daemon=True, name="brain-audio-listener")
+        # A previous worker may still be finishing a frame. Its stop signal must
+        # never be cleared by a fast Close→Open cycle.
+        self.stop_event = threading.Event()
+        self.worker_thread = threading.Thread(target=self._run_loop, args=(self.stop_event,), daemon=True, name="brain-audio-listener")
+        with self._audio_workers_lock:self._audio_workers.add(self.worker_thread)
         self.worker_thread.start()
         self.audio_devices.start_input()
 
-    def stop(self) -> None:
-        """Stop background audio capture."""
+    def pause_input(self) -> None:
+        """Close hardware after a manual capture without invalidating its ASR."""
         self.is_running = False
         self.stop_event.set()
         self.audio_devices.stop_input()
-        if self.worker_thread and self.worker_thread is not threading.current_thread():
-            self.worker_thread.join(timeout=1.0)
+        while not self.audio_queue.empty():
+            try:self.audio_queue.get_nowait()
+            except queue.Empty:break
+
+    def stop(self) -> None:
+        """Stop background audio capture and invalidate pending speech."""
+        self.pause_input()
         self.cancel_recording()
+        # The stopped worker exits on its own. Joining here freezes the dock
+        # during slow native inference; tracked workers prevent premature unload.
+        if not self.worker_thread or not self.worker_thread.is_alive():
+            self.worker_thread = None
+        self.arm_wake()
+        self._output_active = self._passive_stop = False
+        while not self.audio_queue.empty():
+            try:self.audio_queue.get_nowait()
+            except queue.Empty:break
 
     @capture_locked
     def start_recording(self) -> None:
         """Listen for a complete turn; silence timeout starts before speech only."""
+        if self.closed or self.listening_mode == 'off':return
         self.last_error = ''
         self._capture_generation += 1
         self._capture_revision = 0
@@ -290,7 +323,7 @@ class AudioListener(QObject):
         self._stop_latched = False
         self._wake_capture = False
         self._keyword_character_id = None
-        self.wake_detector.reset()
+        self._reset_wake = True
         self._endpoint = TurnEndpoint()
         self.speech_frames = []
         self.silence_count = 0
@@ -301,12 +334,12 @@ class AudioListener(QObject):
 
     @capture_locked
     def _begin_wake_capture(self, frames: list[bytes], character_id=None) -> bool:
-        if self.wake_suppressed:
+        if self.wake_suppressed or self.listening_mode != 'automatic':
             self.last_wake_decision = 'wake-suspended-for-output'
             return False
         if self.named_characters and character_id and not self.store.character_awake(character_id):
             self.last_wake_decision = 'character-awake-disabled'
-            self.wake_detector.reset()
+            self._reset_wake = True
             return False
         if character_id is not None:
             self.capture_character_id = character_id
@@ -330,12 +363,13 @@ class AudioListener(QObject):
         if self.is_recording:
             self._capture_forced = True
             self.is_recording = False
-            self._passive_stop = True
+            self._passive_stop = self.listening_mode == 'automatic'
             self.speech_ended.emit()
             self.processing_started.emit()
             self._dispatch_capture()
 
     def _dispatch_capture(self) -> None:
+        if self.closed:return
         if self._decode_token is not None:
             return
         if self._endpoint.overlong or not self.has_spoken or self._endpoint.speech < .18:
@@ -345,13 +379,38 @@ class AudioListener(QObject):
             self.cancel_recording()
             self.turn_timed_out.emit()
             return
+        if self.listening_mode == 'manual' and self.is_recording:
+            self._capture_forced = True
+            self.is_recording = False
+            self.speech_ended.emit()
+            self.processing_started.emit()
         token = (self._capture_generation, self._capture_revision)
         self._decode_token = token
         target = self._complete_keyword_wake if self._wake_capture else self._process_utterance
-        threading.Thread(target=target, args=(list(self.speech_frames), *token), daemon=True).start()
+        self._start_decode_worker(target, (list(self.speech_frames), *token))
+
+    def decode_workers_active(self):
+        with self._decode_workers_lock:return bool(self._decode_workers)
+
+    def audio_workers_active(self):
+        with self._audio_workers_lock:return bool(self._audio_workers)
+
+    def _start_decode_worker(self, target, args):
+        def run():
+            try:target(*args)
+            finally:
+                with self._decode_workers_lock:
+                    self._decode_workers.discard(threading.current_thread())
+        worker = threading.Thread(target=run, daemon=True, name='assistant-transcription')
+        with self._decode_workers_lock:self._decode_workers.add(worker)
+        try:worker.start()
+        except Exception:
+            with self._decode_workers_lock:self._decode_workers.discard(worker)
+            raise
 
     @capture_locked
     def _accept_capture(self, generation, revision) -> bool:
+        if self.closed:return False
         if generation is not None and generation != self._capture_generation:
             return False
         if revision is not None:
@@ -365,7 +424,7 @@ class AudioListener(QObject):
                 return False
             was_recording = self.is_recording
             self.is_recording = False
-            self._passive_stop = True
+            self._passive_stop = self.listening_mode == 'automatic'
             self.speech_frames = []
             self._wake_capture = False
             if was_recording:
@@ -390,7 +449,7 @@ class AudioListener(QObject):
         self._wake_suspended = False
         self._passive_stop = False
         self._stop_latched = False
-        self._wake_armed = self.wake_detection_enabled
+        self._wake_armed = self.wake_detection_enabled and self.listening_mode == 'automatic' and not self.closed
         self._wake_preroll.clear()
         self._backup_ring.clear()
         self._backup_voice_ring.clear()
@@ -400,8 +459,8 @@ class AudioListener(QObject):
         self.ambient_speech_frames = []
         self.ambient_silence_count = 0
         self._audio_timeline.clear()
-        self.wake_detector.reset()
-        self.endpoint_vad.reset()
+        self._reset_wake = True
+        self._reset_vad = True
 
     @capture_locked
     def suspend(self) -> None:
@@ -409,25 +468,28 @@ class AudioListener(QObject):
         self.cancel_recording()
         self._wake_suspended = True
         self._wake_armed = False
-        self._passive_stop = True
+        self._passive_stop = self.listening_mode == 'automatic'
 
     @property
     def wake_suppressed(self) -> bool:
-        return self._output_active or self._wake_suspended or time.monotonic() < self._ignore_audio_until
+        return self.closed or self._output_active or self._wake_suspended or time.monotonic() < self._ignore_audio_until
 
     @capture_locked
     def set_output_active(self, active: bool) -> None:
         """Use playback time for stop-only monitoring, never ambient wake routing."""
+        if self.closed:
+            self._output_active = self._passive_stop = False
+            return
         was_active = self._output_active
         self._output_active = active
         if active:
-            self._passive_stop = True
+            self._passive_stop = self.listening_mode == 'automatic'
             if not was_active:
                 # Invalidate ASR already running when speech starts. It must not
                 # deliver an old wake after playback finishes either.
                 self.cancel_recording()
                 self._stop_latched = False
-                self.stop_detector.reset()
+                self._reset_stop = True
         if active or was_active:
             self._ignore_audio_until = time.monotonic() + 0.3
             self._wake_preroll.clear()
@@ -437,8 +499,8 @@ class AudioListener(QObject):
             self._backup_checked = False
             self._backup_silence = 0.0
             self._audio_timeline.clear()
-            self.wake_detector.reset()
-            self.endpoint_vad.reset()
+            self._reset_wake = True
+            self._reset_vad = True
 
     @capture_locked
     def enable_character_names(self):
@@ -449,7 +511,9 @@ class AudioListener(QObject):
     def _emit_statement(self, text, command=None, bare=False, character_id=None):
         if self.wake_suppressed:
             return
-        if self.named_characters:
+        if self.named_characters and self.listening_mode == 'manual':
+            self.named_turn_completed.emit(self.capture_character_id, text.strip(), text, False)
+        elif self.named_characters:
             from dock_twoo.brain.catalog import named_prefix
             found, rest = named_prefix(text, acoustic=True)
             target = found or character_id or self.capture_character_id
@@ -501,24 +565,68 @@ class AudioListener(QObject):
         except queue.Full:
             self.dropped_frames += 1
 
-    def _run_loop(self) -> None:
+    def _run_loop(self, stop_event=None) -> None:
         """Analyze normalized audio independently of the native audio device."""
+        stop_event = stop_event or self.stop_event
         try:
-            while not self.stop_event.is_set():
+            while not stop_event.is_set():
                 try:
                     pcm, captured_at = self.audio_queue.get(timeout=.2)
                 except queue.Empty:
                     continue
-                self._handle_pcm_frame(pcm, captured_at=captured_at)
+                if stop_event.is_set():break
+                self._handle_pcm_frame(pcm, captured_at=captured_at, session_stop=stop_event)
         except Exception as exc:
-            self.last_error = f'Microphone processing error: {exc}'
-            self.error_occurred.emit(self.last_error)
+            if not stop_event.is_set():
+                self.last_error = f'Microphone processing error: {exc}'
+                self.error_occurred.emit(self.last_error)
         finally:
-            self.is_running = False
+            with self._audio_workers_lock:self._audio_workers.discard(threading.current_thread())
+            if stop_event is self.stop_event:self.is_running = False
 
-    @capture_locked
-    def _handle_pcm_frame(self, pcm: bytes, *, captured_at=None) -> None:
+    def _frame_work(self, callback, session_stop):
+        """Native work never holds the lock used by Close/Stop/capture controls.
+
+        Only the serialized audio frame calls this helper, with one capture-lock
+        acquisition. A control change invalidates its result before state updates.
+        """
+        generation = self._capture_generation
+        capture_state = (self._output_active, self._wake_suspended, self._passive_stop,
+                         self.is_recording, self._capture_forced)
+        self._capture_lock.release()
+        try:
+            result = callback()
+        finally:
+            self._capture_lock.acquire()
+        if (self.closed or generation != self._capture_generation
+                or capture_state != (self._output_active, self._wake_suspended, self._passive_stop,
+                                     self.is_recording, self._capture_forced)
+                or (session_stop is not None and session_stop.is_set())):
+            raise _StaleAudioFrame()
+        return result
+
+    def _frame_detector(self, detector, reset_attribute, pcm, session_stop):
+        reset = getattr(self, reset_attribute)
+        setattr(self, reset_attribute, False)
+        def feed():
+            if reset:detector.reset()
+            return detector.feed(pcm)
+        return self._frame_work(feed, session_stop)
+
+    def _handle_pcm_frame(self, pcm: bytes, *, captured_at=None, session_stop=None) -> None:
+        # A fast reopen can leave one retired worker finishing native inference.
+        # Never run two stateful classifiers concurrently, or queue extra frames.
+        if not self._frame_lock.acquire(blocking=False):return
+        try:
+            with self._capture_lock:
+                try:self._process_pcm_frame(pcm, captured_at=captured_at, session_stop=session_stop)
+                except _StaleAudioFrame:pass
+        finally:self._frame_lock.release()
+
+    def _process_pcm_frame(self, pcm: bytes, *, captured_at=None, session_stop=None) -> None:
         """Analyze RMS energy for VAD and wake word monitoring."""
+        if self.closed or self.listening_mode == 'off' or (session_stop is not None and session_stop.is_set()):return
+        if self.listening_mode == 'manual' and not self.is_recording:return
         samples = array.array("h")
         samples.frombytes(pcm)
         if not samples:
@@ -527,9 +635,9 @@ class AudioListener(QObject):
 
         if self._output_active or self._wake_suspended or (self._passive_stop and not self.is_recording):
             self.last_wake_decision = "monitoring-spoken-stop"
-            clean = self.echo_guard.filter(pcm, captured_at)
+            clean = self._frame_work(lambda: self.echo_guard.filter(pcm, captured_at), session_stop)
             if not self._stop_latched and self.stop_detector.ready:
-                keyword = self.stop_detector.feed(clean)
+                keyword = self._frame_detector(self.stop_detector, '_reset_stop', clean, session_stop)
                 if keyword in ('STOP', 'BRAIN_STOP'):
                     self._stop_latched = True
                     self.stop_matches += 1
@@ -566,15 +674,18 @@ class AudioListener(QObject):
 
         # Dynamic sensitivity: adapt to ambient room noise floor
         speech_threshold = max(12.0, self.noise_floor * 0.50)
-        is_speech = self._is_speech_frame(pcm, rms, speech_threshold)
+        if self.endpoint_vad.ready:
+            is_speech = self._frame_detector(self.endpoint_vad, '_reset_vad', pcm, session_stop)
+        else:
+            is_speech = self._frame_work(lambda: self._is_speech_frame(pcm, rms, speech_threshold), session_stop)
         if is_speech:
             self.speech_frames_seen += 1
 
         self._audio_timeline.append((self.audio_frames_seen, pcm, is_speech))
         if self.is_recording:
-            if self.named_characters and not self._wake_capture and self._endpoint.speech < 1.5:
+            if self.wake_detection_enabled and self.listening_mode == 'automatic' and self.named_characters and not self._wake_capture and self._endpoint.speech < 1.5:
                 from dock_twoo.brain.catalog import keyword_id
-                keyword = self.wake_detector.feed(pcm) if self.wake_detector.ready else ''
+                keyword = self._frame_detector(self.wake_detector, '_reset_wake', pcm, session_stop) if self.wake_detector.ready else ''
                 target = keyword_id(keyword) if keyword else None
                 if target is not None and self.store.character_awake(target):
                     self.capture_character_id = target
@@ -598,7 +709,7 @@ class AudioListener(QObject):
         self._wake_preroll.append(pcm)
         if self.wake_detector.ready:
             self.last_wake_checks += 1
-            keyword = self.wake_detector.feed(pcm)
+            keyword = self._frame_detector(self.wake_detector, '_reset_wake', pcm, session_stop)
             self.last_wake_decision = "waiting-for-keyword"
             if keyword:
                 self.last_wake_matches += 1
@@ -630,7 +741,8 @@ class AudioListener(QObject):
             return
         self.ambient_segments_seen += 1
         self.last_wake_decision = "transcribing-ambient-audio"
-        threading.Thread(target=self._check_wake_word, args=(frames, self._capture_generation, self.audio_frames_seen), daemon=True).start()
+        if not self.closed:
+            self._start_decode_worker(self._check_wake_word, (frames, self._capture_generation, self.audio_frames_seen))
 
     def begin_voice_check(self, seconds: float = 30.0) -> None:
         """Expose a short, explicit local diagnostic; no microphone audio is saved."""
@@ -725,11 +837,13 @@ class AudioListener(QObject):
 
     def _complete_keyword_wake(self, frames: list[bytes], generation: Optional[int] = None, revision: Optional[int] = None) -> None:
         """Confirm a detected name and preserve any following command locally."""
+        if self.closed or (generation is not None and generation != self._capture_generation):return
         pcm = b"".join(frames)
         try:
             text = self._transcribe_pcm(pcm).strip()
             self._record_voice_check(text, "keyword confirmation")
         except Exception as exc:
+            if self.closed or (generation is not None and generation != self._capture_generation):return
             self.last_error = f"Wake confirmation failed: {exc}"
             self.error_occurred.emit(self.last_error)
             text = ""
@@ -739,7 +853,9 @@ class AudioListener(QObject):
             self.last_wake_decision = "wake-statement-not-understood"
             self._emit_statement("")
             return
-        if self.named_characters:
+        if self.named_characters and self.listening_mode == 'manual':
+            self.named_turn_completed.emit(self.capture_character_id, text.strip(), text, False)
+        elif self.named_characters:
             from dock_twoo.brain.catalog import named_prefix
             found, command = named_prefix(text, acoustic=True)
             if not self.store.character_awake(found or self._keyword_character_id or self.capture_character_id):
@@ -788,6 +904,7 @@ class AudioListener(QObject):
         try:
             self._check_wake_word_locked(frames, generation, frame_end)
         except Exception as exc:
+            if self.closed or (generation is not None and generation != self._capture_generation):return
             self.last_wake_decision = f"wake-check-error: {type(exc).__name__}"
             self.last_error = f"Wake recognition failed: {exc}"
             self.error_occurred.emit(self.last_error)
@@ -1117,6 +1234,7 @@ class GlobalShortcutListener:
             pass
 
     def stop(self) -> None:
+        self.is_pressed = False
         if self._cocoa_monitors:
             try:
                 from Cocoa import NSEvent

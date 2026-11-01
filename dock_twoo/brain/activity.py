@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import sqlite3
 import threading
 import uuid
@@ -12,6 +13,9 @@ import zlib
 
 RETENTION_DAYS = 7
 DETAIL_LIMIT = 128 * 1024 * 1024
+EVENT_PREVIEW_BYTES = 2048
+EVENT_DECODE_LIMIT = 2 * 1024 * 1024
+TEXT_PAGE_SIZE = 8192
 
 
 def now():
@@ -81,6 +85,7 @@ class ActivityStore:
         self.path = self.root / 'activity.sqlite3'
         self.clock = clock
         self.lock = threading.RLock()
+        self._next_prune = 0.0
         with self.db() as db:
             db.execute('PRAGMA auto_vacuum=INCREMENTAL')
             db.executescript('''
@@ -88,6 +93,7 @@ class ActivityStore:
             CREATE TABLE IF NOT EXISTS runs (
               id TEXT PRIMARY KEY, started TEXT, finished TEXT, source TEXT, request TEXT,
               state TEXT, reply TEXT DEFAULT '', stop_reason TEXT DEFAULT '');
+            CREATE INDEX IF NOT EXISTS runs_started ON runs(started);
             CREATE TABLE IF NOT EXISTS events (
               id INTEGER PRIMARY KEY, run_id TEXT REFERENCES runs(id) ON DELETE CASCADE,
               at TEXT, kind TEXT, step INTEGER, payload BLOB);
@@ -156,7 +162,7 @@ class ActivityStore:
                 db.close()
 
     def start(self, request, source='text'):
-        self.prune()
+        self.prune(force=False)
         ident = uuid.uuid4().hex
         with self.db() as db:
             db.execute('INSERT INTO runs(id,started,source,request,state) VALUES(?,?,?,?,?)',
@@ -227,9 +233,16 @@ class ActivityStore:
         for row in calls:
             self.end_call(row['id'], {}, 'openai', status='interrupted', error='Application exited; provider usage unavailable.')
 
-    def prune(self):
-        cutoff = (self.clock()-timedelta(days=RETENTION_DAYS)).isoformat()
+    def prune(self, *, force=True):
+        current = self.clock()
+        cutoff = (current-timedelta(days=RETENTION_DAYS)).isoformat()
+        with self.lock:
+            if not force and current.timestamp() < self._next_prune:return
         with self.db() as db:
+            # Live Trail polls frequently. Retention and vacuum are maintenance,
+            # not part of every read; rescanning all trace blobs on every poll
+            # made the UI increasingly expensive as a workday progressed.
+            if not force and current.timestamp() < self._next_prune:return
             db.execute('DELETE FROM runs WHERE started<? AND state<>?',(cutoff,'running'))
             size = db.execute('SELECT coalesce(sum(length(payload)),0) FROM events').fetchone()[0]
             if size > DETAIL_LIMIT:
@@ -238,26 +251,106 @@ class ActivityStore:
                     if size <= DETAIL_LIMIT:break
                     db.execute('DELETE FROM runs WHERE id=?',(row['id'],));size-=row['bytes']
             db.execute('PRAGMA incremental_vacuum(256)')
+            self._next_prune = current.timestamp()+60
 
     def list(self, offset=0, limit=30):
-        self.prune()
+        self.prune(force=False)
         offset=max(0,int(offset));limit=max(1,min(50,int(limit)))
         with self.db() as db:
-            rows=db.execute('''SELECT r.*,count(c.id) cloud_calls,count(DISTINCT c.provider||':'||c.model) models,
+            rows=db.execute('''WITH page AS (
+                SELECT id,started,finished,source,substr(request,1,240) request,state,
+                    substr(reply,1,1000) reply,substr(stop_reason,1,1000) stop_reason
+                FROM runs ORDER BY started DESC,id DESC LIMIT ? OFFSET ?)
+                SELECT r.*,count(c.id) cloud_calls,count(DISTINCT c.provider||':'||c.model) models,
                 coalesce(sum(c.total_tokens),0) total_tokens,coalesce(sum(c.retry),0) retries,
                 (SELECT coalesce(max(id),0) FROM events WHERE run_id=r.id) last_event
-                FROM runs r LEFT JOIN calls c ON c.run_id=r.id GROUP BY r.id ORDER BY r.started DESC LIMIT ? OFFSET ?''',(limit+1,offset)).fetchall()
+                FROM page r LEFT JOIN calls c ON c.run_id=r.id GROUP BY r.id ORDER BY r.started DESC,r.id DESC''',(limit+1,offset)).fetchall()
         return {'runs':[{**dict(row),'request':row['request'][:240]} for row in rows[:limit]],
                 'next_offset':offset+limit if len(rows)>limit else None,'retention_days':RETENTION_DAYS}
 
-    def detail(self, ident):
-        self.prune()
+    @staticmethod
+    def _event_data(blob, limit=EVENT_PREVIEW_BYTES):
+        """Bound expansion even for legacy highly-compressed trace payloads."""
+        try:
+            decoder=zlib.decompressobj()
+            raw=decoder.decompress(blob,limit+1)
+            truncated=len(raw)>limit or not decoder.eof
+            text=raw[:limit].decode('utf-8',errors='replace')
+            if not truncated:return json.loads(text),False
+            preview={'truncated':True,'preview':text}
+            # Cloud call ids occur in the small outer event envelope. Retain
+            # pairing metadata without parsing/inflating the full document.
+            match=re.search(r'"call_id"\s*:\s*"([a-f0-9]{32})"',text)
+            if match:preview['call_id']=match[1]
+            return preview,True
+        except (zlib.error,ValueError):
+            return {'unavailable':True,'message':'This stored event could not be decoded.'},False
+
+    @staticmethod
+    def _page_range(offset,limit):
+        offset=int(offset);limit=int(limit)
+        if not 0<=offset<=2**31-1 or not 1<=limit<=TEXT_PAGE_SIZE:
+            raise ValueError('Choose a nonnegative text offset and a page size from 1 to 8192.')
+        return offset,limit
+
+    def text_page(self,ident,field,offset=0,limit=TEXT_PAGE_SIZE):
+        self.prune(force=False)
+        if field not in ('request','reply'):raise ValueError('Choose request or reply text.')
+        offset,limit=self._page_range(offset,limit)
         with self.db() as db:
-            row=db.execute('SELECT * FROM runs WHERE id=?',(ident,)).fetchone()
+            row=db.execute(f'SELECT substr({field},?,?) text,length({field}) total FROM runs WHERE id=?',(offset+1,limit,ident)).fetchone()
+        if row is None:raise ValueError('This activity was not found or its seven-day retention expired.')
+        return {'text':row['text'],'offset':offset,'total':row['total'],
+                'next_offset':offset+limit if offset+limit<row['total'] else None,
+                'previous_offset':max(0,offset-limit) if offset else None}
+
+    def event_page(self,ident,event_id,offset=0,limit=TEXT_PAGE_SIZE):
+        self.prune(force=False)
+        offset,limit=self._page_range(offset,limit)
+        event_id=int(event_id)
+        if not 0<event_id<=2**63-1:raise ValueError('Choose a valid activity event.')
+        with self.db() as db:
+            row=db.execute('SELECT substr(payload,1,?) payload FROM events WHERE run_id=? AND id=?',(EVENT_DECODE_LIMIT,ident,event_id)).fetchone()
+        if row is None:raise ValueError('This activity event was not found or its retention expired.')
+        try:
+            decoder=zlib.decompressobj()
+            raw=decoder.decompress(row['payload'],EVENT_DECODE_LIMIT+1)
+            limited=len(raw)>EVENT_DECODE_LIMIT or not decoder.eof
+            text=raw[:EVENT_DECODE_LIMIT].decode('utf-8',errors='replace')
+        except zlib.error:raise ValueError('This stored event could not be decoded.') from None
+        return {'text':text[offset:offset+limit],'offset':offset,'total':len(text),
+                'next_offset':offset+limit if offset+limit<len(text) else None,
+                'previous_offset':max(0,offset-limit) if offset else None,
+                'limited':limited}
+
+    def detail(self, ident, *, before=None, limit=100):
+        self.prune(force=False)
+        limit=int(limit)
+        if not 1<=limit<=100:raise ValueError('Choose an event page size from 1 to 100.')
+        if before is not None:
+            before=int(before)
+            if not 0<before<=2**63-1:raise ValueError('Choose a valid earlier-event cursor.')
+        with self.db() as db:
+            row=db.execute('SELECT id,started,finished,source,state,substr(request,1,4000) request,substr(reply,1,4000) reply,substr(stop_reason,1,4000) stop_reason,length(request)>4000 request_truncated,length(reply)>4000 reply_truncated FROM runs WHERE id=?',(ident,)).fetchone()
             if row is None:raise ValueError('This activity was not found or its seven-day retention expired.')
-            events=[{**dict(event),'payload':json.loads(zlib.decompress(event['payload']))} for event in db.execute('SELECT * FROM events WHERE run_id=? ORDER BY id',(ident,))]
-            calls=[dict(call) for call in db.execute('SELECT * FROM calls WHERE run_id=? ORDER BY started',(ident,))]
-        return {'run':dict(row),'calls':calls,'events':events,'retention_days':RETENTION_DAYS}
+            where='run_id=?'+(' AND id<?' if before is not None else '')
+            args=(ident,before,limit+1) if before is not None else (ident,limit+1)
+            records=db.execute('SELECT id,run_id,at,kind,step,substr(payload,1,8192) payload FROM events WHERE '+where+' ORDER BY id DESC LIMIT ?',args).fetchall()
+            has_more=len(records)>limit;events=[]
+            for event in reversed(records[:limit]):
+                payload,truncated=self._event_data(event['payload'])
+                events.append({**dict(event),'payload':payload,'payload_truncated':truncated})
+            steps=[event['step'] for event in events if event['step']>0]
+            call_where='run_id=?'+(' AND step BETWEEN ? AND ?' if steps else '')
+            call_args=(ident,min(steps),max(steps)) if steps else (ident,)
+            calls=[dict(call) for call in db.execute('SELECT * FROM calls WHERE '+call_where+' ORDER BY started DESC LIMIT 100',call_args)][::-1]
+            usage=dict(db.execute('''SELECT count(*) calls,coalesce(sum(input_tokens),0) input_tokens,
+                coalesce(sum(output_tokens),0) output_tokens,coalesce(sum(retry),0) retries,
+                coalesce(sum(latency_ms),0) latency_ms,sum(total_tokens IS NOT NULL) known_usage_calls
+                FROM calls WHERE run_id=?''',(ident,)).fetchone())
+            count=db.execute('SELECT count(*) FROM events WHERE run_id=?',(ident,)).fetchone()[0]
+        return {'run':dict(row),'calls':calls,'events':events,'usage':usage,'retention_days':RETENTION_DAYS,
+                'pagination':{'before':before,'next_before':events[0]['id'] if has_more else None,'event_count':count,'limit':limit}}
 
     def metrics(self, start=None, end=None, period='month', profile_id=None, character_id=None):
         today=self.clock().date()

@@ -40,7 +40,15 @@ class VoiceOrbWidget(QWidget):
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._animate_pulse)
-        self._timer.start(40)  # 25 fps
+        self._timer.setInterval(40)  # 25 fps, only while the drawer is visible.
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._timer.start()
+
+    def hideEvent(self, event) -> None:
+        self._timer.stop()
+        super().hideEvent(event)
 
     def set_listening(self, listening: bool) -> None:
         self._is_listening = listening

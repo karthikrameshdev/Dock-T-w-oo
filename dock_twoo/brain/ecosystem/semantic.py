@@ -1,5 +1,6 @@
 """One small local transformer shared by memory, review and animation policy."""
-from functools import lru_cache
+from collections import OrderedDict
+import hashlib
 from pathlib import Path
 import threading
 import numpy as np
@@ -13,6 +14,8 @@ class SemanticModel:
     def __init__(self, root):
         self.root=Path(root); self.state='not started'; self.error=''
         self.session=None; self.tokenizer=None; self.lock=threading.RLock(); self.worker=None
+        self._embeddings = OrderedDict()
+        self.cache_limit = 512
 
     @property
     def ready(self):return self.session is not None
@@ -37,18 +40,30 @@ class SemanticModel:
                 self.tokenizer=tokenizer;self.session=session;self.state='ready';self.error='';return True
             except Exception as exc:self.state='unavailable';self.error=f'{type(exc).__name__}: {exc}';return False
 
-    @lru_cache(maxsize=2048)
     def embed(self, text):
         if not self.ready:raise RuntimeError('Local semantic model is not ready.')
+        # Cache only the bounded model input's digest. An lru_cache on this
+        # method retained entire documents as keys (and the model instance).
+        text = str(text)[:6000]
+        key = hashlib.sha256(text.encode()).digest()
         with self.lock:
-            token=self.tokenizer.encode(str(text)[:6000])
+            if key in self._embeddings:
+                self._embeddings.move_to_end(key)
+                return self._embeddings[key]
+            token=self.tokenizer.encode(text)
             data={'input_ids':np.array([token.ids],dtype=np.int64),'attention_mask':np.array([token.attention_mask],dtype=np.int64),'token_type_ids':np.array([token.type_ids],dtype=np.int64)}
             outputs=self.session.run(None,{v.name:data[v.name] for v in self.session.get_inputs()})
-        value=outputs[0]
-        if value.ndim==3:
-            mask=data['attention_mask'][...,None];value=(value*mask).sum(axis=1)/np.maximum(1,mask.sum(axis=1))
-        value=np.asarray(value[0],dtype=np.float32);value=value/max(1e-9,float(np.linalg.norm(value)));value.setflags(write=False)
-        return value
+            value=outputs[0]
+            if value.ndim==3:
+                mask=data['attention_mask'][...,None];value=(value*mask).sum(axis=1)/np.maximum(1,mask.sum(axis=1))
+            value=np.asarray(value[0],dtype=np.float32);value=value/max(1e-9,float(np.linalg.norm(value)));value.setflags(write=False)
+            self._embeddings[key] = value
+            while len(self._embeddings) > self.cache_limit:
+                self._embeddings.popitem(last=False)
+            return value
+
+    def clear_cache(self):
+        with self.lock:self._embeddings.clear()
 
     def similarity(self, a, b):return float(self.embed(a) @ self.embed(b))
 

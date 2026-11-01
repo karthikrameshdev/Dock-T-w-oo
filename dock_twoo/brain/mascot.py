@@ -255,12 +255,10 @@ class Companion(QWidget):
         self.blink_timer = QTimer(self)
         self.blink_timer.setSingleShot(True)
         self.blink_timer.timeout.connect(self._blink)
-        self.blink_timer.start(8000)
 
         self.activity_timer = QTimer(self)
         self.activity_timer.setInterval(33)
         self.activity_timer.timeout.connect(self._animate_activity)
-        self.activity_timer.start()
 
         self.motion_timer = QTimer(self)
         self.motion_timer.setInterval(33)
@@ -269,12 +267,9 @@ class Companion(QWidget):
         self.roam_timer = QTimer(self)
         self.roam_timer.setInterval(random.randint(6500, 10000))  # Frequent omniverse roaming and exploring
         self.roam_timer.timeout.connect(self._roam)
-        self.roam_timer.start()
         self.follow_timer = QTimer(self)
         self.follow_timer.setInterval(33)
         self.follow_timer.timeout.connect(self._follow_cursor_step)
-        if self.follow_cursor_enabled:
-            self.follow_timer.start()
 
         self.renderer_status = QLabel(f'Loading {self.character_name}…', self)
         self.renderer_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -385,6 +380,8 @@ class Companion(QWidget):
     def dispose(self):
         for timer in self.findChildren(QTimer):
             timer.stop()
+        if self.model_view:
+            self.model_view.release_resources()
         self.close()
         self.deleteLater()
 
@@ -404,18 +401,33 @@ class Companion(QWidget):
         pin_native(self)
         if not self.reduced_motion:
             self.activity_timer.start()
+            self.blink_timer.start(random.randint(2800, 5600))
+            if not self.resource_capped:
+                self.roam_timer.start()
         self._apply_follow_input_mode()
-        if self.follow_cursor_enabled:
+        if self.follow_cursor_enabled and not self.resource_capped and not self.reduced_motion:
             self._follow_position = QPointF(self.pos())
             self._follow_last_tick = time.monotonic()
             self.follow_timer.start()
+        if hasattr(self.manager, 'input_router'):
+            self.manager.input_router.refresh_visibility()
+        if hasattr(self.manager, 'playground'):
+            self.manager.playground.refresh_visibility()
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
         self.cancel_pointer_capture()
-        self.activity_timer.stop()
-        self.follow_timer.stop()
+        self.stop_motion()
+        for timer in (self.activity_timer, self.follow_timer, self.motion_timer,
+                      self.roam_timer, self.blink_timer):
+            timer.stop()
+        self.blinking = False
+        self.blink_amount = 0.0
         self.reading_guide.hide()
+        if hasattr(self.manager, 'input_router'):
+            self.manager.input_router.refresh_visibility()
+        if hasattr(self.manager, 'playground'):
+            self.manager.playground.refresh_visibility()
 
     def _restore_placement(self) -> None:
         screen = self.assigned_screen or QApplication.primaryScreen()
@@ -509,6 +521,7 @@ class Companion(QWidget):
 
     def turn_to_side(self, facing: float = 1.0, on_turned=None) -> None:
         """Smoothly rotate character towards side profile (1.0 = right, -1.0 = left)."""
+        if not getattr(self.manager, 'assistant_available', True):return
         if QThread.currentThread() != self.thread():
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.turn_to_side(facing, on_turned))
@@ -534,6 +547,7 @@ class Companion(QWidget):
 
     def turn_to_user(self, on_turned=None) -> None:
         """Smoothly turn character back to face the user directly (front profile)."""
+        if not getattr(self.manager, 'assistant_available', True):return
         if QThread.currentThread() != self.thread():
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.turn_to_user(on_turned))
@@ -571,6 +585,7 @@ class Companion(QWidget):
 
     def play_action(self, action: str, destination: Optional[QPoint] = None, duration: Optional[float] = None, *, sequence: bool = False, keep_orientation: bool = False) -> None:
         """Execute an action, optionally retaining yaw for a chained inspection."""
+        if not getattr(self.manager, 'assistant_available', True):return
         if QThread.currentThread() != self.thread():
             if hasattr(self.manager, "run_on_main_thread"):
                 self.manager.run_on_main_thread(lambda: self.play_action(action, destination, duration, sequence=sequence, keep_orientation=keep_orientation))
@@ -895,7 +910,7 @@ class Companion(QWidget):
 
 
     def _blink(self) -> None:
-        if self.reduced_motion:
+        if self.reduced_motion or not self.isVisible():
             return
         self.blinking = True
         self._blink_started = time.monotonic()

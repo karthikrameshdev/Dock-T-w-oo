@@ -3,7 +3,7 @@
 Run with --seconds 600. The production app should be stopped to avoid testing
 against a second dock. Writes bounded evidence in the OS temporary directory.
 """
-import argparse,json,os,random,sys,tempfile,threading,time
+import argparse,json,os,random,statistics,sys,tempfile,threading,time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
@@ -11,6 +11,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 os.environ['PYTEST_CURRENT_TEST']='resident-stability'
 from PySide6.QtCore import QPoint,QTimer,Qt,QObject,QEvent
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QCursor
 from PySide6.QtTest import QTest
 from dock_twoo.brain.manager import BrainManager
 from dock_twoo.brain.storage import BrainStore
@@ -25,6 +26,7 @@ parser.add_argument('--interval',type=int,default=45)
 parser.add_argument('--output',type=Path,default=Path(tempfile.gettempdir())/'dock-resident-stability.json')
 parser.add_argument('--resource-budget',action='store_true')
 parser.add_argument('--characters',type=int,default=30)
+parser.add_argument('--qt-input',action='store_true',help='Send clicks only to fixture widgets; do not move the system pointer.')
 parser.add_argument('--keep-on-failure',action='store_true');args=parser.parse_args()
 args.output.parent.mkdir(parents=True,exist_ok=True)
 QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
@@ -52,7 +54,8 @@ dock=DockWindow(config,screen_id=entries[0]['id']);dock.show()
 for actor in manager.companions.values():actor.roam_timer.stop()
 actors=list(manager.companions.values());brain=manager.companion
 started=time.monotonic();ready_at=None;last_tick=started;last_cycle=-999;last_action=0;testing=False;finished=False
-lags=[];cycles=0;errors=[];samples=[];hidden_test=False;crash_test=False;hidden_frames={}
+lags=[];cycles=0;errors=[];samples=[];hidden_test=False;close_test=False;crash_test=False;hidden_frames={}
+resource_samples=[];next_resource_sample=started
 click_point=QPoint();events=[]
 class InputTrace(QObject):
  def eventFilter(self,obj,event):
@@ -77,6 +80,9 @@ def input_snapshot():
     data.update(ignored=message(ctypes.c_bool,window,'ignoresMouseEvents'),level=message(ctypes.c_long,window,'level'))
   return data
  data={'point':[click_point.x(),click_point.y()],'grabber':describe(QWidget.mouseGrabber()),'popup':describe(app.activePopupWidget()),
+       'cursor':[QCursor.pos().x(),QCursor.pos().y()],
+       'router':{'enabled':manager.input_router.enabled,'active':manager.input_router._active,'timer':manager.input_router.timer.isActive(),
+                 'states':str(manager.input_router._states),'monitors':len(manager.input_router._monitors)},
        'hit':describe(app.widgetAt(click_point)),'events':events[-20:],'actors':[]}
  for actor in actors:
   data['actors'].append({'actor':actor.character_id,'window':describe(actor),'visual':describe(actor.model_view),
@@ -97,17 +103,24 @@ def finish():
  if finished:return
  finished=True;timer.stop()
  result={'success':not errors,'seconds':round(time.monotonic()-(ready_at or started),1),'characters':len(actors),'identities_verified':switched,
-         'native_click_cycles':cycles,'input': 'OS mouse events' if sys.platform=='darwin' else 'Qt mouse events',
+         'native_click_cycles':cycles,'input': 'OS mouse events' if sys.platform=='darwin' and not args.qt_input else 'Qt mouse events',
          'max_event_loop_delay_ms':round(max(lags or [0])*1000,1),'renderer_samples':samples[-90:],
-         'hidden_freeze_checked':hidden_test,'renderer_restart_checked':crash_test,'errors':errors,'cloud_calls':0,'microphone_opened':False,'resource_budget':dict(manager.resources.stats) if args.resource_budget else None}
- args.output.write_text(json.dumps(result,indent=2));print(json.dumps({k:v for k,v in result.items() if k!='renderer_samples'}),flush=True)
+         'hidden_freeze_checked':hidden_test,'assistant_close_reopen_checked':close_test,'renderer_restart_checked':crash_test,'errors':errors,'cloud_calls':0,'microphone_opened':False,'resource_budget':dict(manager.resources.stats) if args.resource_budget else None,
+         'resource_samples':resource_samples}
+ steady=[sample for sample in resource_samples if sample['phase']=='resident']
+ if steady:
+  result['resource_summary']={'rss_first_bytes':steady[0]['rss_bytes'],'rss_last_bytes':steady[-1]['rss_bytes'],
+    'rss_peak_bytes':max(sample['rss_bytes'] for sample in steady),'cpu_percent_median':statistics.median(sample['cpu_percent'] for sample in steady),
+    'cpu_percent_peak':max(sample['cpu_percent'] for sample in steady),'max_processes':max(sample['processes'] for sample in steady),
+    'note':'Isolated renderer/UI fixture without microphone, local inference or cloud workloads; CPU is process-tree percent of one logical core.'}
+ args.output.write_text(json.dumps(result,indent=2));print(json.dumps({k:v for k,v in result.items() if k not in ('renderer_samples','resource_samples')}),flush=True)
  dock.close();manager.shutdown();server.shutdown();gc.stop(restore=False);app.exit(1 if errors else 0)
 
 def click(widget,point=None,done=None):
  global click_point
  point=point or widget.rect().center();global_point=widget.mapToGlobal(point)
  click_point=global_point
- if sys.platform=='darwin':
+ if sys.platform=='darwin' and not args.qt_input:
   import Quartz as Q
   xy=(global_point.x(),global_point.y())
   def post(kind):Q.CGEventPost(Q.kCGHIDEventTap,Q.CGEventCreateMouseEvent(None,kind,xy,Q.kCGMouseButtonLeft))
@@ -149,9 +162,13 @@ def interaction_cycle():
   click(brain,target,listening)
  def listening():
   if not manager.listener.is_recording or brain.activity!='listening':return fail('Native character click did not start listening')
-  # Finish via a second real click on the now stable head.
-  b=brain.input_region.boundingRect();p=b.center()
-  if not brain.input_region.contains(p):p=QPoint(b.center().x(),b.top()+b.height()//3)
+  # The bounding-box center is the articulated neck/chest gap, which can move
+  # out from under a click while the listening clip starts. Aim inside the head
+  # on both clicks; transparent pixels must continue to pass through by design.
+  b=brain.input_region.boundingRect();head=QPoint(b.center().x(),b.top()+b.height()//3)
+  points=[QPoint(x,y) for y in range(b.top(),b.bottom()+1) for x in range(b.left(),b.right()+1) if brain.input_region.contains(QPoint(x,y))]
+  if not points:return fail('Listening character has no clickable head')
+  p=min(points,key=lambda point:(point-head).manhattanLength())
   click(brain,p,completed)
  def completed():
   global testing,cycles
@@ -171,8 +188,13 @@ def diagnostics(actor,label='sample',done=None):
  actor.model_view.page().runJavaScript('JSON.stringify({frames:window.brainDiagnostics?.renderedFrames,active:window.brainDiagnostics?.activeActions,cached:window.brainDiagnostics?.cachedActions})',receive)
 
 def tick():
- global ready_at,last_tick,last_cycle,last_action,hidden_test,crash_test,testing,switch_ready
+ global ready_at,last_tick,last_cycle,last_action,hidden_test,close_test,crash_test,testing,switch_ready,next_resource_sample
  now=time.monotonic();lag=now-last_tick-.05;last_tick=now
+ if now>=next_resource_sample:
+  next_resource_sample=now+5
+  resource_samples.append({'phase':'startup' if ready_at is None else 'resident',
+                           'interaction':testing,'elapsed':round(now-started,1),**manager.resources.meter.sample()})
+  del resource_samples[:-240]
  if ready_at is None:
   if all(a.model_view.ready and a.has_input_shape and not a.input_region.isEmpty() for a in actors):
    if not switch_ready:switch_ready=now
@@ -206,14 +228,15 @@ def tick():
  if not testing and elapsed>args.seconds*.4 and not hidden_test:
   testing=True;target=actors[-1];target.set_activity('processing');target.resource_active_until=time.monotonic()+30;target.model_view.set_parked(False)
   def before(value):
-   hidden_frames.update(value);target.hide()
+   hidden_frames.update(value);manager.hide_mini_agent()
    def check():
     if target.model_view.timer.isActive():return fail('Hidden view still sends updates')
     from PySide6.QtWebEngineCore import QWebEnginePage
-    expected=QWebEnginePage.LifecycleState.Discarded if args.resource_budget else QWebEnginePage.LifecycleState.Frozen
-    if target.model_view.page().lifecycleState()!=expected:return fail('Hidden page did not release its resources')
+    if args.resource_budget:
+     if not target.model_view._released or target.model_view.page().renderProcessPid()!=0:return fail('Hidden page did not release its renderer')
+    elif target.model_view.page().lifecycleState()!=QWebEnginePage.LifecycleState.Frozen:return fail('Hidden page did not freeze')
     target.resource_active_until=time.monotonic()+20
-    target.show()
+    manager.show_mini_agent()
     def resumed():
      if not target.model_view.ready:return fail('Shown character did not resume')
      def verify(value):
@@ -225,6 +248,21 @@ def tick():
     QTimer.singleShot(8000 if args.resource_budget else 1200,resumed)
    QTimer.singleShot(47000 if args.resource_budget else 2500,check)
   diagnostics(target,'before_hide',before)
+ if not testing and elapsed>args.seconds*.5 and not close_test and hidden_test:
+  testing=True;target=actors[-1]
+  manager.close_assistant()
+  if not manager.assistant_closed or manager.listener.is_recording or target.isVisible():return fail('Close did not disable the assistant')
+  if manager.input_router.timer.isActive() or manager.playground.timer.isActive():return fail('Closed assistant retains native animation/input polling')
+  def reopen():
+   if target.model_view.page().renderProcessPid()!=0:return fail('Close retained a renderer process')
+   manager.show_mini_agent()
+   def reopened():
+    global testing,close_test
+    if manager.assistant_closed or manager.listener.closed or not target.isVisible():return fail('Explicit reopen did not restore the assistant')
+    if not target.model_view.ready or target.model_view.error or target.input_region.isEmpty():return fail('Reopened character has no functioning renderer or hit mask')
+    close_test=True;testing=False;print('PASS explicit Close/Open with renderer recreation',flush=True)
+   QTimer.singleShot(4000,reopened)
+  QTimer.singleShot(800,reopen)
  if not testing and elapsed>args.seconds*.65 and not crash_test and sys.platform!='win32':
   testing=True;target=actors[-1];target.set_activity('processing');target.resource_active_until=time.monotonic()+30;target.model_view.set_parked(False);pid=target.model_view.page().renderProcessPid()
   if pid<=0 or pid==os.getpid():return fail('No isolated test renderer process to terminate')

@@ -67,6 +67,9 @@ class LocalRecognizer:
         rms = float(np.sqrt(np.mean(samples * samples)))
         samples = np.clip(samples * min(12.0, max(1.0, 0.035 / max(rms, 0.001))), -1.0, 1.0)
         with self._inference_lock:
+            # The assistant may have closed between the initial ready check
+            # and this lock. Never use a released native recognizer.
+            if self._recognizer is None:return ''
             # Whisper has a finite context. Decode long statements in overlapping
             # windows, retaining the full statement instead of its first 30 sec.
             transcripts = []
@@ -88,3 +91,15 @@ class LocalRecognizer:
                 if offset + 26 * 16000 >= len(samples):
                     break
             return ' '.join(part for part in transcripts if part).strip()
+
+    def release_if_idle(self) -> bool:
+        """Release resident weights only when neither load nor decode is active."""
+        if not self._load_lock.acquire(blocking=False):return False
+        try:
+            if not self._inference_lock.acquire(blocking=False):return False
+            try:
+                self._recognizer = None
+                self.state, self.error = 'not started', ''
+                return True
+            finally:self._inference_lock.release()
+        finally:self._load_lock.release()

@@ -26,13 +26,41 @@ class NativeInputRouter(QObject):
         self._monitors = []
         self._last_verified = 0.0
         self._release_checks = set()
+        self._active = False
         self.timer = QTimer(self)
         self.timer.setInterval(50)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self.sync)
-        if self.enabled:
+        self.refresh_visibility()
+
+    def refresh_visibility(self):
+        self.set_active(any(isValid(actor) and actor.isVisible()
+                            for actor in self.manager.companions.values()))
+
+    def set_active(self, active):
+        """No native event monitors or position polling for hidden assistants."""
+        active = bool(active and self.enabled)
+        if active == self._active:
+            return
+        self._active = active
+        if active:
             self._observe_pointer()
             self.timer.start()
+            self.sync(force=True)
+        else:
+            self.timer.stop()
+            self._remove_monitors()
+            self._states.clear()
+            self._release_checks.clear()
+
+    def _remove_monitors(self):
+        if self._monitors:
+            import AppKit
+            for monitor in self._monitors:
+                if monitor is not None:
+                    AppKit.NSEvent.removeMonitor_(monitor)
+            self._monitors.clear()
+        self._pointer_callback = None
 
     def _observe_pointer(self):
         try:
@@ -125,11 +153,6 @@ class NativeInputRouter(QObject):
 
     def close(self):
         self.enabled = False
+        self.set_active(False)
         self.timer.stop()
-        if self._monitors:
-            import AppKit
-            for monitor in self._monitors:
-                if monitor is not None:
-                    AppKit.NSEvent.removeMonitor_(monitor)
-            self._monitors.clear()
-        self._pointer_callback = None
+        self._remove_monitors()

@@ -37,6 +37,10 @@ class SpeechPlayback(QObject):
         self.store = None
         self._progress_offset = 0.
         self._progress_scale = 1.
+        self._pending_speech = None
+        self._speech_start_timer = QTimer(self)
+        self._speech_start_timer.setInterval(20)
+        self._speech_start_timer.timeout.connect(self._start_pending_speech)
 
         self._frame.connect(self._schedule_frame)
         self._done.connect(self._finish)
@@ -56,6 +60,8 @@ class SpeechPlayback(QObject):
         self._start(None,sound_id=character_id)
 
     def _start(self, text: Optional[str], *, song=False, sound_id=None) -> None:
+        if not getattr(self.parent(), 'assistant_available', True):
+            return
         self.stop()
         if text is not None:
             from dock_twoo.brain.speech_text import spoken_text
@@ -68,9 +74,30 @@ class SpeechPlayback(QObject):
         owner=getattr(self.parent(),'companion',None)
         character_id=sound_id or getattr(owner,'character_id','default')
         voice_settings=tuning(self.store,character_id) if self.store else None
+        # ONNX inference cannot be interrupted in the middle of a phrase.
+        # Keep one active worker and only the newest pending request instead
+        # of creating a thread/prefetch executor for every interrupted answer.
+        self._pending_speech = (token, text, cancel, song, voice_settings, sound_id)
+        self._start_pending_speech()
+
+    def _start_pending_speech(self) -> None:
+        if not getattr(self.parent(), 'assistant_available', True):
+            self.stop()
+            return
+        pending = self._pending_speech
+        if pending is None:
+            self._speech_start_timer.stop()
+            return
+        if self.worker is not None and self.worker.is_alive():
+            self._speech_start_timer.start()
+            return
+        self._speech_start_timer.stop()
+        self._pending_speech = None
+        if pending[0] != self.generation or pending[2].is_set():
+            return
         self.worker = threading.Thread(
             target=self._play_worker,
-            args=(token, text, cancel, song, voice_settings, sound_id),
+            args=pending,
             daemon=True,
             name="brain-speech",
         )
@@ -81,6 +108,8 @@ class SpeechPlayback(QObject):
         self.generation += 1
         if self.cancel_event:
             self.cancel_event.set()
+        self._pending_speech = None
+        self._speech_start_timer.stop()
         self.playing = False
         self.mouth.emit(0.0)
         self.progress.emit(0.0)

@@ -27,9 +27,10 @@ from dock_twoo.brain.cloud import NOT_CONFIGURED
 from dock_twoo.brain.local_tts import get_local_tts
 from dock_twoo.brain.animation_director import AnimationDirector
 from dock_twoo.brain.sessions import BrainSessions
+from dock_twoo.brain.lifecycle import AssistantLifecycle
 
 
-class BrainManager(QObject, BrainSessions):
+class BrainManager(QObject, BrainSessions, AssistantLifecycle):
     """Central controller for the Brain voice-assisted system."""
 
     status_changed = Signal(str)
@@ -70,6 +71,15 @@ class BrainManager(QObject, BrainSessions):
         if "PYTEST_CURRENT_TEST" in os.environ:
             start_services = False
         self.store = store or BrainStore()
+        self._services_enabled = start_services
+        self._assistant_lock = threading.RLock()
+        self._stop_trace_lock = threading.Lock()
+        self._stop_trace_pending = {}
+        self._stop_trace_worker = None
+        self._shutting_down = False
+        self._assistant_epoch = 0
+        self.assistant_closed = bool(self.store.setting('assistant_closed', False))
+        self._models_release_pending = self.assistant_closed
         self.profile_mgr = ProfileManager(self.store)
         from dock_twoo.brain.activity import ActivityStore
         self.activity = ActivityStore(self.store.data_dir/'activity')
@@ -133,30 +143,31 @@ class BrainManager(QObject, BrainSessions):
             model_dir=voice_model_dir,
             audio_devices=self.audio_devices,
         )
+        self.listener.closed = self.assistant_closed
         self.speech.voice_models = self.listener.models
         self.speech.echo_guard = self.listener.echo_guard
-        self.listener.stop_requested.connect(self._on_voice_stop)
+        self.listener.stop_requested.connect(lambda text: self._dispatch_assistant_callback(self._on_voice_stop, text), Qt.ConnectionType.DirectConnection)
         self.audio_listener_error = ""
-        self.listener.error_occurred.connect(self._on_audio_listener_error)
-        self.listener.speech_started.connect(self._on_speech_started)
-        self.listener.speech_ended.connect(self._on_speech_ended)
-        self.listener.processing_started.connect(self._on_processing_started)
+        self.listener.error_occurred.connect(lambda text: self._dispatch_assistant_callback(self._on_audio_listener_error, text), Qt.ConnectionType.DirectConnection)
+        self.listener.speech_started.connect(lambda: self._dispatch_assistant_callback(self._on_speech_started), Qt.ConnectionType.DirectConnection)
+        self.listener.speech_ended.connect(lambda: self._dispatch_assistant_callback(self._on_speech_ended), Qt.ConnectionType.DirectConnection)
+        self.listener.processing_started.connect(lambda: self._dispatch_assistant_callback(self._on_processing_started), Qt.ConnectionType.DirectConnection)
         self.listener.enable_character_names()
-        self.listener.named_wake_started.connect(self._on_named_keyword_started)
-        self.listener.named_turn_completed.connect(self._on_named_turn_completed)
-        self.listener.turn_timed_out.connect(self._on_session_timeout)
+        self.listener.named_wake_started.connect(lambda identity: self._dispatch_assistant_callback(self._on_named_keyword_started, identity), Qt.ConnectionType.DirectConnection)
+        self.listener.named_turn_completed.connect(lambda *args: self._dispatch_assistant_callback(self._on_named_turn_completed, *args), Qt.ConnectionType.DirectConnection)
+        self.listener.turn_timed_out.connect(lambda: self._dispatch_assistant_callback(self._on_session_timeout), Qt.ConnectionType.DirectConnection)
         self.speech.activity.connect(self._on_speech_activity)
-        self.listener.wake_detection_enabled = bool(self.store.setting("wake_word_enabled", True))
+        self.listener.wake_detection_enabled = self.listening_mode == 'automatic'
 
         # Push-to-talk shortcut listener (default: right Command key)
         self.shortcut_listener = GlobalShortcutListener(
             shortcut_key=self.store.setting("push_to_talk_shortcut", "cmd_r"),
-            on_press=self._on_shortcut_press,
-            on_release=self._on_shortcut_release,
+            on_press=lambda: self._dispatch_assistant_callback(self._on_shortcut_press),
+            on_release=lambda: self._dispatch_assistant_callback(self._on_shortcut_release),
         )
         from dock_twoo.brain.desktop_reader import DesktopReader
         self.reader = DesktopReader(self)
-        if not start_services:
+        if not start_services or self.assistant_closed:
             self.reader.remember_timer.stop()
         from dock_twoo.brain.ecosystem.semantic import SemanticModel
         from dock_twoo.brain.ecosystem.memory import AdaptiveMemory
@@ -164,7 +175,7 @@ class BrainManager(QObject, BrainSessions):
         self.semantic_model=SemanticModel(voice_model_dir or self.store.data_dir/'models')
         self.memory=AdaptiveMemory(self.store.data_dir/'memory',self.semantic_model)
         self.prompt_cache=PromptCache(self.store.data_dir/'cache')
-        if start_services:self.semantic_model.start()
+        if start_services and not self.assistant_closed:self.semantic_model.start()
         self.agent = BrainAgent(self.profile_mgr, self, tracker=self.activity)
         from dock_twoo.brain.ecosystem.coordinator import Coordinator
         from dock_twoo.brain.agent_notifications import AgentNotifications
@@ -172,6 +183,8 @@ class BrainManager(QObject, BrainSessions):
         from dock_twoo.brain.security.approvals import FileApprovals
         from dock_twoo.brain.security.files import FileGuard
         self.file_approvals=FileApprovals(self)
+        if self.assistant_closed:
+            self.file_approvals.closed = self.notifications.closed = True
         self.file_guard=FileGuard(self.store.data_dir/'security'/'analysis-files.json',self.file_approvals.ask)
         self.agent.tools.guard=self.file_guard
         self.coordinator=Coordinator(self)
@@ -180,7 +193,7 @@ class BrainManager(QObject, BrainSessions):
         self.animation_director = AnimationDirector(self)
         from dock_twoo.brain.ecosystem.animation import EcologyDirector
         self.ecology=EcologyDirector(self)
-        if not start_services:self.ecology.timer.stop()
+        if not start_services or self.assistant_closed:self.ecology.timer.stop()
         from dock_twoo.brain.resources import ResourceKeeper
         self.resources = ResourceKeeper(self, enabled=start_services)
         from dock_twoo.brain.reminders import ReminderService
@@ -188,18 +201,19 @@ class BrainManager(QObject, BrainSessions):
         self.reader.failed.connect(self._on_reading_failed)
         self.reader.finished.connect(self._on_reading_finished)
         self.speech.progress.connect(lambda value: self.companion.reading_progress(value))
-        if start_services and self.store.setting("wake_word_enabled", True):
+        if start_services and not self.assistant_closed and self.listening_mode == 'automatic':
             self.listener.start()
-        if start_services:
-            self.shortcut_listener.start()
+        if start_services and not self.assistant_closed:
+            if self.listening_mode != 'off':self.shortcut_listener.start()
             get_local_tts().start()
 
-        if self.store.setting("companion_visible", True):
+        if self.assistant_available and self.store.setting("companion_visible", True):
             self.show_mini_agent()
 
     @Slot(str)
     def _on_audio_listener_error(self, message: str) -> None:
         """Keep microphone startup failures available to the settings console."""
+        if not self.assistant_available:return
         self.audio_listener_error = message
         self.status_changed.emit(message)
         if hasattr(self, 'notifications'):
@@ -207,16 +221,19 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot(str)
     def _do_speech_start(self, reply: str) -> None:
+        if not self.assistant_available:return
         self.speech.start(reply)
 
     @Slot(str)
     def _do_action(self, action_name: str) -> None:
+        if not self.assistant_available:return
         if action_name == "loop":
             self.companion.start_animation_loop()
         else:
             self.play_user_action(self.companion, action_name)
 
     def play_user_action(self, actor, action):
+        if not self.assistant_available:return
         actor.resource_active_until = time.monotonic()+min(20,actor.actions.get(action,('',5))[1]+1)
         actor.resource_resting=False
         if actor.model_view:actor.model_view.set_parked(False)
@@ -227,6 +244,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _do_show_mini_agent(self) -> None:
+        if not self._open_assistant():return
         self.store.set_setting("companion_visible", True)
         for actor in self.companions.values():
             actor.show()
@@ -280,6 +298,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_speech_ended(self):
+        if self.listening_mode != 'automatic':self.listener.pause_input()
         self._refresh_actor_states()
 
     @Slot()
@@ -288,6 +307,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_speech_finished(self):
+        if not self.assistant_available:return
         self._awaiting_reply = False
         if self.reader.active:
             self.reader.speech_finished()
@@ -303,16 +323,18 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot(str)
     def _on_speech_activity(self, activity):
+        if not self.assistant_available:return
         active = activity in ('thinking', 'speaking')
         if active:
-            self.listener.start()
+            if self.listening_mode == 'automatic':self.listener.start()
+            else:self.listener.pause_input()
         # Explicit listening can coexist with an agent worker, never playback.
         self.listener.set_output_active(active)
 
     @Slot(str)
     def _on_named_keyword_started(self, character_id):
         # A queued microphone signal can arrive after synthesis/playback began.
-        if self.listener.wake_suppressed or self.reader.active:
+        if not self.assistant_available or self.listening_mode != 'automatic' or self.listener.wake_suppressed or self.reader.active:
             return
         if not self.store.character_awake(character_id):
             self.listener.cancel_recording()
@@ -340,7 +362,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot(str, str, str, bool)
     def _on_named_turn_completed(self, character_id, command, transcript, bare):
-        if self.listener.wake_suppressed or self.reader.active:
+        if not self.assistant_available or self.listening_mode == 'off' or self.listener.wake_suppressed or self.reader.active:
             return
         owner = self.voice_actor(character_id)
         self.listener.cancel_recording()
@@ -353,6 +375,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_keyword_started(self):
+        if not self.assistant_available or self.listening_mode != 'automatic':return
         if self._listening_actor_id is None:
             self._listening_actor_id = self._choose_voice_actor()
         self._session_actor_id = self._listening_actor_id
@@ -367,6 +390,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_session_timeout(self):
+        if not self.assistant_available:return
         self.in_conversation_session = False
         self.listener.arm_wake()
         self._after_capture()
@@ -414,6 +438,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _do_wake_detected(self, source='voice', transcript=None):
+        if not self.assistant_available or (source == 'voice' and self.listening_mode != 'automatic'):return
         text = transcript or getattr(self.listener, 'last_completed_transcript', '') or 'Brain'
         owner = self._listening_actor_id or self._choose_voice_actor()
         self._listening_actor_id = None
@@ -421,6 +446,7 @@ class BrainManager(QObject, BrainSessions):
         self._after_capture()
 
     def _greet_now(self, source='voice', transcript=None) -> None:
+        if not self.assistant_available:return
         self.in_conversation_session = True
         self._session_actor_id = self.active_actor_id
         self.conversation_history.clear()
@@ -451,6 +477,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot()
     def _on_shortcut_press(self):
+        if not self.assistant_available or self.listening_mode == 'off':return
         self.run_on_main_thread(lambda: self.start_talking(self._choose_voice_actor(), source='shortcut'))
 
     @Slot()
@@ -459,6 +486,7 @@ class BrainManager(QObject, BrainSessions):
         if QThread.currentThread() != self.thread():
             QMetaObject.invokeMethod(self, "_on_shortcut_release", Qt.ConnectionType.QueuedConnection)
             return
+        if not self.assistant_available:return
         self.listener.stop_recording()
 
     @Slot(object)
@@ -497,6 +525,7 @@ class BrainManager(QObject, BrainSessions):
         profile = dict(self.profile_mgr.character_profile(identity))
         key = self.profile_mgr.get_key(profile.get('provider'), profile.get('id'))
         def accept():
+            if not self._require_assistant():return
             target = screen_id
             if character_id is not None:
                 display_id = self.actor_for(screen_id).screen_id
@@ -622,6 +651,7 @@ class BrainManager(QObject, BrainSessions):
         self._active_query_thread.start()
 
     def _deliver_model_reply(self, turn, reply):
+        if not self.assistant_available:return
         self._publish_response(reply)
         if getattr(reply, 'tasks_query', None) is not None:
             self.tasks_view_requested.emit({'filters': reply.tasks_query, 'summary': str(reply)})
@@ -651,6 +681,7 @@ class BrainManager(QObject, BrainSessions):
 
     def _on_turn_complete(self, user_text):
         def accept():
+            if not self.assistant_available:return
             owner = self._listening_actor_id or self._choose_voice_actor()
             self.listener.cancel_recording()
             self._session_actor_id = owner
@@ -686,6 +717,11 @@ class BrainManager(QObject, BrainSessions):
         if QThread.currentThread() != self.thread():
             self.run_on_main_thread(lambda: self.start_talking(target, source))
             return
+        if self.listening_mode == 'off':
+            self.status_changed.emit('Microphone off. Choose Manual or Automatic listening to talk.')
+            return
+        if not self.assistant_available:
+            if source != 'click' or not self._open_assistant():return
         actor = self.actor_for(target)
         if self.listener.is_recording or self.listener._decode_token is not None:
             if actor.actor_id != self._listening_actor_id:
@@ -710,15 +746,14 @@ class BrainManager(QObject, BrainSessions):
             QMetaObject.invokeMethod(self, "stop_talking", Qt.ConnectionType.QueuedConnection)
             return
         self._stopping = True
-        for turn in self._turn_queue:
-            self.activity.finish(turn.run_id, 'stopped', reason='Removed from the queue by Stop.')
+        stopped_runs = {turn.run_id: 'Removed from the queue by Stop.' for turn in self._turn_queue}
+        if self._active_turn:
+            stopped_runs[self._active_turn.run_id] = 'Stopped by the user.'
         self._turn_queue.clear()
         self._reply_queue.clear()
         for item in self._processing_turns.values():
             item['cancel'].set()
             item['agent'].stop()
-        if self._active_turn:
-            self.activity.finish(self._active_turn.run_id, 'stopped', reason='Stopped by the user.')
         self._pending_listener = None
         self._pending_listener_source = None
         self._listening_actor_id = None
@@ -737,12 +772,18 @@ class BrainManager(QObject, BrainSessions):
         self.conversation_history.clear()
         self.session_timer.stop()
         self.listener.arm_wake()
+        if self.listening_mode != 'automatic':self.listener.pause_input()
         self.speech.stop()
         self._active_turn = None
         self._stopping = False
         self._refresh_actor_states()
+        self._record_stopped_runs(stopped_runs)
 
     def shutdown(self):
+        if self._shutting_down:return
+        self._shutting_down = True
+        self._assistant_epoch += 1
+        self.listener.closed = True
         self.stop_talking()
         self.input_router.close()
         self.reminders.close()
@@ -776,8 +817,9 @@ class BrainManager(QObject, BrainSessions):
         if QThread.currentThread() != self.thread():
             self.run_on_main_thread(lambda:self._read_text_now(text))
             return
+        if not self.assistant_available:return
         self._publish_response('Reading supplied text.')
-        self.listener.start()
+        if self.listening_mode == 'automatic':self.listener.start()
         self.reader.start_text(text)
 
     def start_reading(self, mode: str = "window", target=None) -> None:
@@ -787,12 +829,14 @@ class BrainManager(QObject, BrainSessions):
         if QThread.currentThread() != self.thread():
             self.run_on_main_thread(lambda: self._start_reading_now(mode))
             return
+        if not self.assistant_available:return
         self._publish_response('Reading selected text.' if mode == 'selected' else 'Reading the active window.')
-        self.listener.start()
+        if self.listening_mode == 'automatic':self.listener.start()
         self.reader.start(mode)
 
     @Slot()
     def _on_reading_finished(self) -> None:
+        if not self.assistant_available:return
         if self._active_turn:
             self.activity.finish(self._active_turn.run_id, 'complete', 'Finished reading locally.')
         self._publish_response('Finished reading.')
@@ -802,6 +846,7 @@ class BrainManager(QObject, BrainSessions):
 
     @Slot(str)
     def _on_reading_failed(self, message: str) -> None:
+        if not self.assistant_available:return
         if self._active_turn:
             self.activity.finish(self._active_turn.run_id, 'error', reason=message)
         self.status_changed.emit(message)
@@ -825,7 +870,8 @@ class BrainManager(QObject, BrainSessions):
         """Open Brain's dock context menu without losing the active document."""
         self.reader._remember()
         menu=self._build_context_menu(target)
-        menu.exec(global_pos)
+        try:menu.exec(global_pos)
+        finally:menu.deleteLater()
 
     def set_resource_cap(self, enabled):
         self.store.set_setting('resource_cap_enabled', bool(enabled))
@@ -869,12 +915,30 @@ class BrainManager(QObject, BrainSessions):
         # 1. Talk Action
         talk_label = "Finish speaking" if self.listener.is_recording else f"🎤 Talk to {actor.character_name}"
         act_talk = menu.addAction(talk_label, lambda: self.toggle_talking(actor.actor_id))
-        act_talk.setEnabled(True)
-        menu.addAction("Read Desktop", lambda: self.start_reading("desktop", actor.actor_id))
-        menu.addAction("Read Active Window", lambda: self.start_reading("window", actor.actor_id))
-        menu.addAction("Read Selected Text", lambda: self.start_reading("selected", actor.actor_id))
+        act_talk.setEnabled(self.listening_mode != 'off')
+        from PySide6.QtGui import QActionGroup
+        mode_labels = {'automatic': 'Automatic — wake words',
+                       'manual': 'Manual — click or shortcut',
+                       'off': 'Microphone off'}
+        listening = menu.addMenu('Listening mode')
+        modes = QActionGroup(listening)
+        modes.setExclusive(True)
+        for mode, label in mode_labels.items():
+            option = listening.addAction(label)
+            option.setCheckable(True)
+            option.setData(mode)
+            option.setChecked(mode == self.listening_mode)
+            modes.addAction(option)
+            option.triggered.connect(lambda checked=False, mode=mode: self.set_listening_mode(mode))
+        for label, mode in (("Read Desktop", "desktop"), ("Read Active Window", "window"), ("Read Selected Text", "selected")):
+            read_action = menu.addAction(label, lambda checked=False, mode=mode: self.start_reading(mode, actor.actor_id))
+            read_action.setEnabled(self.assistant_available)
         stop_read = menu.addAction("Stop Reading", self.stop_reading)
         stop_read.setEnabled(self.reader.active)
+        stop_request = menu.addAction('Stop current request', self.stop_talking)
+        stop_request.setEnabled(bool(self._processing_turns or self._active_turn
+                                     or self.listener.is_recording or self.reader.active
+                                     or self.speech.playing))
 
         menu.addSeparator()
 
@@ -902,8 +966,8 @@ class BrainManager(QObject, BrainSessions):
 
         # 3. Animations Submenu
         anim_menu = menu.addMenu("🎭 Animations")
-        anim_menu.setEnabled(not actor.resource_capped)
-        cap.toggled.connect(lambda enabled:anim_menu.setEnabled(not enabled))
+        anim_menu.setEnabled(self.assistant_available and not actor.resource_capped)
+        cap.toggled.connect(lambda enabled:anim_menu.setEnabled(self.assistant_available and not enabled))
         act_loop = anim_menu.addAction("▶ Play All (Loop)", actor.start_animation_loop)
         act_loop.setEnabled(not actor.reduced_motion)
 
@@ -971,10 +1035,13 @@ class BrainManager(QObject, BrainSessions):
 
         # 8. Close / Hide Mini Agent Option
         menu.addSeparator()
-        show_all = menu.addAction("Show assistant", self.show_mini_agent)
+        show_all = menu.addAction("Open assistant" if self.assistant_closed else "Show assistant", self.show_mini_agent)
         show_all.setEnabled(any(not c.isVisible() for c in self.companions.values()))
-        hide_all = menu.addAction("✕ Hide assistant and stop requests", self.hide_mini_agent)
+        hide_label = "Hide assistant (keep voice wake)" if self.listening_mode == 'automatic' else "Hide assistant"
+        hide_all = menu.addAction(hide_label, self.hide_mini_agent)
         hide_all.setEnabled(self.is_mini_agent_visible())
+        close = menu.addAction("Close assistant (microphone off)", self.close_assistant)
+        close.setEnabled(not self.assistant_closed)
 
         return menu
 
@@ -985,7 +1052,7 @@ class BrainManager(QObject, BrainSessions):
         self.status_changed.emit(f"Cloud profile: {active['name']}")
         if self._active_turn or self._worker_running or self.reader.active or self.listener.is_recording or self.listener._decode_token is not None:
             return  # The running request keeps its captured model and credential.
-        if self.store.setting("voice_reply", True):
+        if self.assistant_available and self.store.setting("voice_reply", True):
             active = self.profile_mgr.get_active_profile()
             self.speech.start(f"Switched profile to {active.get('name')}.")
         else:
@@ -1007,6 +1074,7 @@ class BrainManager(QObject, BrainSessions):
             return copy.deepcopy(getattr(self,'_status_cache',{'name':'Brain','activity':'busy','error':'The desktop UI is busy.'}))
         status = {
             "name": "Voice Assistant",
+            "assistant_state": "closed" if self.assistant_closed else "visible" if self.is_mini_agent_visible() else "hidden",
             "queue": self.queue_status(),
             "characters": [{'id': actor.actor_id, 'character_id': actor.character_id, 'name': actor.character_name, 'screen_id': actor.screen_id,
                             'visible': actor.isVisible(), 'activity': actor.activity}
@@ -1014,7 +1082,9 @@ class BrainManager(QObject, BrainSessions):
             "is_mini_agent_visible": self.is_mini_agent_visible(),
             "activity": self.companion.activity,
             "voice_input": {
-                "enabled": bool(self.store.setting("wake_word_enabled", True)),
+                "mode": self.listening_mode,
+                "enabled": self.assistant_available and self.listening_mode != 'off',
+                "automatic": self.assistant_available and self.listening_mode == 'automatic',
                 "listening": self.listener.is_running and self.listener.stream_active,
                 "error": self.audio_listener_error or self.listener.last_error,
                 "owner_enrolled": self.listener._load_speaker_embedding(self.listener.owner_embedding_path) is not None,
@@ -1039,7 +1109,7 @@ class BrainManager(QObject, BrainSessions):
             "character": {
                 "version": self.companion.model_view.version if self.companion.model_view else "",
                 "asset_hash": self.companion.model_view.asset_hash if self.companion.model_view else "",
-                "renderer": "3d" if self.companion.model_view and self.companion.model_view.ready else "loading" if not self.companion.model_view or not self.companion.model_view.error else "unavailable",
+                "renderer": "closed" if self.assistant_closed else "3d" if self.companion.model_view and self.companion.model_view.ready else "loading" if not self.companion.model_view or not self.companion.model_view.error else "unavailable",
                 "error": self.companion.model_view.error if self.companion.model_view else "",
             },
             "active_profile": self.profile_mgr.get_active_profile(),
@@ -1052,27 +1122,28 @@ class BrainManager(QObject, BrainSessions):
 
     def apply_voice_settings(self, changes: Dict[str, Any]) -> None:
         """Apply saved voice controls to the live listener on the GUI thread."""
+        if 'assistant_closed' in changes:
+            if changes['assistant_closed']:self.close_assistant()
+            else:self.show_mini_agent()
         if 'resource_cap_enabled' in changes:
             self.set_resource_cap(bool(changes['resource_cap_enabled']))
         if "follow_cursor" in changes:
             self.companion.set_follow_cursor(bool(changes["follow_cursor"]))
         if "wake_word" in changes:
             self.listener.set_wake_word(str(changes["wake_word"]))
-        if "wake_word_enabled" in changes:
-            enabled = bool(changes["wake_word_enabled"])
-            self.listener.wake_detection_enabled = enabled
-            if enabled:
-                self.listener.arm_wake()
-                self.listener.start()
-            elif not self.listener.is_recording:
-                self.listener.stop()
+        if 'listening_mode' in changes:
+            self.set_listening_mode(changes['listening_mode'])
+        elif 'wake_word_enabled' in changes:
+            self.set_listening_mode('automatic' if changes['wake_word_enabled'] else 'manual')
         if "push_to_talk_shortcut" in changes:
             self.shortcut_listener.stop()
             self.shortcut_listener.shortcut_key = str(changes["push_to_talk_shortcut"])
-            self.shortcut_listener.start()
+            if self.assistant_available and self.listening_mode != 'off':self.shortcut_listener.start()
 
     def enroll_owner_voice(self) -> None:
         """Capture an enrollment phrase and store only the local WavLM speaker vector."""
+        if not self.assistant_available:
+            raise RuntimeError('Voice assistant is closed. Open it from the dock before enrolling.')
         from dock_twoo.brain.voice_models import save_embedding
         sample = self.listener.capture_owner_enrollment()
         sample = self.listener.models.enhance_pcm(sample)

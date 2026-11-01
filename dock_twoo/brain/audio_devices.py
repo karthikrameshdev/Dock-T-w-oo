@@ -157,10 +157,19 @@ class DefaultAudioDevices(QObject):
     def stop_input(self):
         self._want_input = False
         self._close_input()
+        self._stop_idle_timer()
+
+    def _stop_idle_timer(self):
+        # Hotplug notifications remain connected; an idle audio route does not
+        # need a 25 Hz polling loop. Opening either lane restarts the timer.
+        if not self._want_input and self._request is None:
+            self.timer.stop()
 
     def _close_input(self):
         source, self.source = self.source, None
         self.input_io = None
+        self._converter = None
+        self._input_tail = b''
         if source:
             source.stop()
             source.deleteLater()
@@ -247,6 +256,7 @@ class DefaultAudioDevices(QObject):
         if request:
             request.error = error
             request.done.set()
+        self._stop_idle_timer()
 
     def _open_output(self):
         request = self._request

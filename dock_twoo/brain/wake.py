@@ -37,6 +37,7 @@ class WakeDetector:
         self._bpe = None
         self._gain = 1.0
         self._lock = threading.RLock()
+        self._load_lock = threading.Lock()
         self._worker: threading.Thread | None = None
 
     @property
@@ -44,14 +45,19 @@ class WakeDetector:
         return self.state == "ready" and self._spotter is not None
 
     def start(self) -> None:
-        if self.ready or (self._worker and self._worker.is_alive()):
-            return
-        self.state = "loading"
-        self._worker = threading.Thread(target=self.load, name="brain-wake-model", daemon=True)
-        self._worker.start()
+        with self._lock:
+            if self.ready or (self._worker and self._worker.is_alive()):return
+            self.state = "loading"
+            self._worker = threading.Thread(target=self.load, name="brain-wake-model", daemon=True)
+            self._worker.start()
 
     def load(self, allow_download: bool = True) -> bool:
         """Initialize outside the audio thread. Offline verification can forbid downloads."""
+        with self._load_lock:
+            if self.ready:return True
+            return self._load(allow_download)
+
+    def _load(self, allow_download: bool) -> bool:
         self.error = ""
         try:
             import sentencepiece
@@ -147,9 +153,10 @@ class WakeDetector:
         # Bounded, smoothed gain keeps a quiet call audible without clipping normal
         # speech. Noise still has to match the neural keyword probability threshold.
         target_gain = min(12.0, max(1.0, 0.035 / max(rms, 0.001)))
-        self._gain = 0.7 * self._gain + 0.3 * target_gain
-        samples = np.clip(samples * self._gain, -1.0, 1.0)
         with self._lock:
+            if not self.ready:return ''
+            self._gain = 0.7 * self._gain + 0.3 * target_gain
+            samples = np.clip(samples * self._gain, -1.0, 1.0)
             self._stream.accept_waveform(16000, samples)
             self.frames += 1
             while self._spotter.is_ready(self._stream):
@@ -160,6 +167,20 @@ class WakeDetector:
                     self._spotter.reset_stream(self._stream)
                     return keyword
         return ""
+
+    def release_if_idle(self):
+        if not self._load_lock.acquire(blocking=False):return False
+        try:
+            if not self._lock.acquire(blocking=False):return False
+            try:
+                if self._worker and self._worker.is_alive():return False
+                self._stream = self._spotter = self._bpe = None
+                self._worker = None
+                self.state, self.error = 'not started', ''
+                self._gain = 1.0
+                return True
+            finally:self._lock.release()
+        finally:self._load_lock.release()
 
     def status(self) -> dict[str, object]:
         return {"engine": "Zipformer", "state": self.state, "ready": self.ready,

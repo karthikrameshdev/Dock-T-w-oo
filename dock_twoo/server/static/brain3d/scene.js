@@ -5,9 +5,12 @@ import { FaceOverlay, SpeechOverlay } from './face.js';
 import { RoomEnvironment } from './vendor/environments/RoomEnvironment.js';
 import { InputShape } from './input-shape.js';
 import { ActionPlayer } from './action-player.js';
+import { disposeScene } from './dispose-scene.js';
 
 const params = new URLSearchParams(location.search);
 const embedded = params.has('embedded');
+const loading = new AbortController();
+let disposed=false,frameId;
 const characterId = params.get('character') || 'default';
 document.querySelector('#controls').hidden = embedded;
 if (embedded) document.querySelector('#controls').style.display = 'none';
@@ -48,7 +51,7 @@ document.querySelector('#indicatorPreview').addEventListener('change',event=>{
 let previewTime=0,lastRender=-Infinity,lastDiagnostics=-Infinity;
 const clock=new THREE.Timer();
 async function loadCharacter(){
-  const catalogResponse=await fetch('./catalog.json',{cache:'no-store'});
+  const catalogResponse=await fetch('./catalog.json',{cache:'no-store',signal:loading.signal});
   if(!catalogResponse.ok)throw new Error('Character catalog could not load');
   const catalog=await catalogResponse.json();
   const entry=catalog.characters.find(item=>item.id===characterId);
@@ -60,18 +63,20 @@ async function loadCharacter(){
     const url=new URL(location.href);url.searchParams.set('character',characterSelect.value);location.assign(url);
   });
   const manifestUrl=new URL(characterId==='default'?'./character.json':`./characters/${characterId}/character.json`,location.href);
-  const response=await fetch(manifestUrl,{cache:'no-store'});
+  const response=await fetch(manifestUrl,{cache:'no-store',signal:loading.signal});
   if(!response.ok)throw new Error('Character release metadata could not load');
   release=await response.json();
   document.querySelector('#characterTitle').textContent=`${release.name} · ${release.design}`;
   document.title=`${release.name} · Voice Assistant`;
   const assetUrl=new URL(release.asset,manifestUrl);assetUrl.searchParams.set('v',release.asset_sha256.slice(0,16));
-  const assetResponse=await fetch(assetUrl,{cache:'no-store'});
+  const assetResponse=await fetch(assetUrl,{cache:'no-store',signal:loading.signal});
   if(!assetResponse.ok)throw new Error('The character model could not load');
   const bytes=await assetResponse.arrayBuffer();
   const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(value=>value.toString(16).padStart(2,'0')).join('');
   if(digest!==release.asset_sha256)throw new Error('The character export differs from its release. Export the saved Blender model again.');
+  if(disposed)return;
   const gltf=await new GLTFLoader().parseAsync(bytes,new URL('./',location.href).href);
+  if(disposed){disposeScene(gltf.scene);return;}
   model=gltf.scene; scene.add(model); mixer=new THREE.AnimationMixer(model);
   // Desktop companions share a world scale, so the rat and mouse stay small.
   // The standalone inspector fits the selected model for comfortable editing.
@@ -103,11 +108,12 @@ async function loadCharacter(){
   report(`${gltf.animations.length} animations · ${release.version}`);
 
 }
-loadCharacter().catch(error=>report(error.message,true));
+loadCharacter().catch(error=>{if(!disposed)report(error.message,true);});
 
 function frame(){
-  requestAnimationFrame(frame);
-  if(state.visible===false)return;
+  if(disposed)return;
+  frameId=requestAnimationFrame(frame);
+  if(document.hidden || state.visible===false)return;
   const now=performance.now();if(now-lastRender<1000/(state.maxFps||60))return;lastRender=now;
   // Keep authored animation speed at reduced FPS; a 50ms clamp slowed the
   // character to a crawl when the resource budget reduced rendering frequency.
@@ -171,4 +177,13 @@ function frame(){
   }
 }
 frame();
+addEventListener('pagehide',event=>{
+  if(disposed || event.persisted)return;
+  disposed=true;
+  loading.abort();cancelAnimationFrame(frameId);
+  player?.dispose();inputShape.dispose();disposeScene(scene);
+  environmentMap.dispose();renderer.dispose();renderer.forceContextLoss();
+  model=mixer=player=current=face=speech=indicator=null;
+  bones={};clips={};mouthMeshes.length=0;
+});
 window.addEventListener('error',event=>{if(bridge)bridge.failed(event.message);});

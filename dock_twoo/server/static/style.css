@@ -236,6 +236,18 @@ body.theme-light .search-box {
   color: #ffffff;
 }
 
+#page-brain .btn:disabled,
+#page-brain .text-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  box-shadow: none;
+  transform: none;
+}
+
+#page-brain .btn:disabled:hover {
+  background: var(--card-bg);
+}
+
 /* Main Workspace Grid */
 .console-body {
   display: grid;
