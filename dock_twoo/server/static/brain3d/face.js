@@ -18,11 +18,13 @@ export class FaceOverlay {
   afterMixer({blink=0, gazeX=0, gazeY=0}) {
     for (const part of this.eyes) {
       if (part.eye) {
-        part.authoredScale = part.eye.scale.clone();
+        if(!part.authoredScale)part.authoredScale=part.eye.scale.clone();
+        else part.authoredScale.copy(part.eye.scale);
         part.eye.scale.y = part.authoredScale.y * Math.max(.035, 1-Math.max(0,Math.min(1,blink)));
       }
       if (part.pupil) {
-        part.authoredPosition = part.pupil.position.clone();
+        if(!part.authoredPosition)part.authoredPosition=part.pupil.position.clone();
+        else part.authoredPosition.copy(part.pupil.position);
         part.pupil.position.x += Math.max(-1,Math.min(1,gazeX))*.035;
         part.pupil.position.y -= Math.max(-1,Math.min(1,gazeY))*.025;
       }
@@ -41,7 +43,10 @@ export class SpeechOverlay {
   }
   beforeMixer() {}
   update({mouth=0, speaking=false, reducedMotion=false, preserveAuthored=false}, dt) {
-    if(preserveAuthored) for(const mesh of this.meshes)mesh.morphTargetInfluences.splice(0,mesh.morphTargetInfluences.length,...mesh.authoredMorphTargetInfluences);
+    if(preserveAuthored) for(const mesh of this.meshes){
+      for(let index=0;index<mesh.authoredMorphTargetInfluences.length;index++)
+        mesh.morphTargetInfluences[index]=mesh.authoredMorphTargetInfluences[index];
+    }
     this.time += reducedMotion ? 0 : dt;
     const target=Math.max(0,Math.min(1,Number.isFinite(mouth)?mouth:0));
     this.level += (target-this.level)*(1-Math.exp(-dt*(target>this.level?22:16)));

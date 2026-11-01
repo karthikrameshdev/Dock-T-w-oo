@@ -5,18 +5,19 @@ from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
 
 
 class AgentNotifications(QObject):
-    requested = Signal(str)
+    requested = Signal(object)
 
     def __init__(self, manager):
         super().__init__(manager)
         self.manager = manager
         self.closed = False
+        self._generation = 0
         self.card = None
         self.lines = deque(maxlen=3)
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.clear)
-        self.requested.connect(self.show, Qt.ConnectionType.QueuedConnection)
+        self.requested.connect(self._deliver, Qt.ConnectionType.QueuedConnection)
 
     def task_started(self, parent_name, worker_name, prompt):
         self.show(f'{parent_name} assigned {worker_name}: {" ".join(prompt.split())[:140]}')
@@ -27,10 +28,17 @@ class AgentNotifications(QObject):
 
     @Slot(str)
     def show(self, text):
+        generation = self._generation
         if self.closed:return
         if QThread.currentThread() != self.thread():
-            self.requested.emit(str(text))
+            self.requested.emit((generation, str(text)))
             return
+        self._deliver((generation, str(text)))
+
+    @Slot(object)
+    def _deliver(self, message):
+        generation, text = message
+        if self.closed or generation != self._generation:return
         if self.card is None:
             self.card = QFrame()
             self.card.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint |
@@ -67,7 +75,9 @@ class AgentNotifications(QObject):
 
     def close(self):
         self.closed = True
+        self._generation += 1
         self.timer.stop()
+        self.lines.clear()
         if self.card:
             self.card.close()
             self.card.deleteLater()

@@ -4,6 +4,7 @@ A local hit means a template was reused, never that a provider billed cached inp
 Side effects and generated answers are deliberately not memoized by this cache.
 """
 import copy
+from contextlib import closing
 import hashlib
 import json
 from pathlib import Path
@@ -17,7 +18,7 @@ VERSION='agent-stages-v2-peers'
 class PromptCache:
     def __init__(self, root):
         self.path=Path(root)/'prompt-cache.sqlite3';self.path.parent.mkdir(parents=True,exist_ok=True);self.path.parent.chmod(0o700);self.lock=threading.Lock()
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('CREATE TABLE IF NOT EXISTS templates (key TEXT PRIMARY KEY,payload TEXT,hits INTEGER DEFAULT 0,at REAL)')
         self.path.chmod(0o600)
 
@@ -26,7 +27,7 @@ class PromptCache:
         prefix=json.dumps({'version':VERSION,'messages':stable_messages,'tools':tools},sort_keys=True,separators=(',',':'))
         scope=json.dumps([profile.get('id'),profile.get('provider'),profile.get('base_url'),profile.get('model'),character_id,hashlib.sha256(credential.encode()).hexdigest(),hashlib.sha256(prefix.encode()).hexdigest()])
         key='dock-'+hashlib.sha256(scope.encode()).hexdigest()
-        with self.lock, sqlite3.connect(self.path) as db:
+        with self.lock, closing(sqlite3.connect(self.path)) as db, db:
             row=db.execute('SELECT payload,hits FROM templates WHERE key=?',(key,)).fetchone()
             if row:
                 db.execute('UPDATE templates SET hits=hits+1,at=? WHERE key=?',(time.time(),key))

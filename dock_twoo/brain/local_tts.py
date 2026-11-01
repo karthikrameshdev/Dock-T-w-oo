@@ -51,7 +51,6 @@ class LocalTts:
                 self.state='unavailable';self.error=f'{type(exc).__name__}: {exc}';return False
 
     def clip(self,text,cancel,*,voice=None,speed=None):
-        if not self.engine:raise RuntimeError('The local Kokoro speech model is preparing. Check Voice status in Brain settings.')
         from dock_twoo.brain.audio import SpeechClip
         from dock_twoo.brain.speech_text import spoken_text
         text = spoken_text(text)
@@ -59,6 +58,9 @@ class LocalTts:
         import numpy as np
         with self._synth_lock:
             if cancel.is_set():raise InterruptedError('Speech stopped.')
+            # Close may release an idle model between the call and acquiring
+            # this lock. Never use a session that has already been released.
+            if self.engine is None:raise RuntimeError('The local Kokoro speech model is preparing. Check Voice status in Assistant settings.')
             voice=voice or self.voice
             voice=voice if voice in VOICES else 'af_heart'
             selected_speed=self.speed if speed is None else speed
@@ -68,6 +70,29 @@ class LocalTts:
             pcm=(np.clip(samples,-1,1)*32767).astype('<i2').tobytes()
             if not pcm:raise RuntimeError('The local speech model returned no audio.')
             return SpeechClip.from_pcm(pcm,int(rate))
+
+    def release_if_idle(self):
+        """Release ONNX memory after Close without waiting on model work."""
+        if self._thread is not None and self._thread.is_alive():
+            return False
+        if not self._load_lock.acquire(blocking=False):
+            return False
+        try:
+            if not self._synth_lock.acquire(blocking=False):
+                return False
+            try:
+                if self._thread is not None and self._thread.is_alive():
+                    return False
+                self.engine = None
+                self.speakers.clear()
+                self._thread = None
+                self.state = 'released'
+                self.error = ''
+                return True
+            finally:
+                self._synth_lock.release()
+        finally:
+            self._load_lock.release()
 
     def synthesize_wav(self,text,path,cancel,*,voice=None,speed=None):
         clip=self.clip(text,cancel,voice=voice,speed=speed)

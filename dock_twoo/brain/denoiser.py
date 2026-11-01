@@ -55,6 +55,7 @@ class LocalDenoiser:
             return pcm
         import numpy as np
         with self.lock:
+            if self.engine is None:return pcm
             result = self.engine(np.frombuffer(pcm, dtype='<i2').astype(np.float32) / 32768., rate)
         samples = np.asarray(result.samples)
         if not len(samples) or not np.isfinite(samples).all():
@@ -64,3 +65,11 @@ class LocalDenoiser:
             samples = np.interp(np.linspace(0, len(samples)-1, count), np.arange(len(samples)), samples)
         cleaned = (np.clip(samples, -1, 1) * 32767).astype('<i2').tobytes()
         return cleaned[:len(pcm)].ljust(len(pcm), b'\0')
+
+    def release_if_idle(self):
+        if not self.lock.acquire(blocking=False):return False
+        try:
+            self.engine = None
+            self.state, self.error = 'not started', ''
+            return True
+        finally:self.lock.release()

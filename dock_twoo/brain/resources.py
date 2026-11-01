@@ -77,6 +77,8 @@ class ResourceKeeper(QObject):
 
     def _maintain(self, prune):
         result = self.meter.sample()
+        release = getattr(self.manager, 'release_closed_resources', None)
+        if release:release()
         result['pending_workspace_cleanup'] = self.manager.coordinator.cleanup_finished_workspaces()
         if prune:self.manager.activity.prune()
         return result

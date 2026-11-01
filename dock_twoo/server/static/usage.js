@@ -2,7 +2,8 @@
 window.BrainUsage = (() => {
   const number = value => Number(value || 0).toLocaleString();
   const node = (tag, text, cls) => { const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el; };
-  const colors=['#7b96ff','#66d5c1','#ba9cff','#f8bd72'];
+  const colors=['var(--usage-accent)','#65bfa5','#b5a0df','#d7ac6a'];
+  const compact=value=>new Intl.NumberFormat(undefined,{notation:'compact',maximumFractionDigits:1}).format(Number(value)||0);
   function svg(label) {const el=document.createElementNS('http://www.w3.org/2000/svg','svg');el.setAttribute('viewBox','0 0 400 180');el.setAttribute('role','img');el.setAttribute('aria-label',label);return el;}
   function shape(root,tag,attrs,text) {const el=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [key,value] of Object.entries(attrs))el.setAttribute(key,value);if(text!==undefined)el.textContent=text;root.append(el);return el;}
   function card(title,caption){const box=node('section',undefined,'usage-chart');box.append(node('h3',title),node('p',caption,'usage-muted'));return box;}
@@ -11,15 +12,16 @@ window.BrainUsage = (() => {
     shape(chart,'circle',{cx:105,cy:85,r:58,fill:'none',stroke:'var(--usage-border)','stroke-width':21});
     let offset=0;
     [input,output,unclassified].forEach((value,index)=>{const percent=sum?value/sum*100:0;shape(chart,'circle',{cx:105,cy:85,r:58,fill:'none',stroke:colors[index],'stroke-width':21,pathLength:100,'stroke-dasharray':`${percent} ${100-percent}`,'stroke-dashoffset':-offset,transform:'rotate(-90 105 85)'});offset+=percent;});
-    shape(chart,'text',{x:105,y:84,'text-anchor':'middle',class:'usage-svg-value'},number(sum));
+    shape(chart,'text',{x:105,y:84,'text-anchor':'middle',class:'usage-svg-value'},compact(sum));
     shape(chart,'text',{x:105,y:105,'text-anchor':'middle',class:'usage-svg-label'},'tokens');
     [['Input',input],['Output',output],...(unclassified?[['Unclassified',unclassified]]:[])].forEach(([label,value],i)=>{shape(chart,'circle',{cx:208,cy:42+i*48,r:5,fill:colors[i]});shape(chart,'text',{x:222,y:47+i*48,class:'usage-svg-label'},label);shape(chart,'text',{x:222,y:67+i*48,class:'usage-svg-value'},number(value));});
     return chart;
   }
   function line(days) {
     const chart=svg('Cloud tokens consumed per day'),max=Math.max(1,...days.map(d=>d.total_tokens));
-    for(let i=0;i<4;i++){const y=18+i*43;shape(chart,'line',{x1:38,y1:y,x2:386,y2:y,stroke:'var(--usage-border)'});shape(chart,'text',{x:32,y:y+4,'text-anchor':'end',class:'usage-svg-label'},number(Math.round(max*(1-i/3))));}
+    for(let i=0;i<4;i++){const y=18+i*43;shape(chart,'line',{x1:38,y1:y,x2:386,y2:y,stroke:'var(--usage-border)','stroke-dasharray':'3 4'});shape(chart,'text',{x:32,y:y+4,'text-anchor':'end',class:'usage-svg-label'},compact(Math.round(max*(1-i/3))));}
     const points=days.map((day,i)=>`${38+i/Math.max(1,days.length-1)*348},${147-day.total_tokens/max*129}`);
+    if(points.length>1)shape(chart,'polygon',{points:`38,147 ${points.join(' ')} 386,147`,fill:colors[0],opacity:.1});
     if(points.length===1)shape(chart,'circle',{cx:38,cy:147-days[0].total_tokens/max*129,r:4,fill:colors[0]});
     else shape(chart,'polyline',{points:points.join(' '),fill:'none',stroke:colors[0],'stroke-width':3,'stroke-linejoin':'round','stroke-linecap':'round'});
     for(const i of [...new Set([0,Math.floor((days.length-1)/2),days.length-1])])if(days[i])shape(chart,'text',{x:38+i/Math.max(1,days.length-1)*348,y:171,'text-anchor':i===0?'start':i===days.length-1?'end':'middle',class:'usage-svg-label'},days[i].day.slice(5));
@@ -32,50 +34,54 @@ window.BrainUsage = (() => {
     return chart;
   }
   function outcomes(summary) {
-    const chart=svg('Cloud API call outcomes'),values=[['Successful',summary.successful_calls,colors[1]],['Failed',summary.failed_calls,'#f18d9b'],['Cancelled',summary.cancelled_calls,colors[3]]],max=Math.max(1,...values.map(v=>v[1]));
+    const chart=svg('Cloud API call outcomes'),values=[['Successful',summary.successful_calls,colors[1]],['Failed',summary.failed_calls,'var(--usage-negative)'],['Cancelled',summary.cancelled_calls,colors[3]]],max=Math.max(1,...values.map(v=>v[1]));
     values.forEach(([label,value,color],i)=>{const y=22+i*48;shape(chart,'text',{x:4,y:y+10,class:'usage-svg-label'},label);shape(chart,'rect',{x:95,y,width:Math.max(1,value/max*245),height:17,rx:5,fill:color});shape(chart,'text',{x:385,y:y+13,'text-anchor':'end',class:'usage-svg-label'},number(value));});return chart;
   }
   function mount(root) {
     root.classList.add('usage-shell');
-    const filters=node('form',undefined,'usage-filters'),period=node('select'),profile=node('select'),agent=node('select');period.setAttribute('aria-label','Usage period');
-    agent.setAttribute('aria-label','Usage character');agent.add(new Option('Overall · All characters','all'));
-    profile.setAttribute('aria-label','Usage agent model profile');profile.add(new Option('Overall · All profiles','all'));
+    const embedded=new URLSearchParams(location.search).get('embedded')==='1';if(embedded)document.body.classList.add('workspace-embedded');
+    const header=node('header',undefined,'workspace-heading'),intro=node('div');intro.append(node('span','Model insights','workspace-eyebrow'),node(document.body.classList.contains('workspace-page')?'h1':'h2','Usage dashboard'),node('p','Understand your model usage across profiles, agents, and time.'));header.append(intro);
+    const filters=node('form',undefined,'usage-filters usage-filter-panel'),period=node('select'),profile=node('select'),agent=node('select');period.setAttribute('aria-label','Usage period');
+    agent.setAttribute('aria-label','Usage character');agent.add(new Option('All characters','all'));
+    profile.setAttribute('aria-label','Usage agent model profile');profile.add(new Option('All profiles','all'));
     const requestedProfile=new URLSearchParams(location.search).get('profile');
     if(requestedProfile){profile.add(new Option(requestedProfile,requestedProfile));profile.value=requestedProfile;}
-    for(const [value,label] of [['month','1 month · this month'],['7d','7 days'],['custom','From / To dates']]){const option=node('option',label);option.value=value;period.append(option);}
+    for(const [value,label] of [['month','1 month'],['7d','Last 7 days'],['custom','Custom dates']]){const option=node('option',label);option.value=value;period.append(option);}
     const from=node('input'),to=node('input');from.type=to.type='date';from.setAttribute('aria-label','From date');to.setAttribute('aria-label','To date');
-    const apply=node('button','Apply range');apply.type='submit';
+    const apply=node('button','Apply range','usage-primary');apply.type='submit';
     for(const [label,control] of [['Profile',profile],['Character',agent],['Period',period],['From',from],['To',to]]){const field=node('label',undefined,'usage-field');field.append(node('span',label),control);filters.append(field);}filters.append(apply);
     const status=node('p','Loading agent model usage…','usage-muted');status.setAttribute('role','status');
-    const kpis=node('div',undefined,'usage-kpis'),charts=node('div',undefined,'usage-charts'),foot=node('p',undefined,'usage-muted');
-    root.append(filters,status,kpis,charts,foot);
+    const kpis=node('div',undefined,'usage-overview'),charts=node('div',undefined,'usage-charts'),foot=node('p',undefined,'usage-muted'),note=node('details',undefined,'usage-data-note');note.append(node('summary','About these numbers'),foot);
+    if(!embedded)root.append(header);root.append(filters,status,kpis,charts,note);
     let busy=false,pending=false;
     function render(data){
       const selected=profile.value;
-      const selectedAgent=agent.value,agentOptions=[{id:'all',name:'Overall · All characters'},...(data.character_options||[])];
+      const selectedAgent=agent.value,agentOptions=[{id:'all',name:'All characters'},...(data.character_options||[])];
       if(!agentOptions.some(a=>a.id===selectedAgent))agentOptions.push({id:selectedAgent,name:'Earlier activity'});
       const agentSignature=JSON.stringify(agentOptions);
       if(agent.dataset.options!==agentSignature){agent.replaceChildren();for(const option of agentOptions)agent.add(new Option(option.name,option.id));agent.value=selectedAgent;agent.dataset.options=agentSignature;window.ConsoleControls?.enhance(root);}
-      const options=[{id:'all',name:'Overall · All profiles'},...(data.profile_options||[])];
+      const options=[{id:'all',name:'All profiles'},...(data.profile_options||[])];
       if(!options.some(p=>p.id===selected))options.push({id:selected,name:'Earlier profile'});
       const signature=JSON.stringify(options);
       if(profile.dataset.options!==signature){profile.replaceChildren();for(const option of options)profile.add(new Option(option.name+(option.historical&&option.id!=='__legacy__'?' · Archived':''),option.id));profile.value=selected;profile.dataset.options=signature;window.ConsoleControls?.enhance(root);}
       const profileName=options.find(p=>p.id===profile.value)?.name||'Cloud profile';
       const s=data.summary;kpis.replaceChildren();
-      for(const [label,value] of [['Total tokens',s.total_tokens],['Input tokens',s.input_tokens],['Output tokens',s.output_tokens],['Model calls',s.calls],['Profiles used',s.unique_profiles],['Recovery calls',s.retries]]){const box=node('div',undefined,'usage-kpi');box.append(node('span',label),node('strong',number(value)));kpis.append(box);}
+      const hero=node('section',undefined,'usage-hero'),heroFoot=node('div',undefined,'usage-hero-foot');hero.append(node('span','Total model tokens'),node('strong',number(s.total_tokens)),node('p','Provider-reported usage in the selected period.'));
+      heroFoot.append(node('span',`${number(s.unique_profiles)} profiles used`,'usage-chip'),node('span',`${number(s.cached_tokens)} cached input tokens`,'usage-chip'));hero.append(heroFoot);kpis.append(hero);
+      for(const [label,value,caption] of [['Input tokens',s.input_tokens,'Prompts, context & tool results'],['Output tokens',s.output_tokens,'Model-generated responses'],['Model calls',s.calls,'All recorded model attempts'],['Recovery calls',s.retries,'Retries and recovery attempts']]){const box=node('div',undefined,'usage-kpi');box.append(node('span',label),node('strong',number(value)),node('small',caption));kpis.append(box);}
       charts.replaceChildren();
-      for(const [title,caption,graphic] of [['Token distribution','Provider-reported input and output',donut(s.input_tokens,s.output_tokens,s.unattributed_tokens)],['Daily consumption','Provider-reported total tokens',line(data.daily)],['Usage by model','Blue: input · Mint: output · Lilac: unclassified',bars(data.models)],['Usage by profile','Provider-reported tokens by profile',bars((data.profiles||[]).map(p=>({...p,model:p.name})))],['Usage by character','Provider-reported model usage by agent',bars((data.characters||[]).map(a=>({...a,model:a.name})))],['Call outcomes','Completed model attempts',outcomes(s)]]){const box=card(title,caption);box.append(graphic);charts.append(box);}
-      status.textContent=`${profileName} · ${data.from} — ${data.to} · Agent model usage only${data.fixture?' · SYNTHETIC TEST DATA':''}`;
+      for(const [title,caption,graphic] of [['Daily consumption','Tokens used each day in this period',line(data.daily)],['Token distribution','How input and output contribute to the total',donut(s.input_tokens,s.output_tokens,s.unattributed_tokens)],['Usage by model','Input · Output · Unclassified',bars(data.models)],['Call outcomes','Successful, failed, and cancelled attempts',outcomes(s)],['Usage by profile','Top profiles by reported model tokens',bars((data.profiles||[]).map(p=>({...p,model:p.name})))],['Usage by character','Top agents by reported model tokens',bars((data.characters||[]).map(a=>({...a,model:a.name})))]]){const box=card(title,caption);box.append(graphic);charts.append(box);}
+      status.textContent=`${profileName} · ${agentOptions.find(a=>a.id===agent.value)?.name||'All characters'} · ${data.from} — ${data.to}${data.fixture?' · Synthetic test data':''}`;
       const coverage=s.unknown_usage_calls?`${number(s.unknown_usage_calls)} calls have unavailable token usage; totals cover reported usage only.`:'Token counts come from provider responses, including context and tool payloads.';
       const cost=s.cost_known_calls?`Provider-reported cost: $${s.cost_usd.toFixed(4)} across ${number(s.cost_known_calls)} calls.`:'The provider has not reported a currency cost; no credit or price estimate is invented.';
       foot.textContent=`Tracking began ${data.tracking_started?.slice(0,10)||'with this update'}; earlier usage is unknown. ${coverage} ${s.unattributed_tokens?`${number(s.unattributed_tokens)} tokens are included in the provider total without an input/output breakdown (unclassified). `:''}${cost} Cached input: ${number(s.cached_tokens)}; reasoning output: ${number(s.reasoning_tokens)} (already included, never added twice). Detailed activity expires after 7 days. Daily usage totals remain available. No local STT/TTS/vision tokens are counted.`;
     }
     async function refresh(){
       if(busy){pending=true;return;}busy=true;
-      const selected=profile.value,selectedPeriod=period.value,selectedAgent=agent.value;
+      const selected=profile.value,selectedPeriod=period.value,selectedAgent=agent.value,selectedFrom=from.value,selectedTo=to.value;
       try{const query=new URLSearchParams({period:period.value,profile:selected,character:selectedAgent});if(period.value==='custom'){if(!from.value||!to.value)throw new Error('Choose both From and To dates.');query.set('from',from.value);query.set('to',to.value);}
         const response=await fetch('/api/usage?'+query,{headers:{'X-Brain-Request':'local'}}),data=await response.json();if(!response.ok)throw new Error(data.error||'Usage could not be loaded.');
-        if(profile.value!==selected||period.value!==selectedPeriod||agent.value!==selectedAgent){pending=true;return;}
+        if(profile.value!==selected||period.value!==selectedPeriod||agent.value!==selectedAgent||(selectedPeriod==='custom'&&(from.value!==selectedFrom||to.value!==selectedTo))){pending=true;return;}
         if(period.value!=='custom'){from.value=data.from;to.value=data.to;}render(data);
       }catch(error){status.textContent=error.message;}finally{busy=false;if(pending){pending=false;refresh();}}
     }

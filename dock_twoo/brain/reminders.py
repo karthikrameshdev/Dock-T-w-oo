@@ -31,6 +31,7 @@ class ReminderService(QObject):
         if self.toast is None:self.toast=ReminderToast(self.manager)
         self.toast.present(alerts)
         for item in alerts:
+            if not getattr(self.manager, 'assistant_available', True):continue
             # Keep only the latest unsaid alert per reminder, even if a busy
             # audio lane spans several recurrences. Notifications retain details.
             self.speech_queue=deque((a for a in self.speech_queue if a['reminder_id']!=item['reminder_id']),maxlen=100)
@@ -40,6 +41,9 @@ class ReminderService(QObject):
 
     def _speak_next(self):
         m=self.manager
+        if not getattr(m, 'assistant_available', True):
+            self.speech_queue.clear()
+            return
         if not self.speech_queue or m.listener.is_recording or m.listener._decode_token is not None or m._active_turn or m.speech.playing or m.reader.active or m._reply_queue or m._turn_queue:return
         item=self.speech_queue.popleft()
         if not self.store.pending_valid(item['reminder_id']):return

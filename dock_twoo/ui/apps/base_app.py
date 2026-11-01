@@ -1,127 +1,128 @@
-"""Base widget for attached application windows."""
-
+"""Shared workspace shell for attached application windows."""
 from __future__ import annotations
 
 from typing import Optional
-
 from PySide6.QtCore import SIGNAL, Qt, Signal
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
-
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 from dock_twoo.config import DockConfig
-from dock_twoo.ui.theme import create_app_font, get_theme_tokens
+from dock_twoo.icons import IconManager
+from dock_twoo.ui.theme import create_app_font
+from dock_twoo.ui.workspace import get_workspace_tokens, workspace_styles
+
+
+DESCRIPTIONS = {
+    'notes': 'A clear space for your ideas.',
+    'tasks': 'Your work, organized by day.',
+    'scheduler': 'Make time for what matters.',
+    'vault': 'Your private, encrypted workspace.',
+    'dashboard': 'Understand your agent model usage.',
+    'activity': 'Follow every request and response.',
+    'brain': 'Your desktop assistant.',
+}
 
 
 class BaseAttachedApp(QWidget):
-    """Base attached application widget with a unified header and scrollable content."""
-
+    """Consistent navigation, typography and controls across native drawers."""
     close_requested = Signal()
 
-    def __init__(
-        self,
-        app_id: str,
-        title: str,
-        config: DockConfig,
-        parent: Optional[QWidget] = None,
-    ):
+    def __init__(self, app_id: str, title: str, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.app_id = app_id
         self.title_text = title
         self.config = config
-
+        self.setObjectName('workspaceApp')
+        self.setFont(create_app_font(config))
         self._setup_layout()
+        self._apply_workspace_theme()
 
-    def _setup_layout(self) -> None:
+    def _setup_layout(self):
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(14, 14, 14, 14)
-        self.main_layout.setSpacing(12)
-
-        # Header bar
+        self.main_layout.setContentsMargins(18, 18, 18, 16)
+        self.main_layout.setSpacing(18)
         self.header_layout = QHBoxLayout()
         self.header_layout.setContentsMargins(0, 0, 0, 0)
-        self.header_layout.setSpacing(8)
+        self.header_layout.setSpacing(12)
 
-        tokens = get_theme_tokens(self.config)
-
-        # Back button (for inner subviews e.g. Form view)
-        self.back_btn = QPushButton("←", self)
-        self.back_btn.setFixedSize(26, 26)
+        self.back_btn = QPushButton('←', self)
+        self.back_btn.setProperty('role', 'icon')
+        self.back_btn.setFixedSize(34, 34)
+        self.back_btn.setAccessibleName('Back')
+        self.back_btn.setToolTip('Back')
         self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.back_btn.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: rgba(255, 255, 255, 0.08);
-                color: {tokens.text_primary};
-                border: 1px solid {tokens.border_color};
-                border-radius: 6px;
-                font-size: 13px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background: rgba(255, 255, 255, 0.16);
-            }}
-            """
-        )
-        self.back_btn.setVisible(False)
-        self.header_layout.addWidget(self.back_btn)
+        self.back_btn.hide()
+        self.header_layout.addWidget(self.back_btn, 0, Qt.AlignmentFlag.AlignTop)
 
+        self.header_icon = QLabel(self)
+        self.header_icon.setObjectName('workspaceIcon')
+        self.header_icon.setFixedSize(38, 38)
+        self.header_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.header_layout.addWidget(self.header_icon, 0, Qt.AlignmentFlag.AlignTop)
+        heading = QVBoxLayout()
+        heading.setSpacing(3)
         self.title_label = QLabel(self.title_text, self)
-        self.title_label.setFont(create_app_font(self.config, size=tokens.font_size_title, weight=QFont.Weight.DemiBold))
-        self.title_label.setStyleSheet(f"color: {tokens.text_primary}; background: transparent; border: none;")
-        self.header_layout.addWidget(self.title_label)
+        self.title_label.setProperty('role', 'title')
+        self.title_label.setTextFormat(Qt.TextFormat.PlainText)
+        # Native font metrics differ across systems. A long page title must wrap
+        # in its header column rather than enlarge the entire attached drawer.
+        self.title_label.setWordWrap(True)
+        self.title_label.setMinimumWidth(0)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        heading.addWidget(self.title_label)
+        self.subtitle_label = QLabel(DESCRIPTIONS.get(self.app_id, ''), self)
+        self.subtitle_label.setProperty('role', 'muted')
+        self.subtitle_label.setWordWrap(True)
+        self.subtitle_label.setTextFormat(Qt.TextFormat.PlainText)
+        heading.addWidget(self.subtitle_label)
+        self.header_layout.addLayout(heading, 1)
 
-        self.header_layout.addStretch()
-
-        # Close button
-        self.close_btn = QPushButton("✕", self)
-        self.close_btn.setFixedSize(26, 26)
+        self.close_btn = QPushButton('×', self)
+        self.close_btn.setProperty('role', 'icon')
+        self.close_btn.setFixedSize(32, 32)
+        self.close_btn.setAccessibleName('Close ' + self.title_text)
+        self.close_btn.setToolTip('Close ' + self.title_text)
         self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.close_btn.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: rgba(255, 255, 255, 0.08);
-                color: {tokens.text_secondary};
-                border: none;
-                border-radius: 13px;
-                font-size: 11px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background: rgba(239, 68, 68, 0.8);
-                color: #ffffff;
-            }}
-            """
-        )
         self.close_btn.clicked.connect(self.close_requested.emit)
-        self.header_layout.addWidget(self.close_btn)
-
+        self.header_layout.addWidget(self.close_btn, 0, Qt.AlignmentFlag.AlignTop)
         self.main_layout.addLayout(self.header_layout)
 
-        # App content area
         self.content_widget = QWidget(self)
+        self.content_widget.setObjectName('workspaceContent')
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(10)
+        self.content_layout.setSpacing(12)
+        # A short display must scroll the content instead of expanding the entire
+        # attached window past its available geometry. Normal-height pages fill
+        # the viewport; their existing list/editor scroll areas remain unchanged.
+        self.content_scroll = QScrollArea(self)
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.content_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.content_scroll.setWidget(self.content_widget)
+        self.main_layout.addWidget(self.content_scroll, 1)
 
-        self.main_layout.addWidget(self.content_widget, 1)
+    def _apply_workspace_theme(self):
+        tokens = get_workspace_tokens(self.config)
+        self.setStyleSheet(workspace_styles(self.config) + f"""
+            QLabel#workspaceIcon {{ background: {tokens.accent_fill}; border-radius: 11px; }}
+            QPushButton[role="icon"] {{ font-size: 19px; font-weight: 400; }}
+        """)
+        self.header_icon.setPixmap(IconManager.get_instance().render_pixmap(
+            self.app_id, size=20, color=tokens.accent_color, opacity=1.0))
 
-    def set_nav_header(self, title: str, show_back: bool = False, on_back=None) -> None:
-        """Update top bar title and back button cleanly without double headers."""
+    def set_subtitle(self, text):
+        self.subtitle_label.setText(text)
+        self.subtitle_label.setVisible(bool(text))
+
+    def set_nav_header(self, title: str, show_back: bool = False, on_back=None):
         self.title_label.setText(title)
         self.back_btn.setVisible(show_back)
-        if self.back_btn.receivers(SIGNAL("clicked()")) > 0:
+        self.header_icon.setVisible(not show_back)
+        if self.back_btn.receivers(SIGNAL('clicked()')) > 0:
             self.back_btn.clicked.disconnect()
         if on_back:
             self.back_btn.clicked.connect(on_back)
 
-    def update_config(self, config: DockConfig) -> None:
+    def update_config(self, config: DockConfig):
         self.config = config
-        tokens = get_theme_tokens(self.config)
-        self.title_label.setFont(create_app_font(self.config, size=tokens.font_size_title, weight=QFont.Weight.DemiBold))
-        self.title_label.setStyleSheet(f"color: {tokens.text_primary}; background: transparent; border: none;")
+        self.setFont(create_app_font(config))
+        self._apply_workspace_theme()

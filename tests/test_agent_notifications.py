@@ -37,4 +37,6 @@ def test_normal_and_delegated_tasks_both_emit_start_and_finish_toasts(qapp,tmp_p
         manager.coordinator.complete('parrot',root,'Done')
         assert 'Rio finished the request' in notes.lines[-1]
         assert len(notes.lines)==3
+        notes.close()
+        assert not notes.lines
     finally:manager.shutdown()

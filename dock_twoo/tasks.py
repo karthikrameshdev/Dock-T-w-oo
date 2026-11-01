@@ -1,5 +1,6 @@
 """Persistent dated work log shared by the Tasks drawer and voice agent."""
 from datetime import date,datetime
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import sqlite3
@@ -18,8 +19,12 @@ class TaskStore:
         with self._connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, day TEXT NOT NULL, title TEXT NOT NULL, details TEXT NOT NULL, status TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL)')
             db.execute('CREATE INDEX IF NOT EXISTS tasks_day ON tasks(day)')
+    @contextmanager
     def _connect(self):
-        db=sqlite3.connect(self.path,timeout=5);db.row_factory=sqlite3.Row;return db
+        db=sqlite3.connect(self.path,timeout=5);db.row_factory=sqlite3.Row
+        try:
+            with db:yield db
+        finally:db.close()
     def add(self,title,details='',date=None,status='done'):
         title=title.strip();date=day(date)
         if not title or len(title)>1000 or len(details)>16000:raise ValueError('Enter a task title and reasonably sized details.')

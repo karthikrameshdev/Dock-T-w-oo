@@ -25,7 +25,8 @@ from dock_twoo.ui.apps import (
     LiveTrailAppWidget,
     VaultAppWidget,
 )
-from dock_twoo.ui.theme import get_theme_tokens, paint_color
+from dock_twoo.ui.theme import paint_color
+from dock_twoo.ui.workspace import get_workspace_tokens
 
 
 class AttachedWindow(QWidget):
@@ -52,6 +53,7 @@ class AttachedWindow(QWidget):
 
         # Outer card container
         self.card_container = QFrame(self)
+        self.card_container.setStyleSheet('QFrame { background: transparent; border: none; }')
         self.card_layout = QVBoxLayout(self.card_container)
         self.card_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -157,17 +159,17 @@ class AttachedWindow(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        tokens = get_theme_tokens(self.config)
+        tokens = get_workspace_tokens(self.config)
         is_dark = self.config.get_effective_theme() == "dark"
 
         glow_pad = 8 if self.config.glow_enabled else 2
         card_rect = QRectF(glow_pad, glow_pad, self.width() - 2 * glow_pad, self.height() - 2 * glow_pad)
         radius = self.config.attached_corner_radius
 
-        # 1. Radiant Ambient Halo / Glow
+        # A quiet edge shadow gives depth without the old luminous outline.
         if self.config.glow_enabled:
-            glow_color = QColor(255, 255, 255) if is_dark else QColor(0, 0, 0)
-            max_alpha = 16 if is_dark else 12
+            glow_color = QColor(0, 0, 0)
+            max_alpha = 18 if is_dark else 9
             for step in range(glow_pad, 0, -2):
                 alpha = int(max_alpha * (1.0 - (step / glow_pad) ** 1.3))
                 glow_col = QColor(glow_color.red(), glow_color.green(), glow_color.blue(), alpha)
@@ -183,15 +185,14 @@ class AttachedWindow(QWidget):
         path.addRoundedRect(card_rect, radius, radius)
 
         # 2. Background acrylic fill
-        bg_col = paint_color(tokens.card_bg)
+        bg_col = paint_color(tokens.bg_color)
         bg_col.setAlphaF(self.config.attached_opacity)
         painter.setBrush(QBrush(bg_col))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPath(path)
 
-        # 3. Crisp Luminous High-Contrast Border
-        rim_col = QColor(255, 255, 255, 75) if is_dark else QColor(0, 0, 0, 45)
-        painter.setPen(QPen(rim_col, 1.2))
+        rim_col = paint_color(tokens.border_color)
+        painter.setPen(QPen(rim_col, 1.0))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
         painter.end()

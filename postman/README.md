@@ -46,6 +46,18 @@ and preserves monthly aggregates after seven-day trace expiry.
 All require the local request header; foreign origins are rejected. No live
 configured-provider credits are used by these tests.
 
+Large Live Trail requests are paged: `/api/activity/{id}` returns the latest 100
+event previews, `before` loads older events, and explicit `/text` and
+`/events/{event_id}` requests retrieve up to 8192 characters at a time. Whole-run
+usage totals remain independent of the selected event page. Legacy compressed
+payloads have a 2 MiB decode ceiling instead of expanding without a bound.
+`QT_QPA_PLATFORM=offscreen QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu
+.venv/bin/python scripts/verify_activity_pagination.py` uses disposable synthetic
+data, the actual local HTTP server and QtWebEngine UI to check paging, expanded
+rows, full-text navigation and live refresh. It also runs two local Postman
+assertions with reporting disabled when the CLI is installed. No microphone or
+configured model is opened.
+
 
 The Tasks query contract is `contracts/brain-tasks.openapi.json`: inclusive date
 ranges, literal title/detail search, status, pagination and whole-result counts.

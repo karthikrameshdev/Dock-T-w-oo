@@ -6,6 +6,7 @@ import datetime
 import json
 from pathlib import Path
 import time
+import uuid
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import QMimeData, QPoint, QRect, QSize, Qt, QTimer, Signal
@@ -22,13 +23,15 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
     QTextEdit,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
 from dock_twoo.config import DockConfig, get_default_config_dir
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
-from dock_twoo.ui.theme import create_app_font, get_scrollbar_style, get_theme_tokens
+from dock_twoo.ui.theme import create_app_font, get_scrollbar_style
+from dock_twoo.ui.workspace import get_workspace_tokens as get_theme_tokens
 
 
 def format_note_date(ts: float) -> str:
@@ -124,105 +127,49 @@ class NoteCard(QFrame):
         self._drag_start_pos: Optional[QPoint] = None
 
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAccessibleName('Open note: '+(self.title or 'Untitled note'))
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        tokens = get_theme_tokens(self.config)
+        self.setProperty('role', 'card')
+        self.setStyleSheet(f'NoteCard:focus {{ border-color: {get_theme_tokens(self.config).accent_color}; }}')
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(4)
-
-        # Header row: Drag Grip + Title + Delete button
-        header_row = QHBoxLayout()
-        header_row.setContentsMargins(0, 0, 0, 0)
-        header_row.setSpacing(6)
-
-        self.grip_lbl = QLabel("⋮⋮", self)
-        self.grip_lbl.setFont(create_app_font(self.config, size=11, weight=QFont.Weight.Bold))
-        self.grip_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.4); background: transparent; border: none;")
-        self.grip_lbl.setToolTip("Drag to reorder notes")
-        self.grip_lbl.setFixedWidth(14)
-        header_row.addWidget(self.grip_lbl)
-
-        self.title_lbl = QLabel(self.title or "Untitled Note", self)
-        self.title_lbl.setFont(create_app_font(self.config, size=13, weight=QFont.Weight.DemiBold))
-        self.title_lbl.setStyleSheet(f"color: {tokens.text_primary}; background: transparent; border: none;")
-        header_row.addWidget(self.title_lbl, 1)
-
-        # Delete button on the card
-        self.delete_btn = QPushButton("✕", self)
-        self.delete_btn.setFixedSize(22, 22)
-        self.delete_btn.setToolTip("Delete note")
-        self.delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.delete_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba(255, 255, 255, 0.06);
-                color: {tokens.text_secondary};
-                border: none;
-                border-radius: 11px;
-                font-size: 11px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background: rgba(239, 68, 68, 0.85);
-                color: #ffffff;
-            }}
-        """)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(8)
+        header = QHBoxLayout()
+        self.title_lbl = QLabel(self.title or 'Untitled note', self)
+        self.title_lbl.setTextFormat(Qt.TextFormat.PlainText)
+        self.title_lbl.setWordWrap(True)
+        self.title_lbl.setProperty('role', 'itemTitle')
+        header.addWidget(self.title_lbl, 1)
+        self.delete_btn = QPushButton('×', self)
+        self.delete_btn.setFixedWidth(40)
+        self.delete_btn.setProperty('role', 'danger')
+        self.delete_btn.setToolTip('Delete note')
+        self.delete_btn.setAccessibleName('Delete '+(self.title or 'note'))
         self.delete_btn.clicked.connect(self._on_delete_clicked)
-        header_row.addWidget(self.delete_btn)
-        layout.addLayout(header_row)
-
-        # Content Snippet / Preview
-        first_line = (self.body or "").strip().replace("\n", " ")
-        snippet = first_line[:110] + ("..." if len(first_line) > 110 else "")
-        if not snippet:
-            snippet = "No additional text"
-        self.snippet_lbl = QLabel(snippet, self)
-        self.snippet_lbl.setFont(create_app_font(self.config, size=11, weight=QFont.Weight.Normal))
-        self.snippet_lbl.setStyleSheet(f"color: {tokens.text_secondary}; background: transparent; border: none;")
+        header.addWidget(self.delete_btn)
+        layout.addLayout(header)
+        first_line = ' '.join((self.body or '').split())
+        snippet = first_line[:130]+('…' if len(first_line)>130 else '')
+        self.snippet_lbl = QLabel(snippet or 'An empty note, ready for your ideas.', self)
+        self.snippet_lbl.setTextFormat(Qt.TextFormat.PlainText)
         self.snippet_lbl.setWordWrap(True)
+        self.snippet_lbl.setProperty('role', 'muted')
         layout.addWidget(self.snippet_lbl)
-
-        # Timestamps footer: Both Created Date and Modified Date
-        dates_layout = QVBoxLayout()
-        dates_layout.setContentsMargins(0, 3, 0, 0)
-        dates_layout.setSpacing(2)
-
-        self.created_lbl = QLabel(f"Created: {format_note_date(self.created_at)}", self)
-        self.created_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
-        self.created_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent; border: none;")
-        dates_layout.addWidget(self.created_lbl)
-
-        self.modified_lbl = QLabel(f"Modified: {format_note_date(self.updated_at)}", self)
-        self.modified_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
-        self.modified_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.65); background: transparent; border: none;")
-        dates_layout.addWidget(self.modified_lbl)
-
-        layout.addLayout(dates_layout)
-
-        self._apply_frame_style(False)
+        self.created_lbl = QLabel('Created: '+format_note_date(self.created_at), self)
+        self.modified_lbl = QLabel('Modified: '+format_note_date(self.updated_at), self)
+        for label in (self.created_lbl, self.modified_lbl):
+            label.setProperty('role', 'muted')
+            label.setWordWrap(True)
+            layout.addWidget(label)
+        self.setToolTip('Open note · drag to reorder')
 
     def _apply_frame_style(self, hover: bool) -> None:
-        tokens = get_theme_tokens(self.config)
-        is_dark = self.config.get_effective_theme() == "dark"
-        if hover:
-            bg = "rgba(255, 255, 255, 0.08)" if is_dark else "rgba(0, 0, 0, 0.06)"
-            border = tokens.accent_color
-            grip_color = tokens.accent_color
-        else:
-            bg = "rgba(255, 255, 255, 0.04)" if is_dark else "rgba(0, 0, 0, 0.03)"
-            border = "rgba(255, 255, 255, 0.08)" if is_dark else "rgba(0, 0, 0, 0.08)"
-            grip_color = "rgba(142, 142, 159, 0.4)"
-
-        self.setStyleSheet(f"""
-            NoteCard {{
-                background: {bg};
-                border: 1px solid {border};
-                border-radius: 9px;
-            }}
-        """)
-        if hasattr(self, "grip_lbl"):
-            self.grip_lbl.setStyleSheet(f"color: {grip_color}; background: transparent; border: none;")
+        self.setProperty('hovered', hover)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def enterEvent(self, event) -> None:
         self._apply_frame_style(True)
@@ -236,6 +183,13 @@ class NoteCard(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_pos = event.pos()
         super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.clicked.emit(self.note_id)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
         if event.buttons() & Qt.MouseButton.LeftButton and self._drag_start_pos is not None:
@@ -261,13 +215,6 @@ class NoteCard(QFrame):
         pixmap = self.grab()
         drag.setPixmap(pixmap)
         drag.setHotSpot(event.pos())
-        self.setStyleSheet("""
-            NoteCard {
-                opacity: 0.35;
-                border: 1px dashed #3b82f6;
-                border-radius: 9px;
-            }
-        """)
         drag.exec(Qt.DropAction.MoveAction)
         self._drag_start_pos = None
         self._apply_frame_style(False)
@@ -387,6 +334,7 @@ class NotesAppWidget(BaseAttachedApp):
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__("notes", "Notes", config, parent)
+        self.set_subtitle("Capture ideas. Keep the details.")
         default_dir = get_default_config_dir()
         if default_dir != Path.home() / ".dock_twoo" and config.storage_path == str(Path.home() / ".dock2"):
             self.notes_dir = default_dir / "notes"
@@ -444,183 +392,104 @@ class NotesAppWidget(BaseAttachedApp):
         self._save_manual_order(manual_order)
 
     def _init_notes_ui(self) -> None:
-        tokens = get_theme_tokens(self.config)
-
-        # Connect base header back button
-        self.back_btn.clicked.connect(self._go_back_to_list)
-
-        # Main Stacked Widget: Page 0 = List View, Page 1 = Editor View
+        self.back_btn.clicked.connect(lambda: self._go_back_to_list())
         self.stack = QStackedWidget(self)
-        self.content_layout.addWidget(self.stack)
-
-        # ----------------------------------------------------
-        # Page 0: List View
-        # ----------------------------------------------------
+        self.content_layout.addWidget(self.stack, 1)
         self.list_page = QWidget(self)
-        list_layout = QVBoxLayout(self.list_page)
-        list_layout.setContentsMargins(0, 0, 0, 0)
-        list_layout.setSpacing(10)
-
-        # Top Toolbar: Search + "+ New"
+        layout = QVBoxLayout(self.list_page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
         toolbar = QHBoxLayout()
-        toolbar.setSpacing(8)
-
+        toolbar.setSpacing(10)
         self.search_input = QLineEdit(self.list_page)
-        self.search_input.setPlaceholderText("Search notes by title or content...")
+        self.search_input.setPlaceholderText('Search your notes')
         self.search_input.setClearButtonEnabled(True)
-        self.search_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: rgba(0, 0, 0, 0.25);
-                color: {tokens.text_primary};
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }}
-            QLineEdit:focus {{
-                border-color: {tokens.accent_color};
-            }}
-        """)
         self.search_input.textChanged.connect(self._filter_notes)
         toolbar.addWidget(self.search_input, 1)
-
-        self.new_btn = QPushButton("+ New", self.list_page)
-        self.new_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.new_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {tokens.accent_color};
-                color: #ffffff;
-                border: none;
-                border-radius: 8px;
-                padding: 6px 12px;
-                font-size: 12px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                opacity: 0.9;
-            }}
-        """)
+        self.new_btn = QPushButton('New note', self.list_page)
+        self.new_btn.setProperty('role', 'primary')
         self.new_btn.clicked.connect(self._create_new_note)
         toolbar.addWidget(self.new_btn)
-        list_layout.addLayout(toolbar)
-
-        # Scrollable Cards Area
+        layout.addLayout(toolbar)
+        self.collection_label = QLabel('Your notes', self.list_page)
+        self.collection_label.setProperty('role', 'muted')
+        layout.addWidget(self.collection_label)
         self.scroll_area = QScrollArea(self.list_page)
         self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        self.scroll_area.setStyleSheet(f"""
-            QScrollArea {{
-                background: transparent;
-                border: none;
-            }}
-            {get_scrollbar_style(tokens)}
-        """)
-
         self.cards_container = CardsContainerWidget()
         self.cards_container.order_changed.connect(self._on_cards_reordered)
         self.cards_layout = QVBoxLayout(self.cards_container)
-        self.cards_layout.setContentsMargins(0, 0, 0, 0)
-        self.cards_layout.setSpacing(8)
+        self.cards_layout.setContentsMargins(0, 0, 2, 0)
+        self.cards_layout.setSpacing(12)
         self.cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        # Empty state label
-        self.empty_label = QLabel("No notes yet.\nClick + New to create your first note.", self.cards_container)
+        self.empty_label = QLabel('Your next idea starts here.\nCreate a note to save it.', self.cards_container)
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_label.setFont(create_app_font(self.config, size=12, weight=QFont.Weight.Normal))
-        self.empty_label.setStyleSheet(f"color: {tokens.text_secondary}; padding: 40px 20px; background: transparent;")
-        self.empty_label.setVisible(False)
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setMinimumHeight(160)
+        self.empty_label.setProperty('role', 'muted')
+        self.empty_label.hide()
         self.cards_layout.addWidget(self.empty_label)
-
         self.scroll_area.setWidget(self.cards_container)
-        list_layout.addWidget(self.scroll_area, 1)
-
+        layout.addWidget(self.scroll_area, 1)
+        hint = QLabel('Saved on this device · Drag notes to reorder', self.list_page)
+        hint.setProperty('role', 'muted')
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         self.stack.addWidget(self.list_page)
 
-        # ----------------------------------------------------
-        # Page 1: Editor View
-        # ----------------------------------------------------
         self.editor_page = QWidget(self)
-        editor_layout = QVBoxLayout(self.editor_page)
-        editor_layout.setContentsMargins(0, 0, 0, 0)
-        editor_layout.setSpacing(8)
-
-        # Editor Meta Header: Last saved info & Delete button
-        meta_row = QHBoxLayout()
-        meta_row.setContentsMargins(0, 0, 0, 0)
-        meta_row.setSpacing(8)
-
-        self.editor_meta_lbl = QLabel("", self.editor_page)
-        self.editor_meta_lbl.setWordWrap(True)
-        self.editor_meta_lbl.setMinimumWidth(0)
-        self.editor_meta_lbl.setFont(create_app_font(self.config, size=10, weight=QFont.Weight.Normal))
-        self.editor_meta_lbl.setStyleSheet("color: rgba(142, 142, 159, 0.7); background: transparent;")
-        meta_row.addWidget(self.editor_meta_lbl, 1)
-
-        self.editor_delete_btn = QPushButton("🗑 Delete Note", self.editor_page)
-        self.editor_delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.editor_delete_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba(239, 68, 68, 0.12);
-                color: #ef4444;
-                border: 1px solid rgba(239, 68, 68, 0.25);
-                border-radius: 6px;
-                padding: 4px 10px;
-                font-size: 11px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background: rgba(239, 68, 68, 0.25);
-                color: #f87171;
-            }}
-        """)
-        self.editor_delete_btn.clicked.connect(self._on_editor_delete_clicked)
-        meta_row.addWidget(self.editor_delete_btn)
-        editor_layout.addLayout(meta_row)
-
-        # Title Input
+        editor = QVBoxLayout(self.editor_page)
+        editor.setContentsMargins(0, 0, 0, 0)
+        editor.setSpacing(12)
         self.title_input = QLineEdit(self.editor_page)
-        self.title_input.setPlaceholderText("Note Title...")
-        self.title_input.setFont(create_app_font(self.config, size=17, weight=QFont.Weight.DemiBold))
-        self.title_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: transparent;
-                color: {tokens.text_primary};
-                border: none;
-                padding: 2px 0;
-            }}
-        """)
+        self.title_input.setPlaceholderText('Note title')
+        self.title_input.setAccessibleName('Note title')
         self.title_input.textChanged.connect(self._on_content_changed)
-        editor_layout.addWidget(self.title_input)
-
-        # Subtle divider below title
-        divider = QFrame(self.editor_page)
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Sunken)
-        divider.setFixedHeight(1)
-        divider.setStyleSheet("background-color: rgba(255, 255, 255, 0.08); border: none;")
-        editor_layout.addWidget(divider)
-
-        # Body Editor
-        self.body_edit = QTextEdit(self.editor_page)
-        self.body_edit.setPlaceholderText("Write your note here in markdown or plain text...")
-        self.body_edit.setStyleSheet(f"""
-            QTextEdit {{
-                background: rgba(0, 0, 0, 0.2);
-                color: {tokens.text_primary};
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 10px;
-                padding: 10px;
-                font-size: 13px;
-                line-height: 1.45;
-            }}
-        """)
+        editor.addWidget(self.title_input)
+        self.editor_meta_lbl = QLabel('', self.editor_page)
+        self.editor_meta_lbl.setWordWrap(True)
+        self.editor_meta_lbl.setProperty('role', 'muted')
+        editor.addWidget(self.editor_meta_lbl)
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+        self.edit_mode_btn = QPushButton('Edit', self.editor_page)
+        self.preview_btn = QPushButton('Preview', self.editor_page)
+        for button in (self.edit_mode_btn, self.preview_btn):
+            button.setCheckable(True)
+            actions.addWidget(button)
+        self.edit_mode_btn.clicked.connect(lambda: self._show_preview(False))
+        self.preview_btn.clicked.connect(lambda: self._show_preview(True))
+        actions.addStretch()
+        self.editor_delete_btn = QPushButton('Delete', self.editor_page)
+        self.editor_delete_btn.setProperty('role', 'danger')
+        self.editor_delete_btn.clicked.connect(self._on_editor_delete_clicked)
+        actions.addWidget(self.editor_delete_btn)
+        editor.addLayout(actions)
+        self.editor_stack = QStackedWidget(self.editor_page)
+        self.body_edit = QTextEdit(self.editor_stack)
+        self.body_edit.setAcceptRichText(False)
+        self.body_edit.setPlaceholderText('Write a note…\n\nMarkdown headings, lists and links are supported.')
         self.body_edit.textChanged.connect(self._on_content_changed)
-        editor_layout.addWidget(self.body_edit, 1)
-
+        self.editor_stack.addWidget(self.body_edit)
+        self.preview = QTextBrowser(self.editor_stack)
+        self.preview.setOpenLinks(False)
+        self.preview.setOpenExternalLinks(False)
+        self.editor_stack.addWidget(self.preview)
+        editor.addWidget(self.editor_stack, 1)
+        self.save_status = QLabel('Changes are saved automatically', self.editor_page)
+        self.save_status.setProperty('role', 'muted')
+        editor.addWidget(self.save_status)
         self.stack.addWidget(self.editor_page)
-
-        # Floating Toast notification
         self.toast = NotesToast(self)
+        self._show_preview(False)
+
+    def _show_preview(self, enabled: bool) -> None:
+        if enabled:self.preview.setMarkdown(self.body_edit.toPlainText())
+        self.editor_stack.setCurrentIndex(1 if enabled else 0)
+        self.edit_mode_btn.setChecked(not enabled)
+        self.preview_btn.setChecked(enabled)
 
     def _on_cards_reordered(self, new_order: List[str]) -> None:
         """Handle user manually reordering notes via drag and drop."""
@@ -632,6 +501,7 @@ class NotesAppWidget(BaseAttachedApp):
         # Clear existing cards
         for card in list(self._note_cards.values()):
             self.cards_layout.removeWidget(card)
+            card.hide()
             card.deleteLater()
         self._note_cards.clear()
 
@@ -728,7 +598,7 @@ class NotesAppWidget(BaseAttachedApp):
 
     def _create_new_note(self) -> None:
         """Create a new note, place it at top, and immediately open it in the editor."""
-        note_id = f"note_{int(time.time())}"
+        note_id = "note_" + uuid.uuid4().hex
         now = time.time()
         data = {
             "title": "Untitled Note",
@@ -763,7 +633,8 @@ class NotesAppWidget(BaseAttachedApp):
             self.title_input.blockSignals(True)
             self.body_edit.blockSignals(True)
             self.title_input.setText(data.get("title", ""))
-            self.body_edit.setText(data.get("body", ""))
+            self.body_edit.setPlainText(data.get("body", ""))
+            self._show_preview(False)
             self.title_input.blockSignals(False)
             self.body_edit.blockSignals(False)
             self._update_editor_meta(
@@ -776,8 +647,7 @@ class NotesAppWidget(BaseAttachedApp):
 
         # Switch to Editor View and show Header Back Button
         self.stack.setCurrentIndex(1)
-        self.back_btn.setVisible(True)
-        self.title_label.setText("Note")
+        self.set_nav_header('Note', show_back=True, on_back=lambda: self._go_back_to_list())
 
         if save_state:
             self._save_state(page_index=1, note_id=note_id)
@@ -786,8 +656,7 @@ class NotesAppWidget(BaseAttachedApp):
         """Return to Page 0 (List View) and hide Header Back Button."""
         self._current_note_id = None
         self.stack.setCurrentIndex(0)
-        self.back_btn.setVisible(False)
-        self.title_label.setText("Notes")
+        self.set_nav_header('Notes', show_back=False)
 
         # Reload list cards so latest updates, dates, and order are fresh
         self._load_notes()
@@ -897,33 +766,21 @@ class NotesAppWidget(BaseAttachedApp):
                 if is_match:
                     visible_count += 1
 
+        self.collection_label.setText(f"{visible_count} of {len(self._note_cards)} notes" if q else f"{visible_count} notes · Your collection")
         if visible_count == 0:
             if q:
                 self.empty_label.setText(f"No notes matching \"{query}\"")
             else:
-                self.empty_label.setText("No notes yet.\nClick + New to create your first note.")
+                self.empty_label.setText("Your next idea starts here.\nCreate a note to save it.")
             self.empty_label.setVisible(True)
         else:
             self.empty_label.setVisible(False)
 
     def update_config(self, config: DockConfig) -> None:
-        """Handle dynamic theme/config updates."""
-        self.config = config
+        super().update_config(config)
         new_notes_dir = self.config.get_notes_dir()
         if new_notes_dir != self.notes_dir:
             self.notes_dir = new_notes_dir
             self.notes_dir.mkdir(parents=True, exist_ok=True)
-            self.state_file = self.notes_dir / ".state.json"
-            self._load_notes()
-
-        tokens = get_theme_tokens(config)
-        self.scroll_area.setStyleSheet(f"""
-            QScrollArea {{
-                background: transparent;
-                border: none;
-            }}
-            {get_scrollbar_style(tokens)}
-        """)
-        for card in self._note_cards.values():
-            card.config = config
-            card._apply_frame_style(False)
+            self.state_file = self.notes_dir / '.state.json'
+        self._load_notes()

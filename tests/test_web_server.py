@@ -73,6 +73,68 @@ def test_web_console_status_endpoint(test_server):
         assert data["running"] is True
 
 
+def test_assistant_close_setting_is_boolean_and_overrides_show(test_server):
+    _, port, _ = test_server
+    url = f'http://127.0.0.1:{port}/api/brain/settings'
+    def request(value):
+        return urllib.request.Request(url, data=json.dumps(value).encode(),
+                                      headers={'Content-Type': 'application/json', 'X-Brain-Request': 'local'})
+    with pytest.raises(urllib.error.HTTPError) as error:
+        urllib.request.urlopen(request({'assistant_closed': 'false'}), timeout=3)
+    assert error.value.code == 400
+    with urllib.request.urlopen(request({'assistant_closed': True, 'companion_visible': True}), timeout=3) as response:
+        settings = json.load(response)['settings']
+    assert settings['assistant_closed'] is True and settings['companion_visible'] is False
+
+
+def test_listening_modes_validate_and_keep_legacy_wake_setting_consistent(test_server):
+    _, port, _ = test_server
+    url = f'http://127.0.0.1:{port}/api/brain/settings'
+    def request(value):
+        return urllib.request.Request(url, data=json.dumps(value).encode(),
+                                      headers={'Content-Type': 'application/json', 'X-Brain-Request': 'local'})
+    for invalid in ('always', '', None, True, [], {}):
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request({'listening_mode': invalid}), timeout=3)
+        assert error.value.code == 400
+    for mode in ('manual', 'off', 'automatic'):
+        with urllib.request.urlopen(request({'listening_mode': mode, 'wake_word_enabled': mode != 'automatic'}), timeout=3) as response:
+            settings = json.load(response)['settings']
+        assert settings['listening_mode'] == mode
+        assert settings['wake_word_enabled'] is (mode == 'automatic')
+    with urllib.request.urlopen(request({'wake_word_enabled': False}), timeout=3) as response:
+        settings = json.load(response)['settings']
+    assert settings['listening_mode'] == 'manual'
+
+
+def test_console_close_action_dispatches_to_assistant(test_server, monkeypatch):
+    from types import SimpleNamespace
+    from dock_twoo.brain.manager import BrainManager
+    closed = []
+    monkeypatch.setattr(BrainManager, '_instance', SimpleNamespace(close_assistant=lambda: closed.append(True)))
+    _, port, _ = test_server
+    request = urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/action',
+        data=json.dumps({'action': 'close'}).encode(),
+        headers={'Content-Type': 'application/json', 'X-Brain-Request': 'local'})
+    with urllib.request.urlopen(request, timeout=3) as response:
+        assert json.load(response)['success'] is True
+    assert closed == [True]
+
+
+def test_closed_assistant_does_not_accept_console_request(test_server, monkeypatch):
+    from types import SimpleNamespace
+    from dock_twoo.brain.manager import BrainManager
+    monkeypatch.setattr(BrainManager, '_instance', SimpleNamespace(assistant_available=False,
+        submit_request=lambda *_: pytest.fail('Closed assistant accepted work')))
+    _, port, _ = test_server
+    request = urllib.request.Request(f'http://127.0.0.1:{port}/api/brain/request',
+        data=json.dumps({'text': 'Test request'}).encode(),
+        headers={'Content-Type': 'application/json', 'X-Brain-Request': 'local'})
+    with pytest.raises(urllib.error.HTTPError) as error:
+        urllib.request.urlopen(request, timeout=3)
+    assert error.value.code == 400 and 'closed' in json.load(error.value)['error']
+
+
 def test_web_console_serves_html(test_server):
     server, port, mgr = test_server
     url = f"http://127.0.0.1:{port}/"
@@ -299,6 +361,33 @@ def test_activity_and_usage_endpoints_are_local_and_share_the_ledger(test_server
             if path=='/api/activity':assert data['runs'][0]['cloud_calls']==1
             elif path=='/api/usage':assert data['summary']['total_tokens']==14
             else:assert data['run']['request']=='An isolated test request' and len(data['events'])==2
+
+
+def test_activity_detail_paging_routes_preserve_local_access_and_evidence(test_server):
+    from dock_twoo.brain.activity import ActivityStore
+    _,port,mgr=test_server
+    store=ActivityStore(mgr.config.get_brain_dir()/'activity')
+    run=store.start('Paged research')
+    for index in range(120):store.event(run,'tool_result',{'index':index,'text':'evidence '*1000},index+1)
+    store.finish(run,'complete','Long response '*1000)
+    base=f'http://127.0.0.1:{port}/api/activity/{run}'
+    def get(suffix='',headers=None):
+        request=urllib.request.Request(base+suffix,headers=headers or {'X-Brain-Request':'local'})
+        with urllib.request.urlopen(request,timeout=3) as response:return json.load(response)
+    latest=get()
+    assert len(latest['events'])==100 and latest['run']['reply_truncated']
+    older=get('?before='+str(latest['pagination']['next_before']))
+    assert len(older['events'])==20 and older['pagination']['next_before'] is None
+    text=get('/text?field=reply&offset=10&limit=100')
+    assert len(text['text'])==100 and text['next_offset']==110
+    event=get('/events/'+str(latest['events'][0]['id'])+'?limit=200')
+    assert len(event['text'])==200 and event['next_offset']==200
+    for suffix in ('?limit=101','?before=-1','/text?field=password','/text?field=reply&limit=9000','/events/99999999999999999999999999999'):
+        with pytest.raises(urllib.error.HTTPError) as error:get(suffix)
+        assert error.value.code==400
+    for suffix in ('','/text?field=reply','/events/'+str(latest['events'][0]['id'])):
+        with pytest.raises(urllib.error.HTTPError) as error:get(suffix,{'X-Brain-Request':'local','Origin':'https://untrusted.example'})
+        assert error.value.code==403
 
 
 def test_tasks_api_search_status_ranges_and_full_counts(test_server):

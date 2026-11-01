@@ -90,7 +90,16 @@ class Playground(QObject):
         self.timer = QTimer(self)
         self.timer.setInterval(80)
         self.timer.timeout.connect(self.step)
-        self.timer.start()
+        self.refresh_visibility()
+
+    def refresh_visibility(self):
+        if any(actor.isVisible() for actor in self.manager.companions.values()):
+            self.timer.start()
+        else:
+            self.timer.stop()
+            for mapping in (self._routes, self._progress, self._next_plan,
+                            self._last_positions, self._groups):
+                mapping.clear()
 
     def arrange(self):
         for display_id, entry in self.manager._all_display_entries.items():

@@ -35,6 +35,7 @@ class BrainStore:
             "roaming": False,
             "follow_cursor": False,
             "companion_visible": True,
+            "assistant_closed": False,
             "companion_position": None,
             "companion_positions": {},
             "brain_instances": [],
@@ -46,6 +47,7 @@ class BrainStore:
             "voice_style": "Warm, natural and conversational, clear pacing.",
             "speech_rate": 1.0,
             "wake_word_enabled": True,
+            "listening_mode": "automatic",
             "character_awake": {},
             "wake_word": "Brain",
             "owner_first_name": "Karthik",
@@ -74,6 +76,10 @@ class BrainStore:
         try:
             with open(self.settings_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            # Existing wake-off users chose manual interaction, not background mic.
+            if data.get('listening_mode') not in ('automatic', 'manual', 'off'):
+                data['listening_mode'] = 'automatic' if data.get('wake_word_enabled', True) else 'manual'
+            data['wake_word_enabled'] = data['listening_mode'] == 'automatic'
             if data.get('agent_budget_version') != 1:
                 try:data['agent_max_steps'] = min(8,max(1,int(data.get('agent_max_steps',8))))
                 except (TypeError,ValueError):data['agent_max_steps'] = 8
@@ -137,7 +143,8 @@ class BrainStore:
         with self.lock:
             if key == 'character_awake':
                 self.validate_awake(value)
-            self._settings[key] = value
+            updates = self._listening_updates({key: value})
+            self._settings.update(updates)
             self._save_raw(self._settings)
 
     def get_all(self) -> Dict[str, Any]:
@@ -179,10 +186,21 @@ class BrainStore:
                  'enabled': self.character_awake(c['id']), 'locked': c['id'] == 'default'}
                 for c in characters()]
 
+    @staticmethod
+    def _listening_updates(updates):
+        updates = dict(updates)
+        if 'listening_mode' in updates:
+            if updates['listening_mode'] not in ('automatic', 'manual', 'off'):
+                raise ValueError('Listening mode must be automatic, manual or off.')
+            updates['wake_word_enabled'] = updates['listening_mode'] == 'automatic'
+        elif 'wake_word_enabled' in updates:
+            updates['listening_mode'] = 'automatic' if updates['wake_word_enabled'] else 'manual'
+        return updates
+
     def update_settings(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
             if 'character_awake' in updates:
                 self.validate_awake(updates['character_awake'])
-            self._settings.update(updates)
+            self._settings.update(self._listening_updates(updates))
             self._save_raw(self._settings)
             return dict(self._settings)

@@ -453,8 +453,8 @@ def test_dynamic_key_value_vault_form(qtbot, qapp, tmp_path: Path):
     assert len(form.field_rows) == 2
     # Generate secure password for API Key
     buttons = entry1[2].findChildren(QPushButton)
-    gen_btn = next(b for b in buttons if "⚡" in b.text())
-    eye_btn = next(b for b in buttons if "👁️" in b.text())
+    gen_btn = next(b for b in buttons if b.objectName() == "generate_secret")
+    eye_btn = next(b for b in buttons if b.objectName() == "show_secret")
     form._generate_row_password(entry1[1], eye_btn)
     assert len(entry1[1].text()) == 20
 
@@ -475,12 +475,12 @@ def test_dynamic_key_value_vault_form(qtbot, qapp, tmp_path: Path):
     assert len(edit_form.field_rows) == 2
 
     # Delete first row
-    del_btn0 = next(b for b in edit_form.field_rows[0][2].findChildren(QPushButton) if "✕" in b.text())
+    del_btn0 = next(b for b in edit_form.field_rows[0][2].findChildren(QPushButton) if b.objectName() == "remove_field")
     del_btn0.click()
     assert len(edit_form.field_rows) == 1
 
     # Delete the last remaining row - form automatically creates 1 clean row ready
-    del_btn1 = next(b for b in edit_form.field_rows[0][2].findChildren(QPushButton) if "✕" in b.text())
+    del_btn1 = next(b for b in edit_form.field_rows[0][2].findChildren(QPushButton) if b.objectName() == "remove_field")
     del_btn1.click()
     assert len(edit_form.field_rows) == 1
     assert edit_form.field_rows[0][0].text() == ""

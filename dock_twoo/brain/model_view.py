@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 from PySide6.QtCore import QObject, QTimer, QUrl, Qt, Signal, Slot, QFile, QIODevice, QPoint, QRect, QEvent
-from PySide6.QtGui import QColor, QCursor
+from PySide6.QtGui import QColor, QCursor, QRegion
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -51,6 +51,7 @@ class CharacterView(QWebEngineView):
         self.snapshot = None
         self._hidden_since = 0.0
         self._discarded = False
+        self._released = False
         from dock_twoo.brain.connectivity import Connectivity
         self.connectivity = Connectivity(self)
         self.ready = False
@@ -78,20 +79,8 @@ class CharacterView(QWebEngineView):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.page().setBackgroundColor(QColor(0, 0, 0, 0))
-        self.channel = QWebChannel(self.page())
         self.bridge = ModelBridge(self)
-        self.channel.registerObject('brain', self.bridge)
-        self.page().setWebChannel(self.channel)
-        source = QFile(":/qtwebchannel/qwebchannel.js")
-        if not source.open(QIODevice.OpenModeFlag.ReadOnly):
-            raise RuntimeError("Qt WebChannel runtime is unavailable")
-        script = QWebEngineScript()
-        script.setName("Brain native bridge")
-        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-        script.setSourceCode(bytes(source.readAll()).decode("utf-8"))
-        self.page().scripts().insert(script)
+        self._configure_page()
         self.bridge.loaded.connect(self._ready)
         self.bridge.error.connect(self._error)
         if self.detached:
@@ -103,6 +92,21 @@ class CharacterView(QWebEngineView):
         self.timer.timeout.connect(self._sync)
         self.hide()
         QTimer.singleShot(800, self, self._load)
+
+    def _configure_page(self):
+        self.page().setBackgroundColor(QColor(0, 0, 0, 0))
+        self.channel = QWebChannel(self.page())
+        self.channel.registerObject('brain', self.bridge)
+        self.page().setWebChannel(self.channel)
+        source = QFile(":/qtwebchannel/qwebchannel.js")
+        if not source.open(QIODevice.OpenModeFlag.ReadOnly):
+            raise RuntimeError("Qt WebChannel runtime is unavailable")
+        script = QWebEngineScript()
+        script.setName("Brain native bridge")
+        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        script.setSourceCode(bytes(source.readAll()).decode("utf-8"))
+        self.page().scripts().insert(script)
 
     def _shape(self, payload):
         if not self.ready:
@@ -160,12 +164,50 @@ class CharacterView(QWebEngineView):
         if self.snapshot:self.snapshot.setGeometry(self.geometry())
 
     def release_hidden_page(self, now):
-        if self.companion.isVisible() or not self.ready or not self._hidden_since or now-self._hidden_since<45:return
-        self.page().setLifecycleState(QWebEnginePage.LifecycleState.Discarded)
-        self.ready=False;self._loading=False;self._discarded=True
-        self._epoch+=1;self._sync_pending=False
-        if self.snapshot:self.snapshot.clear()
-        self.parked=False
+        if (self.companion.isVisible() or self._released or not self._hidden_since
+                or now-self._hidden_since < 45):
+            return
+        self.release_resources()
+
+    def release_resources(self):
+        """Unload the scene now, including failed or unfinished model loads.
+
+        Freezing retains the GLB and renderer heap; about:blank can retain its
+        renderer process. Replacing the owned page destroys its WebContents,
+        channel and callbacks. The unloaded replacement needs no process until
+        reopen, and retains the reusable native window and selected identity.
+        """
+        if self._released:
+            return
+        self.timer.stop()
+        self.stop()
+        self._released = True
+        self._loading = self.ready = self._discarded = self.parked = False
+        self._reload_pending = False
+        self._epoch += 1
+        self.attempts += 1  # Invalidate old startup watchdogs.
+        self._sync_pending = False
+        self._healthy_since = 0.0
+        self.error = ''
+        self.hide()
+        if self.snapshot:
+            self.snapshot.hide()
+            self.snapshot.clear()
+        if hasattr(self.companion, 'apply_input_mask'):
+            self.companion.input_region = QRegion()
+            self.companion.has_input_shape = False
+            self.companion.apply_input_mask()
+        self.page().setVisible(False)
+        self._replace_page()
+
+    def _replace_page(self):
+        # Qt deletes the implicit page; explicitly supplied pages can remain
+        # alive in the Python binding, so retire them on the owning GUI thread.
+        previous = self.page()
+        self.setPage(QWebEnginePage(self))
+        if isValid(previous):previous.deleteLater()
+        self._configure_page()
+        self.page().setVisible(False)
 
     def show_visual(self):
         self._hidden_since = 0.0
@@ -222,6 +264,7 @@ class CharacterView(QWebEngineView):
             return
         from dock_twoo.config import ConfigManager
         self._loading = True
+        self._released = False
         self._reload_pending = False
         self._epoch += 1
         self._sync_pending = False
@@ -233,6 +276,8 @@ class CharacterView(QWebEngineView):
         QTimer.singleShot(12000, self, lambda: self._check_ready(attempt))
 
     def _loaded(self, ok):
+        if self._released:
+            return
         if not ok and self.attempts < 5:
             self._loading = False
             QTimer.singleShot(1500, self, self._load)
@@ -244,6 +289,8 @@ class CharacterView(QWebEngineView):
             self._error(self.error or "The 3D renderer did not become ready; restart Dock to retry.")
 
     def _ready(self, version, asset_hash):
+        if getattr(self, '_released', False):
+            return
         expected = self.companion.character.get('asset_sha256', '')
         if expected and asset_hash != expected:
             return
@@ -267,6 +314,8 @@ class CharacterView(QWebEngineView):
         self.companion.update()
 
     def _error(self, message):
+        if getattr(self, '_released', False):
+            return
         self.ready = False
         self._loading = False
         self.error = message
@@ -284,6 +333,8 @@ class CharacterView(QWebEngineView):
         self._recover_renderer('The character renderer stopped.')
 
     def _recover_renderer(self, reason):
+        if getattr(self, '_released', False):
+            return
         if getattr(self, "parked", False):self.set_parked(False)
         # Fail open: a stalled renderer must never leave a stale invisible hit
         # rectangle above the desktop. Rebuild only this character, not the app.

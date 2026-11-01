@@ -19,15 +19,25 @@ class NeuralEndpointVad:
         self.voiced_windows = 0
         self.windows = 0
         self._lock = threading.RLock()
+        self._load_lock = threading.Lock()
+        self._worker = None
 
     @property
     def ready(self):
         return self.model is not None
 
     def start(self):
-        threading.Thread(target=self.load, daemon=True, name='brain-endpoint-vad').start()
+        with self._lock:
+            if self.ready or (self._worker and self._worker.is_alive()):return
+            self._worker = threading.Thread(target=self.load, daemon=True, name='brain-endpoint-vad')
+            self._worker.start()
 
     def load(self, allow_download=True):
+        with self._load_lock:
+            if self.ready:return True
+            return self._load(allow_download)
+
+    def _load(self, allow_download):
         try:
             if not self.path.exists():
                 if not allow_download:
@@ -71,6 +81,7 @@ class NeuralEndpointVad:
     def feed(self, pcm):
         import numpy as np
         with self._lock:
+            if self.model is None:return False
             samples = np.frombuffer(pcm, dtype='<i2').astype(np.float32) / 32768
             samples -= samples.mean() if len(samples) else 0
             rms = float(np.sqrt(np.mean(samples*samples))) if len(samples) else 0
@@ -86,6 +97,18 @@ class NeuralEndpointVad:
                 self.voiced_windows += voiced
                 self.pending = self.pending[512:]
             return any(votes)
+
+    def release_if_idle(self):
+        if not self._load_lock.acquire(blocking=False):return False
+        try:
+            if not self._lock.acquire(blocking=False):return False
+            try:
+                if self._worker and self._worker.is_alive():return False
+                self.model = self.pending = self._worker = None
+                self.error = ''
+                return True
+            finally:self._lock.release()
+        finally:self._load_lock.release()
 
     def status(self):
         return {'engine': 'Silero VAD (local CPU)', 'ready': self.ready,

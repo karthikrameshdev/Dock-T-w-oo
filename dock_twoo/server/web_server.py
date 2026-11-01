@@ -117,7 +117,15 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     result['profile_options']=list(options.values())
                     for row in result['profiles']:
                         if row['profile_id'] in options:row['name']=options[row['profile_id']]['name']
-                else:result=tracker.detail(path.removeprefix('/api/activity/'))
+                else:
+                    parts=path.removeprefix('/api/activity/').split('/')
+                    if len(parts)==1:
+                        result=tracker.detail(parts[0],before=query.get('before',[None])[0],limit=query.get('limit',[100])[0])
+                    elif len(parts)==2 and parts[1]=='text':
+                        result=tracker.text_page(parts[0],query.get('field',[''])[0],offset=query.get('offset',[0])[0],limit=query.get('limit',[8192])[0])
+                    elif len(parts)==3 and parts[1]=='events':
+                        result=tracker.event_page(parts[0],parts[2],offset=query.get('offset',[0])[0],limit=query.get('limit',[8192])[0])
+                    else:raise ValueError('Unknown activity detail path.')
                 self._json(200,result)
             except (ValueError,TypeError) as exc:self._json(400,{'error':str(exc)})
             return
@@ -436,6 +444,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 bm = BrainManager._instance
                 if bm is None:
                     raise RuntimeError('Start the desktop application before sending a request.')
+                if not getattr(bm, 'assistant_available', True):
+                    raise RuntimeError('The voice assistant is closed. Open it from the dock before sending a request.')
                 screen_id = body.get('screen_id')
                 if screen_id is not None:
                     displays = getattr(self.config_manager, 'display_snapshot', {}).get('displays', [])
@@ -530,6 +540,18 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                 store = _get_safe_brain_store()
                 if any(key in body for key in ('cloud_keys', 'cloud_model', 'cloud_profiles', 'profiles', 'active_profile')):
                     raise ValueError('Use Cloud Profiles to configure model profiles securely.')
+                if 'assistant_closed' in body and type(body['assistant_closed']) is not bool:
+                    raise ValueError('assistant_closed must be a boolean.')
+                if 'listening_mode' in body:
+                    if body['listening_mode'] not in ('automatic', 'manual', 'off'):
+                        raise ValueError('Choose automatic, manual, or off for listening_mode.')
+                    body['wake_word_enabled'] = body['listening_mode'] == 'automatic'
+                elif 'wake_word_enabled' in body:
+                    if type(body['wake_word_enabled']) is not bool:
+                        raise ValueError('wake_word_enabled must be a boolean.')
+                    body['listening_mode'] = 'automatic' if body['wake_word_enabled'] else 'manual'
+                if body.get('assistant_closed') is True:
+                    body['companion_visible'] = False
                 for key,low,high in (('agent_max_steps',1,12),('agent_token_budget',2000,64000),('agent_no_progress_turns',2,10),('agent_max_output_tokens',128,16384),('agent_task_call_limit',0,100000),('agent_task_token_limit',0,10000000)):
                     if key in body and (type(body[key]) is not int or not low<=body[key]<=high):
                         raise ValueError(f'{key} must be an integer between {low} and {high}.')
@@ -540,7 +562,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     bm.run_on_main_thread(lambda changes=dict(body): bm.apply_voice_settings(changes))
                     if "mascot_corner" in body:
                         bm.companion.travel_to_corner(body["mascot_corner"])
-                    if "companion_visible" in body:
+                    if "companion_visible" in body and "assistant_closed" not in body:
                         if body["companion_visible"]:
                             bm.show_mini_agent()
                         else:
@@ -579,7 +601,7 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                     if self.headers.get("X-Brain-Reader") != "local" or (origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}")):
                         raise RuntimeError("Start reading from the local Brain controls.")
                 from dock_twoo.brain.manager import BrainManager
-                if BrainManager._instance is None and action in ("read_desktop", "read_window", "read_selected", "stop_reading"):
+                if BrainManager._instance is None and action in ("close", "read_desktop", "read_window", "read_selected", "stop_reading"):
                     raise RuntimeError("Brain is not running. Start the desktop application first.")
                 if BrainManager._instance is not None:
                     bm = BrainManager._instance
@@ -587,6 +609,8 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
                         bm.show_mini_agent()
                     elif action == "hide":
                         bm.hide_mini_agent()
+                    elif action == "close":
+                        bm.close_assistant()
                     elif action == "talk":
                         bm.toggle_talking()
                     elif action in ("read_desktop", "read_window", "read_selected"):

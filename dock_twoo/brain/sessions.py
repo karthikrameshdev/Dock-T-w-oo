@@ -115,7 +115,7 @@ class BrainSessions:
         # Retire saved crowds; character profiles, memories and work survive.
         self.store.set_setting('brain_instances', [])
         if not display_id:self.store.set_setting('assistant_display', entry['id'])
-        if self.store.setting('companion_visible', True):
+        if self.assistant_available and self.store.setting('companion_visible', True):
             actor.show()
         self._refresh_actor_states()
         if not hasattr(self, 'playground'):
@@ -128,6 +128,7 @@ class BrainSessions:
 
     def select_character(self, character_id, screen_id=None):
         """Replace the model in the sole renderer; never create a worker window."""
+        if not self.assistant_available:return self.actor_for()
         character(character_id)
         actor = self.actor_for()
         actor.switch_character(character_id)
@@ -145,6 +146,7 @@ class BrainSessions:
 
     def choose_assistant(self, character_id):
         """Manual selection ends the audio session, but leaves model jobs running."""
+        if not self._open_assistant():return self.actor_for()
         if self.actor_for().character_id != character_id:
             self.in_conversation_session = False
             self.session_timer.stop()
@@ -196,6 +198,7 @@ class BrainSessions:
         return self._ui_actor_id
 
     def _queue_turn(self, text, source='voice', target=None, kind='request', profile_snapshot=None, character_id=None):
+        if not self._require_assistant():return
         if STOP.fullmatch(text):
             self._on_voice_stop(text)
             return
@@ -222,7 +225,7 @@ class BrainSessions:
         self._drain_turns()
 
     def _drain_turns(self):
-        if self._stopping:
+        if self._stopping or not self.assistant_available:
             return
         if self.listener.is_recording or self.listener._decode_token is not None:
             return
@@ -298,10 +301,10 @@ class BrainSessions:
             self._resume_session()
 
     def _resume_session(self):
-        if self._stopping or self._active_turn or self.listener.is_recording or self.listener._decode_token is not None:
+        if not self.assistant_available or self._stopping or self._active_turn or self.listener.is_recording or self.listener._decode_token is not None:
             return
         self.listener.set_output_active(False)
-        if self.in_conversation_session and not self._processing_turns:
+        if self.listening_mode == 'automatic' and self.in_conversation_session and not self._processing_turns:
             self._listening_actor_id = self._session_actor_id or self._ui_actor_id
             self._listening_source = self._session_source
             self.listener.capture_character_id = self.actor_for(self._listening_actor_id).character_id
@@ -310,6 +313,9 @@ class BrainSessions:
             self._listening_actor_id = None
             self._listening_source = None
             self.listener.arm_wake()
+            if self.listening_mode != 'automatic':
+                self.in_conversation_session = False
+                self.listener.pause_input()
         self._refresh_actor_states()
 
     def _set_active_activity(self, state):
@@ -360,6 +366,7 @@ class BrainSessions:
         self._refresh_actor_states()
 
     def _start_capture(self, actor_id, source='click'):
+        if not self.assistant_available or self.listening_mode == 'off':return
         self._listening_actor_id = actor_id
         self._listening_source = source
         self._ui_actor_id = actor_id
@@ -367,7 +374,6 @@ class BrainSessions:
         self._session_source = source
         self.in_conversation_session = True
         self.session_timer.stop()
-        self.listener.start()
         self.listener.set_output_active(False)
         actor = self.actor_for(actor_id)
         actor.show()
@@ -376,6 +382,7 @@ class BrainSessions:
         actor.turn_to_user()
         self.listener.capture_character_id = actor.character_id
         self.listener.start_recording()
+        self.listener.start()
         self.visibility_changed.emit(True)
         self._refresh_actor_states()
 

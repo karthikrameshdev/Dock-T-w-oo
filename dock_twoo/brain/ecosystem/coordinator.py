@@ -23,6 +23,7 @@ class Coordinator:
         self.review_lock=threading.Lock()
         self.agent_states={};self.workspaces={};self.workers={};self.closed=False
         self.cleanup_pending={};self.current_tasks={}
+        self.task_cancels={};self._cancel_pending={};self._cancel_seen=set();self._cancel_worker=None
 
     def client(self, character_id='default'):
         with self.lock:
@@ -32,10 +33,13 @@ class Coordinator:
     def start(self):self.client();return self
 
     def begin(self, character_id, prompt, profile, cancel, parent_id='', *, assigning_identity=None):
-        while not cancel.is_set():
+        while not cancel.is_set() and not self.closed:
             result=self.client(assigning_identity or character_id).call('Assign',{'character_id':character_id,'prompt':prompt,'profile_id':profile.get('id',''),'parent_id':parent_id})
             if result['accepted']:
                 task_id=result['task_id']
+                if cancel.is_set() or self.closed:
+                    self.client(character_id).call('Report',{'task_id':task_id,'state':'cancelled','result':'Stopped before starting.'})
+                    raise InterruptedError('Request stopped before starting an agent.')
                 try:
                     folder=tempfile.TemporaryDirectory(prefix='dock-'+character_id+'-')
                 except OSError as exc:
@@ -43,6 +47,7 @@ class Coordinator:
                     raise
                 with self.lock:
                     self.workspaces[task_id]=folder
+                    self.task_cancels[task_id]=cancel
                     self.current_tasks[character_id]=task_id
                     self.state(character_id,'processing')
                 if parent_id:
@@ -86,6 +91,8 @@ class Coordinator:
         self.client(character_id).call('Report',{'task_id':task_id,'state':state,'result':str(result)[:200_000],'artifacts':paths})
         with self.lock:
             folder=self.workspaces.pop(task_id,None)
+            self.task_cancels.pop(task_id,None)
+            self._cancel_seen.discard(task_id)
         if folder:
             try:folder.cleanup()
             except OSError:
@@ -253,15 +260,40 @@ class Coordinator:
     def snapshot(self):return self.client().call('Snapshot')
 
     def stop(self):
-        if self.bus.port:
-            for job in self.snapshot()['jobs']:
-                if not job['parent_id'] and job['state']=='running':self.client(job['character_id']).call('Cancel',{'task_id':job['id']})
-        with self.lock:workers=list(self.workers.values())
-        for worker in workers:worker.stop()
+        # Captured local IDs replace a synchronous gRPC Snapshot on the UI.
+        # New work after Open cannot be swept up by a delayed cancellation.
+        with self.lock:
+            for cancel in self.task_cancels.values():cancel.set()
+            for worker in self.workers.values():worker.cancel.set()
+            if self.bus.port:
+                for identity,task_id in self.current_tasks.items():
+                    if task_id not in self._cancel_seen:
+                        self._cancel_pending[task_id]=identity
+                        self._cancel_seen.add(task_id)
+            if self._cancel_pending and self._cancel_worker is None:
+                self._cancel_worker=threading.Thread(target=self._cancel_jobs,name='agent-cancel',daemon=True)
+                self._cancel_worker.start()
+
+    def _cancel_jobs(self):
+        while True:
+            with self.lock:
+                if not self._cancel_pending:
+                    self._cancel_worker=None
+                    return
+                task_id=next(iter(self._cancel_pending))
+                identity=self._cancel_pending.pop(task_id)
+            try:self.client(identity).call('Cancel',{'task_id':task_id},timeout=1)
+            except Exception as exc:
+                self.last_cancel_error=str(exc)[:300]
+                with self.lock:self._cancel_seen.discard(task_id)
 
     def close(self):
         if self.closed:return
-        self.closed=True;self.stop();self.pool.shutdown(wait=True,cancel_futures=True)
+        # Let reserved but not-yet-started children acknowledge cancellation and
+        # clean their workspace; discarding their Future skips that finalizer.
+        self.closed=True;self.stop();self.pool.shutdown(wait=True,cancel_futures=False)
+        with self.lock:cancel_worker=self._cancel_worker
+        if cancel_worker and cancel_worker is not threading.current_thread():cancel_worker.join()
         with self.lock:clients=list(self.clients.values())
         for client in clients:client.close()
         self.bus.close()

@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Brain local Activity Tracker and cloud usage",
-    "version": "2.0.0",
+    "title": "Voice Assistant local Activity Tracker and model usage",
+    "version": "2.1.0",
     "description": "Loopback and explicit local header required. Detailed traces expire after seven days; daily totals remain. No local STT/TTS tokens."
   },
   "paths": {
@@ -63,11 +63,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Fetch events with ids less than this cursor. Omit for the latest page.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Sent conversation/tools, fixed-system-instruction hash, returned payloads and local results"
+            "description": "Bounded run previews and up to 100 chronological event previews plus relevant call metadata. pagination.next_before selects older events; usage contains whole-run totals. Event payloads over 2048 UTF-8 bytes have payload_truncated=true. Request/reply previews over 4000 characters have request_truncated/reply_truncated. Full data is explicitly paged through the text/event endpoints; no local audio tokens."
           },
           "400": {
             "description": "Invalid range or expired activity"
@@ -137,6 +156,137 @@
           },
           "400": {
             "description": "Invalid range or expired activity"
+          },
+          "403": {
+            "description": "Local application controls required"
+          }
+        }
+      }
+    },
+    "/api/activity/{id}/text": {
+      "get": {
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "request",
+                "reply"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192,
+              "default": 8192
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit text page: text, offset, total characters, next_offset and previous_offset (null at boundaries). Original request or response, fetched without loading the entire document into the server."
+          },
+          "400": {
+            "description": "Invalid page or expired/missing activity"
+          },
+          "403": {
+            "description": "Local application controls required"
+          }
+        }
+      }
+    },
+    "/api/activity/{id}/events/{event_id}": {
+      "get": {
+        "parameters": [
+          {
+            "name": "X-Brain-Request",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "local"
+              ]
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192,
+              "default": 8192
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit text page: text, offset, total characters, next_offset and previous_offset (null at boundaries). Event text is original JSON. Legacy decompression beyond 2 MiB stops safely and sets limited=true; current stored traces are bounded at write time."
+          },
+          "400": {
+            "description": "Invalid page or expired/missing activity"
           },
           "403": {
             "description": "Local application controls required"

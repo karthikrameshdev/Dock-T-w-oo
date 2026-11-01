@@ -68,7 +68,6 @@ const notesMarkdownToggle = document.getElementById('notesMarkdownToggle');
 const notesSpellcheckToggle = document.getElementById('notesSpellcheckToggle');
 
 // Brain Voice Assistant Controls
-const brainWakeWordToggle = document.getElementById('brainWakeWordToggle');
 const brainWakeWord = document.getElementById('brainWakeWord');
 const brainVoiceGender = document.getElementById('brainVoiceGender');
 const brainOrbTheme = document.getElementById('brainOrbTheme');
@@ -239,7 +238,6 @@ function initForm(cfg) {
 
   // 6. Brain App Settings
   const brainCfg = cfg.app_settings.brain || {};
-  if (brainWakeWordToggle) brainWakeWordToggle.checked = (brainCfg.wake_word_enabled !== false);
   if (brainWakeWord) brainWakeWord.value = 'Use each character’s name · Brain, Rio, Luma…';
   if (brainVoiceGender) brainVoiceGender.value = brainCfg.voice_gender || 'neutral';
   if (brainOrbTheme) brainOrbTheme.value = brainCfg.orb_theme || 'neon_cyan';
@@ -742,13 +740,6 @@ if (notesSpellcheckToggle) {
 }
 
 // Individual App Settings: Brain
-if (brainWakeWordToggle) {
-  brainWakeWordToggle.addEventListener('change', (e) => {
-    ensureAppSettings();
-    currentConfig.app_settings.brain.wake_word_enabled = e.target.checked;
-    autoSave();
-  });
-}
 
 
 if (brainVoiceGender) {
@@ -1116,10 +1107,11 @@ async function initBrainConsole() {
   });
   byId('brainRequestForm').addEventListener('submit',async event=>{
     event.preventDefault();const text=byId('brainRequestText').value.trim();if(!text)return;
+    if(byId('brainRequestSend').disabled){byId('brainRequestStatus').textContent='Assistant closed. Use Show to reopen before sending a request.';return;}
     try{await post('/api/brain/request',{text});byId('brainRequestStatus').textContent='Brain is working on your request…';}catch(error){report(error);}
   });
   byId('brainStopAgent').addEventListener('click',()=>post('/api/brain/stop').catch(report));
-  for (const [id,action] of [['brainSummonBtn','summon'],['brainHideBtn','hide'],['brainTalkBtn','talk'],['brainLoopAnimBtn','animation']]) {
+  for (const [id,action] of [['brainSummonBtn','summon'],['brainHideBtn','hide'],['brainCloseBtn','close'],['brainTalkBtn','talk'],['brainLoopAnimBtn','animation']]) {
     byId(id)?.addEventListener('click',()=>post('/api/brain/action',{action,name:'loop'}).catch(report));
   }
   document.querySelectorAll('[data-reader]').forEach(button=>button.addEventListener('click',async()=>{
@@ -1131,7 +1123,15 @@ async function initBrainConsole() {
   if(byId('brainCharacterRelease'))byId('brainCharacterRelease').textContent=`Brain ${release.version} · ${release.design} · ${Object.keys(release.actions).length} animations`;
   byId('brainCharacterPlay')?.addEventListener('click',()=>post('/api/brain/action',{action:'animation',name:select.value}).catch(report));
   async function save(settings){try{await post('/api/brain/settings',settings);}catch(error){report(error);}}
-  for(const [id,key] of [['brainWakeWordToggle','wake_word_enabled'],['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.checked}));
+  let modeSaving=false;
+  byId('brainListeningMode')?.addEventListener('change',async event=>{
+    const select=event.target;modeSaving=true;select.disabled=true;
+    byId('brainListeningModeStatus').textContent='Saving listening mode…';
+    try{await post('/api/brain/settings',{listening_mode:select.value});}
+    catch(error){report(error);}
+    finally{modeSaving=false;select.disabled=false;await refresh();}
+  });
+  for(const [id,key] of [['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.checked}));
   for(const [id,key] of [['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut'],['brainVoiceName','voice_name']])byId(id)?.addEventListener('change',event=>save({[key]:event.target.value}));
   byId('brainSpeechRate')?.addEventListener('input',event=>{const speed=Number(event.target.value)/100;byId('brainSpeechRateVal').textContent=speed.toFixed(1)+'x';save({speech_rate:speed});});
   byId('brainVoiceCheckBtn')?.addEventListener('click',()=>fetch('/api/brain/voice-check',{method:'POST',headers:{'X-Brain-Voice-Check':'local'}}).catch(report));
@@ -1144,19 +1144,37 @@ async function initBrainConsole() {
     try{
       const data=await (await fetch('/api/brain/status',{headers:{'X-Brain-Request':'local'}})).json();
       const input=data.voice_input||{},diag=input.wake_diagnostics||{},model=data.language_model||{};
-      byId('brainAgentStatusBadge').textContent=`Voice Assistant ${data.character?.version||''} · ${data.activity||'idle'}`;
-      byId('brainTalkBtn').textContent=diag.recording?'✓ Finish speaking':(diag.decoding?'Processing speech…':'🎤 Talk to Brain');
-      byId('brainTalkBtn').disabled=Boolean(diag.decoding);
+      const settings=data.settings||{},closed=data.assistant_state==='closed'||Boolean(settings.assistant_closed);
+      const mode=input.mode||settings.listening_mode||(settings.wake_word_enabled===false?'manual':'automatic');
+      const micDisabled=closed||mode==='off';
+      if(!modeSaving){
+        byId('brainListeningMode').value=mode;
+        byId('brainListeningModeStatus').textContent=closed?'Assistant closed · microphone off. Open the assistant from the dock or use Show to resume.':
+          mode==='off'?'Microphone off · wake names, clicks and shortcuts cannot start listening.':
+          mode==='manual'?(diag.recording?'Manual mode · listening to your current statement.':'Manual mode · microphone idle. Click the character or hold your configured shortcut to talk.'):
+          'Automatic mode · say a character’s name, such as “Hey Brain” or “Hey Rio”.';
+      }
+      byId('brainAgentStatusBadge').textContent=`Voice Assistant ${data.character?.version||''} · ${closed?'closed':data.activity||'idle'}`;
+      byId('brainTalkBtn').textContent=micDisabled?'Microphone off':(diag.recording?'Finish speaking':(diag.decoding?'Processing speech…':'Talk to assistant'));
+      byId('brainTalkBtn').disabled=Boolean(diag.decoding)||micDisabled;
+      for(const id of ['brainEnrollVoiceBtn','brainVoiceCheckBtn'])if(byId(id))byId(id).disabled=micDisabled;
+      byId('brainCloseBtn').disabled=closed;
+      for(const id of ['brainRequestText','brainRequestSend','brainLoopAnimBtn','brainCharacterPlay','brainHideBtn'])if(byId(id))byId(id).disabled=closed;
+      document.querySelectorAll('[data-reader]:not([data-reader="stop_reading"]),[data-anim]').forEach(button=>{button.disabled=closed;});
+      if(closed)byId('brainRequestStatus').textContent='Assistant closed. Use Show to reopen before sending a request.';
+      else if(byId('brainRequestStatus').textContent==='Assistant closed. Use Show to reopen before sending a request.')byId('brainRequestStatus').textContent='Type a request or speak to the selected assistant. Start with a character name to switch.';
+      byId('brainHideBtn').textContent=mode==='automatic'?'Hide assistant · keep voice wake':'Hide assistant';
       const devices=diag.audio_devices||{};
-      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Cloud Model.':`Agent model profile: ${data.active_profile?.name || model.name || "Default"} · ${model.model}.`)+` System defaults · Microphone: ${devices.input||diag.input_device||'unavailable'} · Speaker: ${devices.output||'unavailable'}.`;
-      byId('brainWakeDiagnostics').textContent=`Wake ${input.wake_ready?'ready':'preparing'} · ${diag.recognizer_engine||'local speech'} · ${input.recognizer_ready?'ready':'preparing'} · ${diag.last_decision||''}`;
+      byId('brainVoiceInputStatus').textContent=(model.state==='not configured'?'Model is not configured. Set it up in Agent Model.':`Agent model profile: ${data.active_profile?.name || model.name || "Default"} · ${model.model}.`)+` System defaults · Microphone: ${devices.input||diag.input_device||'unavailable'} · Speaker: ${devices.output||'unavailable'}.`;
+      byId('brainWakeDiagnostics').textContent=micDisabled?'Microphone disabled. No wake detection or audio capture.':mode==='manual'?
+        `Manual activation · ${diag.recording?'recording':diag.decoding?'processing speech':'microphone idle'} · wake detection off`:
+        `Wake ${input.wake_ready?'ready':'preparing'} · ${diag.recognizer_engine||'local speech'} · ${input.recognizer_ready?'ready':'preparing'} · ${diag.last_decision||''}`;
       byId('brainLocalSpeechStatus').textContent=`Local speech: ${data.local_speech?.engine||'Kokoro ONNX'} · ${data.local_speech?.state||'preparing'}${data.local_speech?.error?' · '+data.local_speech.error:''}`;
       byId('brainAgentProgress').textContent=(data.agent?.message && data.agent?.step>0?`Step ${data.agent.step||0} · ${data.agent.message}`:'')+(data.queue?.pending?.length?` · ${data.queue.pending.length} request${data.queue.pending.length===1?'':'s'} queued`:'');
       if(data.last_response?.generation>generation){byId('brainRequestStatus').textContent=data.last_response.text;generation=data.last_response.generation;}
       const check=diag.voice_check||{};
       if(check.active || check.heard?.length)byId('brainVoiceCheckStatus').textContent=`${check.active?'Listening '+check.seconds_remaining+'s':'Check finished'} · ${(check.heard||[]).map(entry=>entry.heard).join(' · ')}`;
-      const settings=data.settings||{};
-      for(const [id,key] of [['brainWakeWordToggle','wake_word_enabled'],['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])if(byId(id))byId(id).checked=!!settings[key];
+      for(const [id,key] of [['brainSpeakRepliesToggle','voice_reply'],['brainRoamingToggle','roaming'],['brainFollowCursorToggle','follow_cursor'],['brainReduceMotionToggle','reduced_motion']])if(byId(id))byId(id).checked=!!settings[key];
       for(const [id,key] of [['brainOwnerName','owner_first_name'],['brainPushToTalkKey','push_to_talk_shortcut']])if(byId(id)&&document.activeElement!==byId(id))byId(id).value=settings[key]||'';
       if(document.activeElement!==byId('brainSpeechRate')){byId('brainSpeechRate').value=Math.round((settings.speech_rate||1)*100);byId('brainSpeechRateVal').textContent=(settings.speech_rate||1).toFixed(1)+'x';}
       if(byId('brainReadingStatus'))byId('brainReadingStatus').textContent=data.reading?.error|| (data.reading?.active?`Reading ${data.reading.window||'text'} · page ${data.reading.pages_read||1}`:'Choose an existing selection or a document window to read.');

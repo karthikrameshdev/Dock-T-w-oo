@@ -13,35 +13,43 @@ from PySide6.QtWidgets import (
     QStackedWidget, QTextBrowser, QVBoxLayout, QWidget, QSizePolicy,
 )
 from dock_twoo.ui.apps.base_app import BaseAttachedApp
-from dock_twoo.ui.theme import get_scrollbar_style, get_theme_tokens
+from dock_twoo.ui.workspace import CurrentPageStack
 from dock_twoo.tasks import TaskStore
 
 STATUSES = {'done': 'Completed', 'in_progress': 'In progress', 'todo': 'To do'}
 
 
-class TaskCard(QWidget):
-    def __init__(self, task, parent=None):
+class TaskCard(QFrame):
+    def __init__(self, task, parent=None, *, group=False):
         super().__init__(parent)
+        self.setProperty('role', 'card')
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(5)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
+        date = QDate.fromString(task['day'], 'yyyy-MM-dd')
+        if group:
+            prefix = 'Today' if date == QDate.currentDate() else 'Yesterday' if date == QDate.currentDate().addDays(-1) else date.toString('dddd')
+            heading = QLabel(prefix + ' · ' + date.toString('d MMM'), self)
+            heading.setProperty('role', 'section')
+            layout.addWidget(heading)
         symbol = {'done': '✓', 'in_progress': '◷', 'todo': '○'}[task['status']]
-        title = QLabel(symbol + '  ' + task['title'], self)
+        title = QLabel(task['title'], self)
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
-        title.setMaximumHeight(42)
-        title.setObjectName('taskTitle')
+        title.setMaximumHeight(40)
+        font = title.font();font.setBold(True);title.setFont(font)
         layout.addWidget(title)
-        date = QDate.fromString(task['day'], 'yyyy-MM-dd').toString('ddd, d MMM yyyy')
-        meta = QLabel(date + '  ·  ' + STATUSES[task['status']], self)
-        meta.setObjectName('muted')
-        layout.addWidget(meta)
         if task['details'].strip():
-            preview = QLabel(' '.join(task['details'].split())[:90], self)
+            preview = QLabel(' '.join(task['details'].split())[:140], self)
             preview.setTextFormat(Qt.TextFormat.PlainText)
-            preview.setObjectName('muted')
+            preview.setWordWrap(True)
+            preview.setMaximumHeight(36)
+            preview.setProperty('role', 'muted')
             layout.addWidget(preview)
+        meta = QLabel(symbol + '  ' + STATUSES[task['status']] + '  ·  ' + date.toString('d MMM yyyy'), self)
+        meta.setProperty('role', 'muted')
+        layout.addWidget(meta)
 
 
 class TasksAppWidget(BaseAttachedApp):
@@ -53,7 +61,7 @@ class TasksAppWidget(BaseAttachedApp):
         self._signature = ''
         self._limit = 100
         self._editing_id = None
-        self.stack = QStackedWidget(self)
+        self.stack = CurrentPageStack(self)
         # All content belongs in the base class's expanding content area. Putting
         # controls in main_layout leaves an empty, stretching widget above them.
         self.content_layout.addWidget(self.stack)
@@ -66,7 +74,6 @@ class TasksAppWidget(BaseAttachedApp):
         for field in self.findChildren(QComboBox)+self.findChildren(QDateEdit):
             field.setMinimumWidth(0)
             field.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self._apply_theme()
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.setInterval(180)
@@ -81,8 +88,8 @@ class TasksAppWidget(BaseAttachedApp):
     def _button(self, text, callback, primary=False):
         button = QPushButton(text, self)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.setMinimumHeight(34)
-        if primary: button.setObjectName('primary')
+        button.setMinimumHeight(40)
+        if primary: button.setProperty('role', 'primary')
         button.clicked.connect(callback)
         return button
 
@@ -90,7 +97,7 @@ class TasksAppWidget(BaseAttachedApp):
         field = QDateEdit(QDate.currentDate(), self)
         field.setCalendarPopup(True)
         field.setDisplayFormat('d MMM yyyy')
-        field.setMinimumHeight(34)
+        field.setMinimumHeight(40)
         return field
 
     def _build_overview(self):
@@ -100,12 +107,12 @@ class TasksAppWidget(BaseAttachedApp):
         layout.setSpacing(10)
         row = QHBoxLayout()
         self.search = QLineEdit(self)
-        self.search.setPlaceholderText('Search tasks and details…')
+        self.search.setPlaceholderText('Search your work…')
         self.search.setAccessibleName('Search tasks')
         self.search.setClearButtonEnabled(True)
-        self.search.setMinimumHeight(36)
+        self.search.setMinimumHeight(40)
         row.addWidget(self.search, 1)
-        self.add_button = self._button('+ Add', self.new_task, True)
+        self.add_button = self._button('+ Task', self.new_task, True)
         self.add_button.setAccessibleName('Add task')
         row.addWidget(self.add_button)
         layout.addLayout(row)
@@ -143,7 +150,7 @@ class TasksAppWidget(BaseAttachedApp):
         dates.addWidget(self.to_date, 1)
         layout.addWidget(self.date_row)
         self.stats = QLabel(self)
-        self.stats.setObjectName('muted')
+        self.stats.setProperty('role', 'muted')
         self.stats.setWordWrap(True)
         stats_row = QHBoxLayout()
         stats_row.addWidget(self.stats, 1)
@@ -154,35 +161,38 @@ class TasksAppWidget(BaseAttachedApp):
         self.results = QStackedWidget(self)
         self.list = QListWidget(self)
         self.list.setFrameShape(QFrame.Shape.NoFrame)
-        self.list.setSpacing(3)
+        self.list.setSpacing(5)
         self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setCursor(Qt.CursorShape.PointingHandCursor)
         self.list.setAccessibleName('Task list')
         self.list.itemClicked.connect(self.open_item)
         self.list.itemActivated.connect(self.open_item)
         self.results.addWidget(self.list)
-        self.empty = QWidget(self)
+        self.empty = QFrame(self)
+        self.empty.setProperty('role', 'card')
         empty_layout = QVBoxLayout(self.empty)
-        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.setContentsMargins(22, 28, 22, 28)
+        empty_layout.setSpacing(12)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.empty_title = QLabel('No tasks yet', self)
         self.empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_title.setObjectName('taskTitle')
+        self.empty_title.setProperty('role', 'section')
         self.empty_hint = QLabel(self)
         self.empty_hint.setWordWrap(True)
         self.empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty_hint.setObjectName('muted')
+        self.empty_hint.setProperty('role', 'muted')
         empty_layout.addWidget(self.empty_title)
         empty_layout.addWidget(self.empty_hint)
         self.all_dates_button = self._button('Search all dates', lambda: self.period.setCurrentIndex(self.period.findData('all')))
         empty_layout.addWidget(self.all_dates_button)
-        self.empty_add = self._button('Add a task', self.new_task)
+        self.empty_add = self._button('Add your first task', self.new_task, True)
         empty_layout.addWidget(self.empty_add)
         self.results.addWidget(self.empty)
         layout.addWidget(self.results, 1)
         self.more = self._button('Load more tasks', self.load_more)
         layout.addWidget(self.more)
-        hint = QLabel('Choose Yesterday, then Summary — or ask Brain.', self)
-        hint.setObjectName('muted')
+        hint = QLabel('Your work, remembered. Ask your assistant for a daily summary.', self)
+        hint.setProperty('role', 'muted')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         self.stack.addWidget(self.overview)
@@ -205,16 +215,22 @@ class TasksAppWidget(BaseAttachedApp):
         self.entry.returnPressed.connect(self.save_task)
         fields.addWidget(QLabel('Task', self))
         fields.addWidget(self.entry)
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        date_column = QVBoxLayout()
+        status_column = QVBoxLayout()
         self.editor_date = self._date_edit()
         self.editor_date.setAccessibleName('Work date')
-        fields.addWidget(QLabel('Work date', self))
-        fields.addWidget(self.editor_date)
+        date_column.addWidget(QLabel('Work date', self))
+        date_column.addWidget(self.editor_date)
         self.editor_status = QComboBox(self)
         self.editor_status.setAccessibleName('Task completion status')
         self.editor_status.setCursor(Qt.CursorShape.PointingHandCursor)
         for key, label in STATUSES.items(): self.editor_status.addItem(label, key)
-        fields.addWidget(QLabel('Status', self))
-        fields.addWidget(self.editor_status)
+        status_column.addWidget(QLabel('Status', self))
+        status_column.addWidget(self.editor_status)
+        row.addLayout(date_column, 1);row.addLayout(status_column, 1)
+        fields.addLayout(row)
         fields.addWidget(QLabel('Details', self))
         self.details = QPlainTextEdit(self)
         self.details.setAccessibleName('Task details')
@@ -222,7 +238,7 @@ class TasksAppWidget(BaseAttachedApp):
         self.details.setMinimumHeight(140)
         fields.addWidget(self.details, 1)
         self.timestamps = QLabel(self)
-        self.timestamps.setObjectName('muted')
+        self.timestamps.setProperty('role', 'muted')
         self.timestamps.setWordWrap(True)
         fields.addWidget(self.timestamps)
         scroll.setWidget(form)
@@ -231,7 +247,7 @@ class TasksAppWidget(BaseAttachedApp):
         layout.addWidget(scroll, 1)
         self.editor_error = QLabel(self)
         self.editor_error.setWordWrap(True)
-        self.editor_error.setObjectName('error')
+        self.editor_error.setProperty('role', 'danger')
         layout.addWidget(self.editor_error)
         row = QHBoxLayout()
         row.addWidget(self._button('Cancel', self.show_overview))
@@ -246,7 +262,7 @@ class TasksAppWidget(BaseAttachedApp):
         layout.setContentsMargins(0, 0, 0, 0)
         self.summary_scope = QLabel(self)
         self.summary_scope.setWordWrap(True)
-        self.summary_scope.setObjectName('muted')
+        self.summary_scope.setProperty('role', 'muted')
         layout.addWidget(self.summary_scope)
         self.summary = QTextBrowser(self)
         self.summary.setAccessibleName('Task summary')
@@ -300,25 +316,29 @@ class TasksAppWidget(BaseAttachedApp):
                 page = self.store.list(**filters, offset=page['next_offset'])
                 tasks.extend(page['tasks'])
             counts = page['counts']
-            self.stats.setText(f"{self.scope()}\n{page['total']} tasks · {counts['done']} completed · {counts['in_progress']} in progress · {counts['todo']} to do")
+            self.stats.setText(f"{page['total']} {'task' if page['total'] == 1 else 'tasks'} · {counts['done']} completed\n{self.scope()}")
             signature = json.dumps([tasks, filters], sort_keys=True)
             if signature != self._signature:
                 selected = self.list.currentItem().data(Qt.ItemDataRole.UserRole)['id'] if self.list.currentItem() else None
                 position = self.list.verticalScrollBar().value()
                 self.list.clear()
+                previous_day = None
                 for task in tasks:
+                    group = task['day'] != previous_day
+                    previous_day = task['day']
                     item = QListWidgetItem()
                     item.setData(Qt.ItemDataRole.UserRole, task)
                     item.setData(Qt.ItemDataRole.AccessibleTextRole, task['title'])
                     item.setData(Qt.ItemDataRole.AccessibleDescriptionRole, task['day'] + ' ' + STATUSES[task['status']])
                     item.setToolTip('Open task details')
-                    card = TaskCard(task, self.list)
-                    item.setSizeHint(QSize(0, 104 if task['details'].strip() else 80))
+                    card = TaskCard(task, self.list, group=group)
+                    item.setSizeHint(QSize(0, (128 if task['details'].strip() else 90) + (24 if group else 0)))
                     self.list.addItem(item)
                     self.list.setItemWidget(item, card)
                     if task['id'] == selected: self.list.setCurrentItem(item)
                 self.list.verticalScrollBar().setValue(position)
                 self._signature = signature
+                QTimer.singleShot(0, self, self._fit_rows)
             self.results.setCurrentWidget(self.list if tasks else self.empty)
             self.more.setVisible(page['next_offset'] is not None)
             self.empty_title.setText('No matching tasks' if self.search.text() or self.status_filter.currentData() else 'No tasks in this period')
@@ -333,6 +353,20 @@ class TasksAppWidget(BaseAttachedApp):
             self.empty_hint.setText(str(exc))
             self.more.hide()
 
+    def _fit_rows(self):
+        width = max(160, self.list.viewport().width() - 12)
+        for index in range(self.list.count()):
+            item = self.list.item(index)
+            card = self.list.itemWidget(item)
+            if card is not None:
+                card.ensurePolished()
+                height = card.layout().totalHeightForWidth(width)
+                item.setSizeHint(QSize(0, max(78, height + 2)))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, 'list'):self._fit_rows()
+
     def _poll(self):
         if self.isVisible() and self.stack.currentWidget() == self.overview: self.refresh()
 
@@ -342,6 +376,7 @@ class TasksAppWidget(BaseAttachedApp):
 
     def show_overview(self):
         self.set_nav_header('Tasks')
+        self.set_subtitle('Your work, organized by day.')
         self.stack.setCurrentWidget(self.overview)
         self.refresh()
 
@@ -351,9 +386,10 @@ class TasksAppWidget(BaseAttachedApp):
         self.details.clear()
         self.editor_date.setDate(self.date.date() if self.period.currentData() == 'date' else QDate.currentDate())
         self.editor_status.setCurrentIndex(0)
-        self.timestamps.setText('Stored locally and shared with Brain’s work log.')
+        self.timestamps.setText('Saved on this device and available to your voice assistant.')
         self.editor_error.clear()
         self.set_nav_header('New task', True, self.show_overview)
+        self.set_subtitle('Capture progress and outcomes.')
         self.stack.setCurrentWidget(self.editor)
         self.entry.setFocus()
 
@@ -369,6 +405,7 @@ class TasksAppWidget(BaseAttachedApp):
         self.timestamps.setText('Created ' + task['created'][:16].replace('T', ' ') + '\nUpdated ' + task['updated'][:16].replace('T', ' '))
         self.editor_error.clear()
         self.set_nav_header('Task details', True, self.show_overview)
+        self.set_subtitle('Review or update this work entry.')
         self.stack.setCurrentWidget(self.editor)
 
     def save_task(self):
@@ -392,9 +429,9 @@ class TasksAppWidget(BaseAttachedApp):
                 tasks.extend(page['tasks'])
             counts = page['counts']
             self.summary_scope.setText(self.scope() + (' · Search: ' + self.search.text().strip() if self.search.text().strip() else ''))
-            html = f"<h3>{page['total']} tasks</h3><p>{counts['done']} completed · {counts['in_progress']} in progress · {counts['todo']} to do</p>"
+            html = f"<h3>{page['total']} {'task' if page['total'] == 1 else 'tasks'}</h3><p>{counts['done']} completed · {counts['in_progress']} in progress · {counts['todo']} to do</p>"
             if model_text:
-                html += '<h3>Brain’s summary</h3><p>' + escape(str(model_text)).replace('\n', '<br>') + '</p>'
+                html += '<h3>Assistant summary</h3><p>' + escape(str(model_text)).replace('\n', '<br>') + '</p>'
             if not tasks: html += '<p>No tasks matched this period and search. Try another date or add a work entry.</p>'
             groups = defaultdict(list)
             for task in tasks: groups[task['day']].append(task)
@@ -409,6 +446,7 @@ class TasksAppWidget(BaseAttachedApp):
             self.summary.setHtml(html)
             self.summary.moveCursor(QTextCursor.MoveOperation.Start)
             self.set_nav_header('Task summary', True, self.show_overview)
+            self.set_subtitle('A clear picture of what got done.')
             self.stack.setCurrentWidget(self.summary_page)
         except (ValueError, OSError) as exc: self.stats.setText(str(exc))
 
@@ -433,26 +471,6 @@ class TasksAppWidget(BaseAttachedApp):
         self.show_overview()
         if summary_text is not None: self.show_summary(model_text=summary_text)
 
-    def _apply_theme(self):
-        t = get_theme_tokens(self.config)
-        self.setStyleSheet(f'''
-            QLineEdit, QDateEdit, QComboBox, QPlainTextEdit, QTextBrowser {{ background:{t.card_bg}; color:{t.text_primary}; border:1px solid {t.border_color}; border-radius:8px; padding:8px; selection-background-color:{t.accent_color}; }}
-            QComboBox QAbstractItemView, QCalendarWidget QWidget {{ background:{t.card_bg}; color:{t.text_primary}; selection-background-color:{t.accent_color}; }}
-            QListWidget, QScrollArea {{background:transparent; border:none;}}
-            QListWidget::item {{background:{t.card_bg};border:1px solid {t.border_color};border-radius:10px;}}
-            QListWidget::item:hover {{border-color:{t.accent_color};}}
-            QListWidget::item:selected {{border:1px solid {t.accent_color};}}
-            QLabel {{color:{t.text_primary}; background:transparent; border:none;}}
-            QLabel#muted {{color:{t.text_secondary};font-size:11px;}}
-            QLabel#taskTitle {{font-weight:600;}}
-            QLabel#error {{color:#e47c88;}}
-            QPushButton {{color:{t.text_primary};background:{t.card_bg};padding:8px 10px;border:1px solid {t.border_color};border-radius:8px;}}
-            QPushButton:hover {{border-color:{t.accent_color};}}
-            QPushButton#primary {{background:{t.accent_color};color:white;border-color:{t.accent_color};}}
-            QPushButton:disabled {{color:{t.text_secondary};}}
-            QPushButton#tasksBack, QPushButton#tasksClose {{padding:0;}}
-        ''' + get_scrollbar_style(t))
-
     def update_config(self, config):
         super().update_config(config)
         root = config.get_storage_path() / 'tasks'
@@ -461,4 +479,3 @@ class TasksAppWidget(BaseAttachedApp):
             self._editing_id = None
             self._signature = ''
             self.show_overview()
-        self._apply_theme()

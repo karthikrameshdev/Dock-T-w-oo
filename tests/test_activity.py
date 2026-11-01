@@ -73,6 +73,20 @@ def test_trace_retention_does_not_delete_monthly_usage(tmp_path):
     assert store.list()['runs']==[]
 
 
+def test_request_pages_do_not_duplicate_equal_timestamp_rows(tmp_path):
+    current=datetime(2026,10,5,12,tzinfo=timezone.utc)
+    store=ActivityStore(tmp_path,clock=lambda:current)
+    created={store.start(f'Concurrent request {index}') for index in range(65)}
+    seen=[];offset=0
+    while offset is not None:
+        page=store.list(offset=offset)
+        seen.extend(row['id'] for row in page['runs'])
+        offset=page['next_offset']
+    assert len(seen)==len(set(seen))==len(created)
+    assert set(seen)==created
+    assert seen==sorted(created,reverse=True)
+
+
 def test_range_boundaries_retry_and_model_counts(tmp_path):
     current=[datetime(2026,10,5,23,59,tzinfo=timezone(timedelta(hours=5,minutes=30)))]
     store=ActivityStore(tmp_path,clock=lambda:current[0]);run=store.start('First')

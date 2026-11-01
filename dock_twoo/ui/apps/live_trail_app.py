@@ -14,7 +14,7 @@ class LiveTrailAppWidget(BaseAttachedApp):
 
     def _url(self):
         if self.view:
-            url = QUrl(f'http://127.0.0.1:{self.config.server_port}/live-trail.html?theme={self.config.get_effective_theme()}')
+            url = QUrl(f'http://127.0.0.1:{self.config.server_port}/live-trail.html?theme={self.config.get_effective_theme()}&embedded=1')
             if self.view.url() != url:
                 self.view.setUrl(url)
 

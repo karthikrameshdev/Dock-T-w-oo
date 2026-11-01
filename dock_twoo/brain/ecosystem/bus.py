@@ -33,7 +33,8 @@ class AgentBus:
         self.path = self.root / 'ecosystem.sqlite3'
         self.condition = threading.Condition(threading.RLock())
         self.credentials = {entry['id']: secrets.token_urlsafe(32) for entry in characters()}
-        self.server = None; self.port = None
+        self.server = None; self.port = None; self.pool = None
+        self._next_prune = 0.0
         with self.db() as db:
             db.executescript('''
             CREATE TABLE IF NOT EXISTS jobs (
@@ -44,6 +45,9 @@ class AgentBus:
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, at REAL, character_id TEXT,
                 task_id TEXT, kind TEXT, payload TEXT);
             CREATE INDEX IF NOT EXISTS trail_task ON trail(task_id,sequence);
+            CREATE INDEX IF NOT EXISTS trail_expiry ON trail(at);
+            CREATE INDEX IF NOT EXISTS jobs_expiry ON jobs(finished);
+            CREATE INDEX IF NOT EXISTS trail_progress ON trail(task_id,kind,sequence);
             ''')
             db.execute("UPDATE jobs SET state='interrupted',finished=?,error='Application restarted.' WHERE state NOT IN ('complete','failed','cancelled','interrupted')", (time.time(),))
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_active_character ON jobs(character_id) WHERE state IN ('running','cancelling')")
@@ -62,7 +66,8 @@ class AgentBus:
     def start(self):
         if self.server:
             return self
-        self.server = grpc.server(ThreadPoolExecutor(max_workers=64, thread_name_prefix='agent-bus'), options=[('grpc.max_receive_message_length', 1_000_000)])
+        self.pool = ThreadPoolExecutor(max_workers=64, thread_name_prefix='agent-bus')
+        self.server = grpc.server(self.pool, options=[('grpc.max_receive_message_length', 1_000_000)])
         handlers = {}
         for name in ('Assign', 'Report', 'Publish', 'Cancel', 'Snapshot'):
             handlers[name] = grpc.unary_unary_rpc_method_handler(self._handler(name), request_deserializer=deserialize, response_serializer=lambda value:message(value).SerializeToString())
@@ -102,9 +107,32 @@ class AgentBus:
         if len(encoded.encode()) > 200_000:
             raise ValueError('Event payload exceeds the local trail limit.')
         db.execute('INSERT INTO trail(at,character_id,task_id,kind,payload) VALUES(?,?,?,?,?)', (time.time(),identity,task_id,kind,encoded))
-        db.execute('DELETE FROM trail WHERE at<?', (time.time()-7*86400,))
-        db.execute("DELETE FROM jobs WHERE finished<? AND state IN ('complete','failed','cancelled','interrupted')",(time.time()-7*86400,))
+        self._prune(db)
         self.condition.notify_all()
+
+    def _prune(self, db):
+        now = time.monotonic()
+        if now < self._next_prune:return
+        cutoff = time.time()-7*86400
+        db.execute('DELETE FROM trail WHERE at<?', (cutoff,))
+        db.execute("DELETE FROM jobs WHERE finished<? AND state IN ('complete','failed','cancelled','interrupted')", (cutoff,))
+        self._next_prune = now+60
+
+    @staticmethod
+    def _events(db, after=None):
+        # SQLite slices large payloads before they cross into Python. Completed
+        # documents remain on disk; polling a preview must not allocate them all.
+        columns = 'sequence,at,character_id,task_id,kind,substr(payload,1,4000) payload,length(payload) payload_size'
+        if after is not None:
+            rows = db.execute('SELECT '+columns+' FROM trail WHERE sequence>? ORDER BY sequence LIMIT 100', (int(after),))
+        else:
+            rows = db.execute('SELECT '+columns+' FROM trail ORDER BY sequence DESC LIMIT 100')
+        events=[]
+        for record in rows:
+            row=dict(record);size=row.pop('payload_size')
+            row['payload']=json.loads(row['payload']) if size<4000 else {'preview':row['payload'][:3500],'truncated':True}
+            events.append(row)
+        return events if after is not None else events[::-1]
 
     def _assign(self, identity, data):
         target = data.get('character_id')
@@ -184,23 +212,15 @@ class AgentBus:
 
     def _snapshot(self, identity, data):
         with self.db() as db:
-            db.execute('DELETE FROM trail WHERE at<?',(time.time()-7*86400,))
-            db.execute("DELETE FROM jobs WHERE finished<? AND state IN ('complete','failed','cancelled','interrupted')",(time.time()-7*86400,))
-            jobs = [dict(row) for row in db.execute("SELECT * FROM jobs ORDER BY CASE WHEN state IN ('running','cancelling') THEN 0 ELSE 1 END,started DESC LIMIT 130")]
+            self._prune(db)
+            jobs = [dict(row) for row in db.execute("SELECT id,parent_id,character_id,substr(prompt,1,1000) prompt,profile_id,state,substr(result,1,3000) result,error,workspace,artifacts,started,finished FROM jobs ORDER BY CASE WHEN state IN ('running','cancelling') THEN 0 ELSE 1 END,started DESC LIMIT 130")]
             for row in jobs:
-                latest = db.execute("SELECT at,payload FROM trail WHERE task_id=? AND kind='progress' ORDER BY sequence DESC LIMIT 1", (row['id'],)).fetchone()
-                row['progress'] = json.loads(latest['payload']) if latest else {}
+                latest = db.execute("SELECT at,substr(payload,1,4000) payload,length(payload) payload_size FROM trail WHERE task_id=? AND kind='progress' ORDER BY sequence DESC LIMIT 1", (row['id'],)).fetchone()
+                row['progress'] = (json.loads(latest['payload']) if latest['payload_size']<4000 else {'message':latest['payload'][:500],'truncated':True}) if latest else {}
                 row['last_reported'] = latest['at'] if latest else row['started']
-            if 'after' in data:
-                events = [dict(row) for row in db.execute('SELECT * FROM trail WHERE sequence>? ORDER BY sequence LIMIT 100', (int(data['after']),))]
-            else:
-                events = [dict(row) for row in db.execute('SELECT * FROM trail ORDER BY sequence DESC LIMIT 100')][::-1]
+            events = self._events(db, data.get('after'))
         for row in jobs:
-            row['prompt']=row['prompt'][:1000];row['result']=row['result'][:3000]
             row['artifacts'] = json.loads(row['artifacts'])[:30]
-        for row in events:
-            value=json.loads(row['payload'])
-            row['payload']=value if len(row['payload'])<4000 else {'preview':row['payload'][:3500],'truncated':True}
         result = {'jobs':jobs,'events':events,'agents':[{**entry,'role':'agent'} for entry in characters()]}
         while len(json.dumps(result,ensure_ascii=False).encode())>1_500_000:
             if len(events)>1:events.pop(-1 if 'after' in data else 0)
@@ -213,7 +233,9 @@ class AgentBus:
     def _watch(self, data, context):
         identity = self._identity(context); after = int(data.get('after',0))
         while context.is_active():
-            events = self._snapshot(identity, {'after':after})['events']
+            # Watch needs only new events, not a full jobs/catalog snapshot for
+            # every idle stream wake-up.
+            with self.db() as db:events = self._events(db, after)
             for event in events:
                 after = event['sequence']; yield event
             if not events:
@@ -222,7 +244,9 @@ class AgentBus:
 
     def close(self):
         if self.server:
-            self.server.stop(1).wait(2); self.server = None
+            self.server.stop(1).wait(2); self.server = None; self.port = None
+        if self.pool:
+            self.pool.shutdown(wait=True, cancel_futures=True); self.pool = None
 
 
 class AgentClient:
