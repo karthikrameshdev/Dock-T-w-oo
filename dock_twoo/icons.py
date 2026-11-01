@@ -23,9 +23,27 @@ from PySide6.QtGui import (
 from PySide6.QtSvg import QSvgRenderer
 
 
+import sys
+
+
 def get_assets_dir() -> Path:
-    """Return the assets directory."""
-    return Path(__file__).resolve().parent.parent / "assets"
+    """Return the assets directory across frozen bundles and source trees."""
+    if hasattr(sys, "_MEIPASS"):
+        meipass_assets = Path(sys._MEIPASS) / "assets"
+        if meipass_assets.is_dir():
+            return meipass_assets
+    if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            bundle_res = Path(sys.executable).resolve().parent.parent / "Resources" / "assets"
+            if bundle_res.is_dir():
+                return bundle_res
+        exe_assets = Path(sys.executable).resolve().parent / "assets"
+        if exe_assets.is_dir():
+            return exe_assets
+    source_assets = Path(__file__).resolve().parent.parent / "assets"
+    if source_assets.is_dir():
+        return source_assets
+    return source_assets
 
 
 def get_icons_dir() -> Path:

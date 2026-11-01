@@ -76,8 +76,8 @@ def pin_native(widget):
         window, message = mac_window(widget)
         if not window or not message:
             return
-        # Status-window level (25) keeps this above ordinary apps.
-        message(None, window, "setLevel:", (ctypes.c_long, 25))
+        # Floating window level (3) keeps this above ordinary apps without blocking system notifications.
+        message(None, window, "setLevel:", (ctypes.c_long, 3))
         behavior = message(ctypes.c_ulong, window, "collectionBehavior")
         # Exclude from transient behavior
         behavior &= ~((1 << 1) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 9))

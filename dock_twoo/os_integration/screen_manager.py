@@ -277,12 +277,13 @@ class ScreenManager:
                     )(view_ptr, window_sel)
 
                     if nswindow:
-                        # setLevel: NSMainMenuWindowLevel + 1 = 25 (kCGStatusWindowLevel)
+                        # setLevel: NSFloatingWindowLevel = 3 (kCGFloatingWindowLevel)
+                        # Floats above normal application windows while allowing system notifications and alerts to appear in front
                         setLevel = objc.sel_registerName(b"setLevel:")
                         ctypes.cast(
                             objc.objc_msgSend,
                             ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long),
-                        )(nswindow, setLevel, 25)
+                        )(nswindow, setLevel, 3)
 
                         # setCollectionBehavior:
                         # 1 (CanJoinAllSpaces) | 16 (Stationary) | 64 (IgnoresCycle) | 256 (FullScreenAuxiliary) = 337

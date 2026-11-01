@@ -59,8 +59,11 @@ def main() -> int:
     if args.verify_installation:
         import grpc,onnxruntime,sherpa_onnx,kokoro_onnx,sounddevice
         from dock_twoo.brain.catalog import characters
+        raw_logo = IconManager.get_instance().get_raw_svg('logo')
+        if not raw_logo:
+            raise RuntimeError('Assets / SVG icons missing from installation!')
         import json
-        print(json.dumps({'characters':len(characters()),'runtime':'ready','frozen':bool(getattr(sys,'frozen',False))}),flush=True)
+        print(json.dumps({'characters':len(characters()),'runtime':'ready','frozen':bool(getattr(sys,'frozen',False)),'icons':'ready'}),flush=True)
         return 0
 
     # Enable high-DPI scaling
