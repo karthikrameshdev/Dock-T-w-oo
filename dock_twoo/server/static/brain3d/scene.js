@@ -176,6 +176,7 @@ function frame(){
     window.brainDiagnostics.inputShapeMilliseconds=inputShape.elapsed/Math.max(1,inputShape.samples);
   }
 }
+window.requestInputShape = () => { if(inputShape) inputShape.lastBits = ''; };
 frame();
 addEventListener('pagehide',event=>{
   if(disposed || event.persisted)return;

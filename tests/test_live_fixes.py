@@ -42,3 +42,59 @@ def test_speech_output_failure_is_not_reported_as_healthy(qapp):
     speech=SpeechPlayback()
     speech._finish(speech.generation,'Output device unavailable')
     assert speech.last_error=='Output device unavailable'
+
+
+def test_companion_hit_region_and_drag_resilience(qapp, tmp_path):
+    from types import SimpleNamespace
+    from PySide6.QtCore import Qt, QPoint, QPointF
+    from PySide6.QtGui import QMouseEvent, QRegion
+    from dock_twoo.brain.mascot import Companion
+    from dock_twoo.brain.storage import BrainStore
+    from dock_twoo.brain.profiles import ProfileManager
+
+    store = BrainStore(tmp_path)
+    companion = Companion(SimpleNamespace(store=store, profile_mgr=ProfileManager(store), active_screen_id='default', companions={'default': None}))
+    companion.show()
+
+    # 1. Hit region falls back to provisional body even when input_region is empty
+    hit = companion.input_hit_region()
+    assert not hit.isEmpty()
+    assert hit.contains(QPoint(100, 100))
+
+    # 2. Simulate resource release on sleep/hide
+    companion.input_region = QRegion()
+    companion.has_input_shape = False
+    companion.apply_input_mask()
+    hit_after_release = companion.input_hit_region()
+    assert not hit_after_release.isEmpty()
+    assert hit_after_release.contains(QPoint(100, 100))
+
+    # 3. Simulate mouse drag and drop
+    press = QMouseEvent(QMouseEvent.Type.MouseButtonPress, QPointF(100, 100), QPointF(companion.x() + 100, companion.y() + 100), Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    companion.mousePressEvent(press)
+    assert companion.origin is not None
+
+    move = QMouseEvent(QMouseEvent.Type.MouseMove, QPointF(150, 150), QPointF(companion.x() + 150, companion.y() + 150), Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    companion.mouseMoveEvent(move)
+    assert companion.moved is True
+
+    release = QMouseEvent(QMouseEvent.Type.MouseButtonRelease, QPointF(150, 150), QPointF(companion.x() + 150, companion.y() + 150), Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    companion.mouseReleaseEvent(release)
+    assert companion.origin is None
+
+    companion.close()
+    companion.deleteLater()
+
+
+def test_pin_native_orders_front_and_sets_status_level(qapp, monkeypatch):
+    from dock_twoo.brain.mascot import pin_native
+    from PySide6.QtWidgets import QWidget
+    w = QWidget()
+    messages = []
+    monkeypatch.setattr('dock_twoo.brain.mascot.mac_window', lambda widget: (123, lambda res, target, sel, *args: messages.append((sel, args))))
+    pin_native(w, level=8)
+    selectors = [m[0] for m in messages]
+    assert 'setLevel:' in selectors
+    assert any(m[0] == 'setLevel:' and m[1][0][1] == 8 for m in messages)
+    assert 'orderFrontRegardless' in selectors
+    w.deleteLater()
