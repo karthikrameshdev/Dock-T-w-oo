@@ -48,7 +48,7 @@ From quick encrypted credential lookups in **Vault**, fast scratchpad notes in *
 - 📍 **Always-Pinned Edge Docking**:
   - Automatically pins to the **Right Edge** (default) or **Left Edge** of your desktop display.
   - Smart multi-monitor clamping that respects macOS menu bars, Windows taskbars, and Linux panels (`availableGeometry`).
-  - Seamless acrylic backdrop styling with rounded pill corners (`border-radius: 28px`) and native overlay window levels (`NSMainMenuWindowLevel + 1`).
+  - Seamless acrylic backdrop styling with rounded pill corners (`border-radius: 28px`) and native overlay window levels (`NSFloatingWindowLevel`).
 
 - 🪟 **Attached Companion Windows (Full Height Matching)**:
   - Clicking any dock icon opens its dedicated application drawer **attached directly next to the dock**.

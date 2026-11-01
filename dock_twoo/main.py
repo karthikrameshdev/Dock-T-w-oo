@@ -58,9 +58,16 @@ def main() -> int:
         return 0
     if args.verify_installation:
         import grpc,onnxruntime,sherpa_onnx,kokoro_onnx,sounddevice
+        if sys.platform == 'darwin':
+            import AppKit
+            import ApplicationServices as AX
         from dock_twoo.brain.catalog import characters
+        raw_logo = IconManager.get_instance().get_raw_svg('logo')
+        if not raw_logo:
+            raise RuntimeError('Assets / SVG icons missing from installation!')
         import json
-        print(json.dumps({'characters':len(characters()),'runtime':'ready','frozen':bool(getattr(sys,'frozen',False))}),flush=True)
+        ax_trusted = bool(AX.AXIsProcessTrusted()) if sys.platform == 'darwin' else True
+        print(json.dumps({'characters':len(characters()),'runtime':'ready','frozen':bool(getattr(sys,'frozen',False)),'icons':'ready','ax_trusted':ax_trusted}),flush=True)
         return 0
 
     # Enable high-DPI scaling

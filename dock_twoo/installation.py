@@ -36,6 +36,11 @@ def install_bundle(source, *, home=None, system=None, autostart=True, start=True
             except Exception:
                 if previous.exists():previous.rename(target)
                 raise
+    if system=='Darwin':
+        try:
+            subprocess.run(['codesign','--force','--deep','--sign','-','-r=designated => identifier "dev.karthikramesh.DockTwoo"',str(target)],check=False,capture_output=True)
+        except Exception:
+            pass
     executable=target/relative
     command=[str(executable)]
     if system=='Linux':
@@ -58,7 +63,17 @@ def install_bundle(source, *, home=None, system=None, autostart=True, start=True
     config['start_on_boot']=autostart
     temporary=config_file.with_suffix('.tmp');temporary.write_text(json.dumps(config,indent=2));temporary.replace(config_file)
     if start:
-        if system=='Darwin':subprocess.run(['open',str(target)],check=True)
+        if system=='Darwin':
+            try:
+                subprocess.run(['pkill', '-f', 'DockTwoo.app/Contents/MacOS/DockTwoo'], check=False)
+                import time; time.sleep(0.4)
+            except Exception:
+                pass
+            lsregister = Path('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister')
+            if lsregister.is_file():
+                subprocess.run([str(lsregister), '-f', str(target)], check=False, capture_output=True)
+            subprocess.run(['touch', str(target)], check=False)
+            subprocess.run(['open', str(target)], check=True)
         else:subprocess.Popen(command,cwd=target,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=system!='Windows')
     return target
 

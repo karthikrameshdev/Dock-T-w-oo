@@ -185,15 +185,29 @@ class ConsoleRequestHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/status":
+            from dock_twoo.os_integration.margin_manager import DesktopMarginManager
             status_data = {
                 "name": "Dock T(w)oo",
                 "version": "0.1.0",
                 "edge": self.config_manager.config.edge,
                 "theme": self.config_manager.config.get_effective_theme(),
                 "running": True,
+                "accessibility_trusted": DesktopMarginManager.is_accessibility_trusted(),
             }
             self._set_headers(HTTPStatus.OK, "application/json")
             self.wfile.write(json.dumps(status_data).encode("utf-8"))
+            return
+
+        if path == "/api/system/accessibility":
+            from dock_twoo.os_integration.margin_manager import DesktopMarginManager
+            trusted = DesktopMarginManager.is_accessibility_trusted()
+            self._json(200, {"trusted": trusted})
+            return
+
+        if path == "/api/system/accessibility/request":
+            from dock_twoo.os_integration.margin_manager import DesktopMarginManager
+            trusted = DesktopMarginManager.request_accessibility(open_settings=True)
+            self._json(200, {"success": True, "trusted": trusted})
             return
 
         if path == "/api/storage":
