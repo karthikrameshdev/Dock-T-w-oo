@@ -71,7 +71,9 @@ class StartupManager:
         if self.system=='Darwin':
             data=plistlib.dumps({'Label':IDENTIFIER,'ProgramArguments':self.command,
                                 'RunAtLoad':True,'ProcessType':'Interactive',
-                                'LimitLoadToSessionType':'Aqua'})
+                                'LimitLoadToSessionType':'Aqua',
+                                'AssociatedBundle':IDENTIFIER,
+                                'AssociatedBundleIdentifiers':[IDENTIFIER]})
         else:data=desktop_entry(self.command).encode()
         temporary=path.with_suffix('.tmp')
         temporary.write_bytes(data);temporary.chmod(0o600);temporary.replace(path)

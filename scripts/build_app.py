@@ -15,7 +15,7 @@ def ensure_icons(root: Path):
     system = platform.system()
     if system == 'Darwin':
         icns = assets_dir / 'DockTwoo.icns'
-        if not icns.exists() and shutil.which('sips') and shutil.which('iconutil'):
+        if (not icns.exists() or icns.stat().st_mtime < logo.stat().st_mtime) and shutil.which('sips') and shutil.which('iconutil'):
             import tempfile
             with tempfile.TemporaryDirectory() as tmpdir:
                 iconset = Path(tmpdir) / 'DockTwoo.iconset'
@@ -24,7 +24,7 @@ def ensure_icons(root: Path):
                     (16, 'icon_16x16.png'), (32, 'icon_16x16@2x.png'),
                     (32, 'icon_32x32.png'), (64, 'icon_32x32@2x.png'),
                     (128, 'icon_128x128.png'), (256, 'icon_128x128@2x.png'),
-                    (256, 'icon_256x256.png'), (512, 'icon_256x256@2x.png'),
+                    (256, 'icon_256x256.png'), (512, 'icon_512x512@2x.png'),
                     (512, 'icon_512x512.png'), (1024, 'icon_512x512@2x.png'),
                 ]
                 for sz, name in sizes:
@@ -32,7 +32,7 @@ def ensure_icons(root: Path):
                 subprocess.run(['iconutil', '-c', 'icns', str(iconset), '-o', str(icns)], check=True)
     elif system == 'Windows':
         ico = assets_dir / 'DockTwoo.ico'
-        if not ico.exists():
+        if not ico.exists() or ico.stat().st_mtime < logo.stat().st_mtime:
             try:
                 from PIL import Image
                 img = Image.open(logo)
