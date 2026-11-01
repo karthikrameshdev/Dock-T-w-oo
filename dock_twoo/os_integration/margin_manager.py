@@ -151,6 +151,11 @@ class DesktopMarginManager(QObject):
                 daemon=True,
                 name="IconClamp",
             ).start()
+            threading.Thread(
+                target=self.clamp_all_windows,
+                daemon=True,
+                name="WindowClampOnGeometry",
+            ).start()
 
     def update_config(self, config: DockConfig) -> None:
         """Update configuration settings and revert windows and icons on vacated edges."""
@@ -173,6 +178,38 @@ class DesktopMarginManager(QObject):
         elif old_enabled and not new_enabled:
             self.restore_all_adjusted_windows()
 
+    @classmethod
+    def is_accessibility_trusted(cls) -> bool:
+        """Check whether macOS Accessibility permission has been granted."""
+        if platform.system().lower() != "darwin":
+            return True
+        if not _HAS_NATIVE_AX:
+            return False
+        try:
+            return bool(AX.AXIsProcessTrusted())
+        except Exception:
+            return False
+
+    @classmethod
+    def request_accessibility(cls, open_settings: bool = True) -> bool:
+        """Prompt macOS for Accessibility permission and optionally open System Settings."""
+        if platform.system().lower() != "darwin":
+            return True
+        if not _HAS_NATIVE_AX:
+            return False
+        try:
+            if AX.AXIsProcessTrusted():
+                return True
+            AX.AXIsProcessTrustedWithOptions({AX.kAXTrustedCheckOptionPrompt: True})
+            if open_settings:
+                subprocess.run(
+                    ["/usr/bin/open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"],
+                    check=False,
+                )
+            return False
+        except Exception:
+            return False
+
     def start(self) -> None:
         """Start the background margin monitor."""
         if self._running:
@@ -187,6 +224,7 @@ class DesktopMarginManager(QObject):
                 pass
         self._thread = threading.Thread(target=self._monitor_loop, daemon=True, name="MarginMonitor")
         self._thread.start()
+        threading.Thread(target=self.clamp_all_windows, daemon=True, name="InitialWindowClamp").start()
 
     def stop(self) -> None:
         """Stop the background margin monitor and restore any clamped windows and icons."""
@@ -280,58 +318,41 @@ class DesktopMarginManager(QObject):
         except Exception:
             pass
 
-    def _monitor_loop(self) -> None:
-        """Background loop monitoring the frontmost window on macOS."""
+    def clamp_all_windows(self) -> None:
+        """Immediately scan and clamp all on-screen application windows violating the margin."""
         if platform.system().lower() != "darwin":
             return
-
-        while self._running:
+        with self._lock:
+            dock_rect = self._dock_rect
+            edge = self._active_edge
+            gap = self._gap
+            screen = QRect(self._screen_rect) if self._screen_rect is not None else None
+            enabled = self._space_enabled
+        if not enabled:
+            return
+        if not dock_rect:
             try:
-                now = time.time()
+                from dock_twoo.os_integration.screen_manager import ScreenManager
+                dock_rect = QRect(ScreenManager.calculate_dock_geometry(self.config))
                 with self._lock:
-                    enabled = self._space_enabled
-                    edge = self._active_edge
-                    gap = self._gap
-                    dock_rect = self._dock_rect
-
-                if not dock_rect:
-                    try:
-                        from dock_twoo.os_integration.screen_manager import ScreenManager
-                        dock_rect = QRect(ScreenManager.calculate_dock_geometry(self.config))
-                        with self._lock:
-                            self._dock_rect = QRect(dock_rect)
-                    except Exception:
-                        time.sleep(0.15)
-                        continue
-
-                max_right = (dock_rect.left() - gap) if edge == "right" else 0
-                min_left = (dock_rect.right() + gap) if edge == "left" else 0
-                min_top = (dock_rect.bottom() + gap) if edge == "top" else 0
-                max_bottom = (dock_rect.top() - gap) if edge == "bottom" else 0
-
-                if enabled:
-                    self._check_and_clamp_frontmost(max_right, min_left, min_top, max_bottom, edge)
-
-                # Periodically or upon Desktop directory modification, clamp desktop icons asynchronously
-                try:
-                    cur_mtime = self._desktop_dir.stat().st_mtime
-                except Exception:
-                    cur_mtime = 0.0
-
-                is_mtime_change = (cur_mtime != self._last_desktop_mtime)
-                if is_mtime_change or (now - self._last_icon_check_time) > 8:
-                    self._last_desktop_mtime = cur_mtime
-                    self._last_icon_check_time = now
-                    threading.Thread(
-                        target=self._check_and_clamp_desktop_icons,
-                        args=(dock_rect, edge, gap),
-                        daemon=True,
-                        name="DesktopIconClamp",
-                    ).start()
+                    self._dock_rect = QRect(dock_rect)
             except Exception:
-                pass
+                return
+        if not screen:
+            primary = QGuiApplication.primaryScreen()
+            if primary:
+                screen = QRect(primary.availableGeometry())
+                with self._lock:
+                    self._screen_rect = QRect(screen)
+        if not screen:
+            return
 
-            time.sleep(0.15)
+        max_right = (dock_rect.left() - gap) if edge == "right" else 0
+        min_left = (dock_rect.right() + gap) if edge == "left" else 0
+        min_top = (dock_rect.bottom() + gap) if edge == "top" else 0
+        max_bottom = (dock_rect.top() - gap) if edge == "bottom" else 0
+
+        self._check_and_clamp_all_windows_native(max_right, min_left, min_top, max_bottom, edge, screen)
 
     def _record_adjusted(
         self, app_name: str, edge: str, wx: float, wy: float, ww: float, wh: float, new_w: float, new_h: float
@@ -349,8 +370,10 @@ class DesktopMarginManager(QObject):
                 self._adjusted_windows[app_name]["edge"] = edge
         self.margin_adjusted.emit(app_name, int(new_w) if new_w else 0, int(new_h) if new_h else 0)
 
-    def _check_and_clamp_frontmost_native(
+    def _clamp_window_element(
         self,
+        window,
+        app_name: str,
         max_right: int,
         min_left: int,
         min_top: int,
@@ -358,56 +381,40 @@ class DesktopMarginManager(QObject):
         edge: str,
         screen: QRect,
     ) -> bool:
-        """Natively check and clamp the frontmost window using macOS Accessibility APIs."""
-        if not _HAS_NATIVE_AX or not AX.AXIsProcessTrusted():
-            return False
+        """Inspect and clamp a single window AXUIElement if it violates the dock margin."""
         try:
-            ws = AppKit.NSWorkspace.sharedWorkspace()
-            front_app = ws.frontmostApplication()
-            if not front_app:
-                return True
-            bundle_id = str(front_app.bundleIdentifier() or "")
-            app_name = str(front_app.localizedName() or "")
-            pid = front_app.processIdentifier()
-            if pid == os.getpid() or bundle_id in (
-                "dev.karthikramesh.DockTwoo",
-                "com.apple.dock",
-                "com.apple.loginwindow",
-                "com.apple.ScreenSaverEngine",
-                "com.apple.systemevents",
-            ) or app_name in (
-                "Dock T(w)oo",
-                "Dock",
-                "System Events",
-                "loginwindow",
-                "ScreenSaverEngine",
-            ):
-                return True
+            err_role, role = AX.AXUIElementCopyAttributeValue(window, "AXRole", None)
+            if err_role == 0 and role:
+                if role in ("AXScrollArea", "AXMenu", "AXMenuBar", "AXMenuBarItem", "AXMenuItem", "AXDockItem"):
+                    return False
 
-            app_ref = AX.AXUIElementCreateApplication(pid)
-            err, window = AX.AXUIElementCopyAttributeValue(app_ref, "AXFocusedWindow", None)
-            if err != 0 or not window:
-                err, windows = AX.AXUIElementCopyAttributeValue(app_ref, "AXWindows", None)
-                if err == 0 and windows and len(windows) > 0:
-                    window = windows[0]
-                else:
-                    return True
+            err_sub, subrole = AX.AXUIElementCopyAttributeValue(window, "AXSubrole", None)
+            if err_sub == 0 and subrole:
+                if subrole in ("AXUnknown", "AXSystemFloatingWindow"):
+                    return False
+
+            err_min, minimized = AX.AXUIElementCopyAttributeValue(window, "AXMinimized", None)
+            if err_min == 0 and minimized is True:
+                return False
 
             err_pos, pos_val = AX.AXUIElementCopyAttributeValue(window, "AXPosition", None)
             err_sz, size_val = AX.AXUIElementCopyAttributeValue(window, "AXSize", None)
             if err_pos != 0 or err_sz != 0 or not pos_val or not size_val:
-                return True
+                return False
 
             _, pt = AX.AXValueGetValue(pos_val, AX.kAXValueCGPointType, None)
             _, sz = AX.AXValueGetValue(size_val, AX.kAXValueCGSizeType, None)
             wx, wy = pt.x, pt.y
             ww, wh = sz.width, sz.height
 
+            if ww < 200 or wh < 100:
+                return False
+
             # Screen bounds check based on window center
             cx = wx + ww / 2.0
             cy = wy + wh / 2.0
             if cx < screen.left() or cx > screen.right() or cy < screen.top() or cy > screen.bottom():
-                return True
+                return False
 
             # Clamping on right edge
             if edge == "right" and (wx + ww) > max_right:
@@ -473,6 +480,178 @@ class DesktopMarginManager(QObject):
             return True
         except Exception:
             return False
+
+    def _check_and_clamp_all_windows_native(
+        self,
+        max_right: int,
+        min_left: int,
+        min_top: int,
+        max_bottom: int,
+        edge: str,
+        screen: QRect,
+    ) -> None:
+        """Scan and clamp all visible regular application windows violating the margin."""
+        if not _HAS_NATIVE_AX or not AX.AXIsProcessTrusted():
+            return
+        try:
+            ws = AppKit.NSWorkspace.sharedWorkspace()
+            my_pid = os.getpid()
+            for app in ws.runningApplications():
+                policy = getattr(app, "activationPolicy", None)
+                if policy and policy() != getattr(AppKit, "NSApplicationActivationPolicyRegular", 0):
+                    continue
+                pid = app.processIdentifier()
+                if pid == my_pid:
+                    continue
+                bundle_id = str(app.bundleIdentifier() or "")
+                app_name = str(app.localizedName() or "")
+                if bundle_id in (
+                    "dev.karthikramesh.DockTwoo",
+                    "com.apple.dock",
+                    "com.apple.loginwindow",
+                    "com.apple.ScreenSaverEngine",
+                    "com.apple.systemevents",
+                ) or app_name in (
+                    "Dock T(w)oo",
+                    "Dock",
+                    "System Events",
+                    "loginwindow",
+                    "ScreenSaverEngine",
+                ):
+                    continue
+
+                app_ref = AX.AXUIElementCreateApplication(pid)
+                err, windows = AX.AXUIElementCopyAttributeValue(app_ref, "AXWindows", None)
+                if err == 0 and windows:
+                    for window in windows:
+                        self._clamp_window_element(
+                            window, app_name, max_right, min_left, min_top, max_bottom, edge, screen
+                        )
+        except Exception:
+            pass
+
+    def _check_and_clamp_frontmost_native(
+        self,
+        max_right: int,
+        min_left: int,
+        min_top: int,
+        max_bottom: int,
+        edge: str,
+        screen: QRect,
+    ) -> bool:
+        """Natively check and clamp the frontmost window using macOS Accessibility APIs."""
+        if not _HAS_NATIVE_AX or not AX.AXIsProcessTrusted():
+            return False
+        try:
+            ws = AppKit.NSWorkspace.sharedWorkspace()
+            front_app = ws.frontmostApplication()
+            if not front_app:
+                return True
+            bundle_id = str(front_app.bundleIdentifier() or "")
+            app_name = str(front_app.localizedName() or "")
+            pid = front_app.processIdentifier()
+            if pid == os.getpid() or bundle_id in (
+                "dev.karthikramesh.DockTwoo",
+                "com.apple.dock",
+                "com.apple.loginwindow",
+                "com.apple.ScreenSaverEngine",
+                "com.apple.systemevents",
+            ) or app_name in (
+                "Dock T(w)oo",
+                "Dock",
+                "System Events",
+                "loginwindow",
+                "ScreenSaverEngine",
+            ):
+                return True
+
+            app_ref = AX.AXUIElementCreateApplication(pid)
+            err, window = AX.AXUIElementCopyAttributeValue(app_ref, "AXFocusedWindow", None)
+            if err == 0 and window:
+                self._clamp_window_element(window, app_name, max_right, min_left, min_top, max_bottom, edge, screen)
+            else:
+                err, windows = AX.AXUIElementCopyAttributeValue(app_ref, "AXWindows", None)
+                if err == 0 and windows:
+                    for w in windows:
+                        self._clamp_window_element(w, app_name, max_right, min_left, min_top, max_bottom, edge, screen)
+            return True
+        except Exception:
+            return False
+
+    def _monitor_loop(self) -> None:
+        """Background loop monitoring both the frontmost window and visible on-screen windows."""
+        if platform.system().lower() != "darwin":
+            return
+
+        last_full_scan = 0.0
+        last_front_pid = None
+
+        while self._running:
+            try:
+                now = time.time()
+                with self._lock:
+                    enabled = self._space_enabled
+                    edge = self._active_edge
+                    gap = self._gap
+                    dock_rect = self._dock_rect
+
+                if not dock_rect:
+                    try:
+                        from dock_twoo.os_integration.screen_manager import ScreenManager
+                        dock_rect = QRect(ScreenManager.calculate_dock_geometry(self.config))
+                        with self._lock:
+                            self._dock_rect = QRect(dock_rect)
+                    except Exception:
+                        time.sleep(0.15)
+                        continue
+
+                max_right = (dock_rect.left() - gap) if edge == "right" else 0
+                min_left = (dock_rect.right() + gap) if edge == "left" else 0
+                min_top = (dock_rect.bottom() + gap) if edge == "top" else 0
+                max_bottom = (dock_rect.top() - gap) if edge == "bottom" else 0
+
+                if enabled:
+                    self._check_and_clamp_frontmost(max_right, min_left, min_top, max_bottom, edge)
+
+                    cur_front_pid = None
+                    try:
+                        if _HAS_NATIVE_AX:
+                            fa = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+                            if fa:
+                                cur_front_pid = fa.processIdentifier()
+                    except Exception:
+                        pass
+
+                    if (cur_front_pid != last_front_pid) or (now - last_full_scan > 1.5):
+                        last_front_pid = cur_front_pid
+                        last_full_scan = now
+                        with self._lock:
+                            screen = QRect(self._screen_rect) if self._screen_rect is not None else None
+                        if screen:
+                            self._check_and_clamp_all_windows_native(
+                                max_right, min_left, min_top, max_bottom, edge, screen
+                            )
+
+                # Periodically or upon Desktop directory modification, clamp desktop icons asynchronously
+                try:
+                    cur_mtime = self._desktop_dir.stat().st_mtime
+                except Exception:
+                    cur_mtime = 0.0
+
+                is_mtime_change = (cur_mtime != self._last_desktop_mtime)
+                if is_mtime_change or (now - self._last_icon_check_time) > 8:
+                    self._last_desktop_mtime = cur_mtime
+                    self._last_icon_check_time = now
+                    threading.Thread(
+                        target=self._check_and_clamp_desktop_icons,
+                        args=(dock_rect, edge, gap),
+                        daemon=True,
+                        name="DesktopIconClamp",
+                    ).start()
+            except Exception:
+                pass
+
+            time.sleep(0.15)
 
     def _check_and_clamp_frontmost(
         self,

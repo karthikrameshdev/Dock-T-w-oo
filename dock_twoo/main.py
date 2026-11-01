@@ -66,7 +66,8 @@ def main() -> int:
         if not raw_logo:
             raise RuntimeError('Assets / SVG icons missing from installation!')
         import json
-        print(json.dumps({'characters':len(characters()),'runtime':'ready','frozen':bool(getattr(sys,'frozen',False)),'icons':'ready'}),flush=True)
+        ax_trusted = bool(AX.AXIsProcessTrusted()) if sys.platform == 'darwin' else True
+        print(json.dumps({'characters':len(characters()),'runtime':'ready','frozen':bool(getattr(sys,'frozen',False)),'icons':'ready','ax_trusted':ax_trusted}),flush=True)
         return 0
 
     # Enable high-DPI scaling

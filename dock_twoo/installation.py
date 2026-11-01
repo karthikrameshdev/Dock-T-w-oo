@@ -36,6 +36,11 @@ def install_bundle(source, *, home=None, system=None, autostart=True, start=True
             except Exception:
                 if previous.exists():previous.rename(target)
                 raise
+    if system=='Darwin':
+        try:
+            subprocess.run(['codesign','--force','--deep','--sign','-','-r=designated => identifier "dev.karthikramesh.DockTwoo"',str(target)],check=False,capture_output=True)
+        except Exception:
+            pass
     executable=target/relative
     command=[str(executable)]
     if system=='Linux':

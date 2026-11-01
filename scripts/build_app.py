@@ -67,6 +67,8 @@ datas=[({str(ROOT/'assets')!r}, 'assets')];binaries=[];hiddenimports=collect_sub
     file=build/'DockTwoo.spec';file.write_text(spec)
     subprocess.run([sys.executable,'-m','PyInstaller','--noconfirm','--distpath',str(ROOT/'dist'),'--workpath',str(build/'freeze'),str(file)],check=True,cwd=ROOT)
     bundle=ROOT/'dist'/('DockTwoo.app' if system=='Darwin' else 'DockTwoo')
+    if system=='Darwin':
+        subprocess.run(['codesign','--force','--deep','--sign','-','-r=designated => identifier "dev.karthikramesh.DockTwoo"',str(bundle)],check=True)
     exe=bundle/('Contents/MacOS/DockTwoo' if system=='Darwin' else 'DockTwoo.exe' if system=='Windows' else 'DockTwoo')
     subprocess.run([str(exe),'--verify-installation'],check=True,timeout=90)
     if system=='Windows':(bundle/'Install.cmd').write_text('@echo off\r\n"%~dp0DockTwoo.exe" --install %*\r\n')

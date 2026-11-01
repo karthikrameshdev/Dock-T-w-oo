@@ -248,3 +248,97 @@ def test_margin_manager_native_clamping_and_restoration(qapp, monkeypatch):
     assert (1400, 900) in restored_sizes
 
 
+def test_margin_manager_all_windows_clamping(qapp, monkeypatch):
+    from types import SimpleNamespace
+    from dock_twoo.os_integration import margin_manager
+
+    set_attributes = []
+    window_obj1 = "mock_window_1"
+    window_obj2 = "mock_window_2"
+
+    class MockPoint:
+        x = 55
+        y = 33
+
+    class MockSizeViolating:
+        width = 1457
+        height = 949
+
+    mock_ax = SimpleNamespace(
+        AXIsProcessTrusted=lambda: True,
+        kAXValueCGPointType=1,
+        kAXValueCGSizeType=2,
+        AXUIElementCreateApplication=lambda pid: f"mock_app_{pid}",
+        AXUIElementCopyAttributeValue=lambda obj, attr, val: (
+            0,
+            [window_obj1] if attr == "AXWindows" else ("pos_token" if attr == "AXPosition" else "size_token"),
+        ),
+        AXValueGetValue=lambda token, val_type, ptr: (
+            True,
+            MockPoint() if val_type == 1 else MockSizeViolating(),
+        ),
+        AXValueCreate=lambda val_type, val: ("created_val", val),
+        AXUIElementSetAttributeValue=lambda win, attr, val: (set_attributes.append((win, attr, val)) or 0),
+    )
+
+    class MockApp:
+        def __init__(self, name, bundle_id, pid):
+            self._name = name
+            self._bid = bundle_id
+            self._pid = pid
+
+        def bundleIdentifier(self):
+            return self._bid
+
+        def localizedName(self):
+            return self._name
+
+        def processIdentifier(self):
+            return self._pid
+
+        def activationPolicy(self):
+            return 0
+
+    mock_workspace = SimpleNamespace(
+        frontmostApplication=lambda: None,
+        runningApplications=lambda: [
+            MockApp("Gemini", "com.google.Gemini", 47705),
+            MockApp("Kiro", "dev.kiro.desktop", 84658),
+        ],
+    )
+    mock_appkit = SimpleNamespace(
+        NSWorkspace=SimpleNamespace(sharedWorkspace=lambda: mock_workspace),
+        NSApplicationActivationPolicyRegular=0,
+    )
+
+    monkeypatch.setattr(margin_manager, "_HAS_NATIVE_AX", True)
+    monkeypatch.setattr(margin_manager, "AX", mock_ax)
+    monkeypatch.setattr(margin_manager, "AppKit", mock_appkit)
+
+    cfg = DockConfig(reserve_screen_space=True, edge="right", screen_margin_gap=8)
+    mgr = DesktopMarginManager(cfg)
+    screen = QRect(0, 0, 1512, 982)
+
+    # All-window clamping: dock on right edge at x=1423, max_right=1415
+    mgr._check_and_clamp_all_windows_native(
+        max_right=1415,
+        min_left=0,
+        min_top=0,
+        max_bottom=0,
+        edge="right",
+        screen=screen,
+    )
+
+    assert "Gemini" in mgr._adjusted_windows
+    assert "Kiro" in mgr._adjusted_windows
+    # Both windows clamped to 1415 - 55 = 1360
+    assert len(set_attributes) == 2
+    for win, attr, (tag, (w, h)) in set_attributes:
+        assert attr == "AXSize"
+        assert w == 1360
+        assert h == 949
+
+    assert mgr.is_accessibility_trusted() is True
+
+
+

@@ -245,6 +245,10 @@ class DockWindow(QWidget):
         self.reposition_dock()
         ScreenManager.apply_window_levels(self)
         self.margin_manager.start()
+        if not DesktopMarginManager.is_accessibility_trusted():
+            QTimer.singleShot(2500, lambda: getattr(self.brain_manager, "notifications", None) and self.brain_manager.notifications.show(
+                "Dock T(w)oo requires Accessibility permission to keep windows from sliding behind the dock."
+            ))
 
         # Thread-safe Qt Signal dispatch guarantees GUI updates occur strictly on the main thread
         self.config_manager.config_updated.connect(self.on_config_updated)
