@@ -20,7 +20,13 @@ def test_today_list_starts_below_controls_without_an_empty_base_panel(tmp_path,q
     qtbot.wait(10)
     assert widget.period.currentData()=='today' and widget.list.count()==1
     assert widget.search.mapTo(widget,widget.search.rect().topLeft()).y()<90
-    assert widget.list.mapTo(widget,widget.list.rect().topLeft()).y()<230
+    # Native control heights differ across platforms. Guard the actual empty-
+    # panel regression by measuring the gap after the last toolbar row.
+    controls_bottom=widget.summary_button.mapTo(widget,widget.summary_button.rect().bottomLeft()).y()
+    list_top=widget.list.mapTo(widget,widget.list.rect().topLeft()).y()
+    assert 0 <= list_top-controls_bottom <= widget.overview.layout().spacing()+2
+    assert widget.list.visualItemRect(widget.list.item(0)).top() <= widget.list.spacing()+2
+    assert widget.list.height() >= widget.height()/2
     assert widget.content_layout.indexOf(widget.stack)==0
     assert widget.minimumSizeHint().width()<=370
 

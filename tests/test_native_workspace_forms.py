@@ -19,7 +19,14 @@ def test_narrow_composer_keeps_save_visible_and_fields_scrollable(qtbot, tmp_pat
     if kind == 'tasks':widget.new_task()
     else:widget.new_reminder()
     qtbot.wait(20)
-    assert widget.width() == 380
+    assert widget.width() == 380, {
+        'window': widget.size().toTuple(),
+        'window_minimum': widget.minimumSizeHint().toTuple(),
+        'header_minimum': widget.header_layout.minimumSize().toTuple(),
+        'title_minimum': widget.title_label.minimumSizeHint().toTuple(),
+        'content_minimum': widget.content_widget.minimumSizeHint().toTuple(),
+        'editor_minimum': widget.editor.minimumSizeHint().toTuple(),
+    }
     assert widget.height() == 430
     assert widget.save_button.isVisible()
     assert widget.save_button.mapTo(widget, widget.save_button.rect().bottomRight()).y() < widget.height()
@@ -29,6 +36,26 @@ def test_narrow_composer_keeps_save_visible_and_fields_scrollable(qtbot, tmp_pat
     qtbot.wait(10)
     for field in ((widget.editor_date, widget.editor_status) if kind == 'tasks' else (widget.repeat, widget.character)):
         assert field.mapTo(widget, field.rect().topRight()).x() < widget.width()
+    widget.timer.stop()
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_wide_native_header_wraps_without_expanding_reminder_editor(qtbot, tmp_path, theme):
+    widget = SchedulerAppWidget(DockConfig(storage_path=str(tmp_path), theme_mode=theme))
+    qtbot.addWidget(widget)
+    widget.resize(380, 430);widget.show();qtbot.wait(10)
+    # Exercise the width pressure of differing native font metrics without
+    # requiring a particular Windows font to be installed on every test host.
+    font = widget.title_label.font()
+    font.setStretch(160)
+    widget.title_label.setFont(font)
+    widget.new_reminder()
+    qtbot.wait(20)
+    assert widget.size().toTuple() == (380, 430)
+    assert widget.title_label.fontMetrics().horizontalAdvance(widget.title_label.text()) > widget.title_label.width()
+    assert widget.title_label.height() > widget.title_label.fontMetrics().height()
+    assert widget.title_label.mapTo(widget, widget.title_label.rect().topRight()).x() < widget.close_btn.x()
+    assert widget.save_button.mapTo(widget, widget.save_button.rect().bottomRight()).y() < widget.height()
     widget.timer.stop()
 
 

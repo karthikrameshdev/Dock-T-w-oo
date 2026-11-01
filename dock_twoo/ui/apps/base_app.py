@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 from PySide6.QtCore import SIGNAL, Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 from dock_twoo.config import DockConfig
 from dock_twoo.icons import IconManager
 from dock_twoo.ui.theme import create_app_font
@@ -62,6 +62,11 @@ class BaseAttachedApp(QWidget):
         self.title_label = QLabel(self.title_text, self)
         self.title_label.setProperty('role', 'title')
         self.title_label.setTextFormat(Qt.TextFormat.PlainText)
+        # Native font metrics differ across systems. A long page title must wrap
+        # in its header column rather than enlarge the entire attached drawer.
+        self.title_label.setWordWrap(True)
+        self.title_label.setMinimumWidth(0)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         heading.addWidget(self.title_label)
         self.subtitle_label = QLabel(DESCRIPTIONS.get(self.app_id, ''), self)
         self.subtitle_label.setProperty('role', 'muted')
