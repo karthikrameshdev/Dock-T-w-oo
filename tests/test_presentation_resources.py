@@ -55,6 +55,7 @@ def test_hide_show_cycles_stop_all_presentation_timers_and_restore_blinks(qapp, 
 def test_pointer_monitor_lifecycle_does_not_accumulate_or_poll_when_hidden(qapp, tmp_path, monkeypatch):
     manager = manager_at(tmp_path, inventory()[:1])
     router = manager.input_router
+    router.set_active(False)
     router.enabled = True  # Exercise lifecycle independently of the host OS.
     added, removed = [], []
     monkeypatch.setattr(router, '_observe_pointer', lambda: added.append(1))

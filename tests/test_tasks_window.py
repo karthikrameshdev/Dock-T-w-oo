@@ -22,7 +22,8 @@ def test_today_list_starts_below_controls_without_an_empty_base_panel(tmp_path,q
     assert widget.search.mapTo(widget,widget.search.rect().topLeft()).y()<90
     # Native control heights differ across platforms. Guard the actual empty-
     # panel regression by measuring the gap after the last toolbar row.
-    controls_bottom=widget.summary_button.mapTo(widget,widget.summary_button.rect().bottomLeft()).y()
+    controls_bottom=max(control.mapTo(widget,control.rect().bottomLeft()).y()
+                        for control in (widget.stats,widget.summary_button))
     list_top=widget.list.mapTo(widget,widget.list.rect().topLeft()).y()
     assert 0 <= list_top-controls_bottom <= widget.overview.layout().spacing()+2
     assert widget.list.visualItemRect(widget.list.item(0)).top() <= widget.list.spacing()+2
