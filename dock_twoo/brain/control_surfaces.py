@@ -20,10 +20,14 @@ def register_character(character):
 
 
 def input_region(character):
-    region = QRegion(character.input_region)
+    body = character.body_region() if hasattr(character, 'body_region') else getattr(character, 'input_region', QRegion())
+    region = QRegion(body)
     for surface in tuple(_surfaces):
         if isValid(surface) and surface.isVisible():
             region -= QRegion(surface.frameGeometry().translated(-character.pos()))
+    if region.isEmpty() and hasattr(character, 'size'):
+        from dock_twoo.brain.input_shape import provisional_body
+        region = provisional_body(character.size())
     return region
 
 

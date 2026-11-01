@@ -66,19 +66,17 @@ def mac_window(widget):
         return None, None
 
 
-def pin_native(widget):
+def pin_native(widget, level=8):
     """Keep the mini agent permanently floating above all windows across desktop spaces without auto-hiding."""
-    if widget.windowHandle() is None or widget.windowHandle().screen() is None:
-        return
     if QApplication.platformName() == "offscreen":
         return
     if platform.system() == "Darwin":
         window, message = mac_window(widget)
         if not window or not message:
             return
-        # Floating window level (3) keeps this above ordinary apps without blocking system notifications.
-        message(None, window, "setLevel:", (ctypes.c_long, 3))
-        behavior = message(ctypes.c_ulong, window, "collectionBehavior")
+        # Modal panel / status window level (8) keeps this above ordinary apps (layer 0) without blocking system notifications.
+        message(None, window, "setLevel:", (ctypes.c_long, level))
+        behavior = message(ctypes.c_ulong, window, "collectionBehavior") or 0
         # Exclude from transient behavior
         behavior &= ~((1 << 1) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 9))
         # CanJoinAllSpaces (1) | Stationary (1<<4) | IgnoresCycle (1<<6) | FullScreenAuxiliary (1<<8)
@@ -94,6 +92,7 @@ def pin_native(widget):
         # Never hide on deactivate or when clicking outside on desktop/apps
         message(None, window, "setHidesOnDeactivate:", (ctypes.c_bool, False))
         message(None, window, "setCanHide:", (ctypes.c_bool, False))
+        message(None, window, "orderFrontRegardless")
     elif platform.system() == "Windows":
         try:
             user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -375,7 +374,7 @@ class Companion(QWidget):
 
     def body_region(self):
         from dock_twoo.brain.input_shape import provisional_body
-        return self.input_region if self.has_input_shape else provisional_body(self.size())
+        return self.input_region if (self.has_input_shape and not self.input_region.isEmpty()) else provisional_body(self.size())
 
     def dispose(self):
         for timer in self.findChildren(QTimer):
@@ -398,7 +397,8 @@ class Companion(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        pin_native(self)
+        pin_native(self, level=8)
+        self.apply_input_mask()
         if not self.reduced_motion:
             self.activity_timer.start()
             self.blink_timer.start(random.randint(2800, 5600))
@@ -413,6 +413,12 @@ class Companion(QWidget):
             self.manager.input_router.refresh_visibility()
         if hasattr(self.manager, 'playground'):
             self.manager.playground.refresh_visibility()
+
+    def raise_(self) -> None:
+        super().raise_()
+        pin_native(self, level=8)
+        if getattr(self, 'model_view', None):
+            self.model_view.raise_()
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
@@ -1295,6 +1301,8 @@ class Companion(QWidget):
             self.origin = self.press_point - self.pos()
             self.moved = False
             self.last_dragged = time.monotonic()
+            self.grabMouse()
+            self.clearMask()
         elif event.button() == Qt.MouseButton.RightButton:
             # Right-clicking on the Mini Agent is not permitted
             event.ignore()

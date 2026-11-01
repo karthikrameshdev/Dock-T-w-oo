@@ -109,8 +109,6 @@ class CharacterView(QWebEngineView):
         self.page().scripts().insert(script)
 
     def _shape(self, payload):
-        if not self.ready:
-            return
         try:
             if json.loads(payload).get('characterId') != self.companion.character_id:
                 return
@@ -229,9 +227,21 @@ class CharacterView(QWebEngineView):
             QTimer.singleShot(0, self, self._load)
         if self.detached:
             from dock_twoo.brain.mascot import pin_native, mac_window
-            pin_native(self)
+            pin_native(self, level=8)
             # Cocoa's native WebEngine surface can keep accepting input despite
             # the Qt flag. Match the existing click-through reading guide there.
+            import platform
+            if platform.system() == 'Darwin':
+                import ctypes
+                window, message = mac_window(self)
+                if window and message:
+                    message(None, window, 'setIgnoresMouseEvents:', (ctypes.c_bool, True))
+
+    def raise_(self) -> None:
+        super().raise_()
+        if self.detached:
+            from dock_twoo.brain.mascot import pin_native, mac_window
+            pin_native(self, level=8)
             import platform
             if platform.system() == 'Darwin':
                 import ctypes
@@ -305,6 +315,7 @@ class CharacterView(QWebEngineView):
         if self.companion.isVisible():
             self._sync()
             self.show_visual()
+            self.page().runJavaScript("window.requestInputShape && window.requestInputShape();")
         else:
             # It may have been hidden while its assets were still loading.
             self.page().setVisible(False)
