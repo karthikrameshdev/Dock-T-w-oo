@@ -4,11 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Dock2 · Live Trail</title>
+  <link rel="stylesheet" href="/workspace.css">
   <link rel="stylesheet" href="/usage.css">
   <link rel="stylesheet" href="/controls.css">
   <link rel="stylesheet" href="/live-trail.css">
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get('embedded') === '1') {
+      document.documentElement.classList.add('workspace-embedded');
+    }
+    if (params.get('theme') === 'light') {
+      document.documentElement.classList.add('usage-light', 'theme-light');
+    }
+  </script>
 </head>
 <body class="workspace-page">
+  <script>
+    if (new URLSearchParams(location.search).get('embedded') === '1') {
+      document.body.classList.add('workspace-embedded');
+    }
+    if (new URLSearchParams(location.search).get('theme') === 'light') {
+      document.body.classList.add('usage-light', 'theme-light');
+    }
+  </script>
   <main aria-label="Live Trail">
     <header class="workspace-heading"><div><span class="workspace-eyebrow">Assistant workspace</span><h1>Live Trail</h1><p>Follow your agents’ work and inspect each model exchange.</p></div></header>
     <details id="agentTaskPanel" class="usage-shell live-agents" aria-label="Agent tasks" open>

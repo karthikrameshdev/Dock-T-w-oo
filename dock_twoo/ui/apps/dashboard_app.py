@@ -7,6 +7,7 @@ from dock_twoo.ui.apps.base_app import BaseAttachedApp
 class DashboardAppWidget(BaseAttachedApp):
     def __init__(self, config, parent=None):
         super().__init__('dashboard', 'Dashboard', config, parent)
+        self.content_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.view = None
         if QApplication.platformName() == 'offscreen':
             self.content_layout.addWidget(QLabel('Cloud usage dashboard · local charts', self))
