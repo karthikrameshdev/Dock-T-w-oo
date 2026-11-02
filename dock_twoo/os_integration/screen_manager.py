@@ -252,7 +252,7 @@ class ScreenManager:
                 print(f"[Dock T(w)oo] Failed to set macOS accessory policy: {e}")
 
     @staticmethod
-    def apply_window_levels(widget: QWidget) -> None:
+    def apply_window_levels(widget: QWidget, level: int = 8) -> None:
         """Apply native platform window levels so overlay stays visible and never closes or hides automatically."""
         if QGuiApplication.platformName() == "offscreen":
             return
@@ -277,13 +277,14 @@ class ScreenManager:
                     )(view_ptr, window_sel)
 
                     if nswindow:
-                        # setLevel: NSFloatingWindowLevel = 3 (kCGFloatingWindowLevel)
-                        # Floats above normal application windows while allowing system notifications and alerts to appear in front
+                        # setLevel: level 8 (kCGStatusWindowLevel / kCGModalPanelWindowLevel)
+                        # Stays pinned above all normal application windows and third-party panels
                         setLevel = objc.sel_registerName(b"setLevel:")
                         ctypes.cast(
                             objc.objc_msgSend,
                             ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long),
-                        )(nswindow, setLevel, 3)
+                        )(nswindow, setLevel, level)
+
 
                         # setCollectionBehavior:
                         # 1 (CanJoinAllSpaces) | 16 (Stationary) | 64 (IgnoresCycle) | 256 (FullScreenAuxiliary) = 337

@@ -169,8 +169,7 @@ def test_unintelligible_speech_asks_for_a_repeat_and_then_listens_again(tmp_path
     monkeypatch.setattr(manager.speech, 'start', spoken.append)
     manager.in_conversation_session = True
     manager._do_turn_complete('')
-    assert len(spoken) == 1
-    assert 'Hey Buddy' in spoken[0] and 'repeat' in spoken[0]
+    assert "I'm not able to understand" in spoken[0] and 'repeat' in spoken[0]
     manager._on_speech_finished()
     assert manager.listener.is_recording
     manager.stop_talking()

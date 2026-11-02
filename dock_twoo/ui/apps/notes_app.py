@@ -735,12 +735,17 @@ class NotesAppWidget(BaseAttachedApp):
             manual_order.remove(note_id)
             self._save_manual_order(manual_order)
 
-        file_path = self.notes_dir / f"{note_id}.json"
-        if file_path.exists():
-            try:
-                file_path.unlink()
-            except Exception:
-                pass
+        # Soft-delete note into .trash (recoverable for 30 days)
+        try:
+            from dock_twoo.tasks import NotesService
+            NotesService(self.notes_dir).delete(note_id, soft=True)
+        except Exception:
+            file_path = self.notes_dir / f"{note_id}.json"
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                except Exception:
+                    pass
 
         # If currently open in editor, navigate back to list view
         if self._current_note_id == note_id:
@@ -748,7 +753,7 @@ class NotesAppWidget(BaseAttachedApp):
         else:
             self._load_notes()
 
-        self.toast.show_message("Note deleted")
+        self.toast.show_message("Note moved to trash (recoverable for 30 days)")
 
     def _filter_notes(self, query: str) -> None:
         """Filter notes list in real-time matching both title and note content."""

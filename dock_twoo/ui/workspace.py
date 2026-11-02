@@ -44,22 +44,24 @@ class WorkspaceTokens(ThemeTokens):
 
 def get_workspace_tokens(config):
     dark = config.get_effective_theme() == 'dark'
+    dock_bg = config.get_effective_dock_bg() if dark else '#f4f6fa'
     return WorkspaceTokens(
         font_family=config.font_family, font_size_root=config.font_size_root,
         font_size_tooltip=config.font_size_tooltip, font_size_title=22,
-        bg_color='#131a24' if dark else '#f4f6fa',
-        card_bg='#1b2533' if dark else '#ffffff',
-        border_color='#2d394a' if dark else '#dce3ed',
-        text_primary='#e9eef6' if dark else '#1c293c',
-        text_secondary='#9baac0' if dark else '#62748b',
+        bg_color=dock_bg,
+        card_bg='#18181c' if dark else '#ffffff',
+        border_color='rgba(255, 255, 255, 0.10)' if dark else '#dce3ed',
+        text_primary='#ededf2' if dark else '#1c293c',
+        text_secondary='#90909c' if dark else '#62748b',
         accent_color='#79b5ff' if dark else '#2269cf',
-        surface_alt='#17202c' if dark else '#edf1f7',
-        accent_fill='#243d5c' if dark else '#e7f0ff',
-        accent_text='#11243c' if dark else '#ffffff',
-        hover='#243244' if dark else '#edf3fc',
+        surface_alt='#141416' if dark else '#edf1f7',
+        accent_fill='rgba(255, 255, 255, 0.08)' if dark else '#e7f0ff',
+        accent_text='#ffffff' if dark else '#ffffff',
+        hover='rgba(255, 255, 255, 0.06)' if dark else '#edf3fc',
         success='#75d6b0' if dark else '#187858',
         danger='#f7a3a8' if dark else '#b73549',
     )
+
 
 
 def workspace_styles(config):

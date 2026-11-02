@@ -101,11 +101,25 @@ def command_after_keyword(text: str, wake_word: str = "brain", *, strict=False) 
             if remaining and all(word in aliases | {"hey", "hello", "hi"} for word in remaining):
                 command = ""
             return True, command
-    if words and words[0] in {"what", "when", "where", "how", "can", "open", "launch", "type", "sing", "hum", "show", "take", "walk", "dance", "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn", "give", "go", "do", "research", "please", "help"}:
+    command_starters = {
+        "what", "when", "where", "how", "why", "who", "which", "can", "could", "would",
+        "will", "open", "launch", "type", "sing", "hum", "show", "take", "walk", "dance",
+        "climb", "stop", "tell", "set", "find", "search", "read", "write", "move", "turn",
+        "give", "go", "do", "research", "please", "help", "add", "put", "remind", "create",
+        "make", "schedule", "note", "save", "delete", "remove", "clear", "check", "start",
+        "list", "run", "calculate", "send", "call", "draft", "insert", "append", "record",
+        "summarize", "explain", "play", "pause", "resume", "let's", "lets"
+    }
+    if words and words[0] in command_starters:
+        return True, text.strip()
+    if words and words[0] in {"i", "we"} and len(words) > 1 and words[1] in {"have", "need", "want", "must", "should", "would", "got", "am", "will"}:
+        return True, text.strip()
+    if words and words[0] in {"hey", "hello", "hi", "okay", "ok", "please"} and len(words) > 1 and (words[1] in command_starters or words[1] in {"i", "we"}):
         return True, text.strip()
     if not strict and len(words) <= 3:
         return True, ""
     return False, ""
+
 
 
 class AudioListener(QObject):
@@ -683,15 +697,6 @@ class AudioListener(QObject):
 
         self._audio_timeline.append((self.audio_frames_seen, pcm, is_speech))
         if self.is_recording:
-            if self.wake_detection_enabled and self.listening_mode == 'automatic' and self.named_characters and not self._wake_capture and self._endpoint.speech < 1.5:
-                from dock_twoo.brain.catalog import keyword_id
-                keyword = self._frame_detector(self.wake_detector, '_reset_wake', pcm, session_stop) if self.wake_detector.ready else ''
-                target = keyword_id(keyword) if keyword else None
-                if target is not None and self.store.character_awake(target):
-                    self.capture_character_id = target
-                    self._keyword_character_id = target
-                    self._wake_capture = True
-                    self.named_wake_started.emit(target)
             # Continue listening while a candidate transcript is being decoded.
             # Speech resuming during ASR invalidates that candidate and extends it.
             if is_speech and self._decode_token is not None and not self._capture_forced:
@@ -1003,7 +1008,7 @@ class AudioListener(QObject):
             if self._accept_capture(generation, revision):
                 self.last_error = f"Speech recognition failed: {exc}"
                 self.error_occurred.emit(self.last_error)
-                self.turn_completed.emit("")
+                self._emit_statement("")
 
     def _transcribe_pcm(self, pcm_data: bytes) -> str:
         """Transcribe 16-bit 16kHz PCM audio buffer using local on-device recognizer with fallback."""

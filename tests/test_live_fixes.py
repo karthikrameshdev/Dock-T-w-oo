@@ -98,3 +98,224 @@ def test_pin_native_orders_front_and_sets_status_level(qapp, monkeypatch):
     assert any(m[0] == 'setLevel:' and m[1][0][1] == 8 for m in messages)
     assert 'orderFrontRegardless' in selectors
     w.deleteLater()
+
+
+def test_command_after_keyword_recognizes_task_commands_and_sentences():
+    from dock_twoo.brain.listener import command_after_keyword
+    ok, cmd = command_after_keyword('add this to my task list: I have to work with Sandhya on agent core', 'brain', strict=True)
+    assert ok is True
+    assert cmd == 'add this to my task list: I have to work with Sandhya on agent core'
+
+    ok, cmd = command_after_keyword('I have to work with Sandhya on agent core', 'brain', strict=True)
+    assert ok is True
+    assert cmd == 'I have to work with Sandhya on agent core'
+
+    ok, cmd = command_after_keyword('create a new note about agent core', 'brain', strict=True)
+    assert ok is True
+    assert cmd == 'create a new note about agent core'
+
+    ok, cmd = command_after_keyword('remind me to sync with Sandhya', 'brain', strict=True)
+    assert ok is True
+    assert cmd == 'remind me to sync with Sandhya'
+
+    ok, cmd = command_after_keyword('hey add this to my task list', 'brain', strict=True)
+    assert ok is True
+    assert cmd == 'hey add this to my task list'
+
+    # Unrelated short noise or ambient chatter remains rejected
+    assert command_after_keyword('unrelated short noise', 'Rio', strict=True) == (False, '')
+    assert command_after_keyword('I like green', 'Rio', strict=True) == (False, '')
+
+
+def test_wake_detection_disabled_while_recording(qapp):
+    from dock_twoo.brain.listener import AudioListener
+    listener = AudioListener()
+    listener.named_characters = True
+    listener.wake_detection_enabled = True
+    listener.listening_mode = 'automatic'
+    called = []
+    listener.wake_detector = SimpleNamespace(ready=True, feed=lambda _pcm: called.append(True) or 'BRAIN', reset=lambda: None)
+    listener._vad = SimpleNamespace(is_speech=lambda _pcm, _rate: False)
+
+    # When NOT recording, wake detector is checked
+    listener._handle_pcm_frame(b'\x64\x00' * 1600)
+    assert len(called) >= 1
+
+    # When IS recording, wake detector MUST NOT be checked
+    called.clear()
+    listener.start_recording()
+    listener._handle_pcm_frame(b'\x64\x00' * 1600)
+    assert len(called) == 0
+    assert listener._wake_capture is False
+
+
+def test_not_understood_speech_clarification_flow(tmp_path, qapp, monkeypatch):
+    from dock_twoo.brain.manager import BrainManager
+    from dock_twoo.brain.storage import BrainStore
+    manager = BrainManager(store=BrainStore(tmp_path), start_services=False)
+    spoken = []
+    responses = []
+    monkeypatch.setattr(manager.speech, 'start', spoken.append)
+    monkeypatch.setattr(manager, '_publish_response', responses.append)
+
+    manager._do_turn_complete('')
+    assert len(spoken) == 1
+    assert spoken[0] == "I'm not able to understand. Can you repeat it one more time?"
+    assert responses[0] == "I'm not able to understand. Can you repeat it one more time?"
+    assert manager.in_conversation_session is True
+
+    # When speech finishes, it automatically resumes listening
+    manager._on_speech_finished()
+    assert manager.listener.is_recording is True
+    manager.stop_talking()
+    manager.companion.close()
+
+
+def test_task_store_soft_delete_restore_and_purge(tmp_path):
+    from dock_twoo.tasks import TaskStore
+    import time
+    from datetime import datetime, timedelta
+    store = TaskStore(tmp_path)
+    t1 = store.add('Fix window layering', 'Keep drawer on top', status='in_progress')
+    t2 = store.add('Review audio volume', 'Test quicktime controls', status='todo')
+    assert store.list()['total'] == 2
+
+    # Soft delete t1
+    del_res = store.delete(t1['id'], soft=True)
+    assert del_res['deleted_at'] is not None
+
+    # Normal list should exclude soft-deleted item
+    active = store.list()
+    assert active['total'] == 1
+    assert active['tasks'][0]['id'] == t2['id']
+
+    # Include deleted should show both
+    all_tasks = store.list(include_deleted=True)
+    assert all_tasks['total'] == 2
+
+    # Restore t1
+    restored = store.restore(t1['id'])
+    assert restored['deleted_at'] is None
+    assert store.list()['total'] == 2
+
+    # Verify 30-day purge: simulate deleted 35 days ago
+    store.delete(t1['id'], soft=True)
+    old_date = (datetime.now().astimezone() - timedelta(days=35)).isoformat()
+    with store._connect() as db:
+        db.execute('UPDATE tasks SET deleted_at=? WHERE id=?', (old_date, t1['id']))
+    store.purge_expired(days=30)
+    assert store.list(include_deleted=True)['total'] == 1
+
+
+def test_notes_service_soft_delete_restore_and_purge(tmp_path):
+    from dock_twoo.tasks import NotesService
+    import time
+    notes = NotesService(tmp_path)
+    n1 = notes.add('Meeting Notes', 'Discuss agent core architecture')
+    n2 = notes.add('Ideas', 'Voice media player integration')
+    assert len(notes.list()['notes']) == 2
+
+    # Soft delete n1 into .trash
+    notes.delete(n1['id'], soft=True)
+    assert (tmp_path / '.trash' / f"{n1['id']}.json").exists()
+    assert not (tmp_path / f"{n1['id']}.json").exists()
+    assert len(notes.list()['notes']) == 1
+
+    # Restore n1
+    restored = notes.restore(n1['id'])
+    assert restored['id'] == n1['id']
+    assert (tmp_path / f"{n1['id']}.json").exists()
+    assert len(notes.list()['notes']) == 2
+
+    # Expired purge (>30 days)
+    notes.delete(n1['id'], soft=True)
+    trash_file = tmp_path / '.trash' / f"{n1['id']}.json"
+    import json
+    data = json.loads(trash_file.read_text())
+    data['deleted_at'] = time.time() - (35 * 86400)
+    trash_file.write_text(json.dumps(data))
+    notes.purge_expired(days=30)
+    assert not trash_file.exists()
+
+
+def test_agent_tools_in_app_updates_no_approval_required(tmp_path, monkeypatch):
+    from dock_twoo.brain.agent_tools import LocalTools
+    from dock_twoo.brain.storage import BrainStore
+    from dock_twoo.tasks import TaskStore, NotesService
+    import threading
+
+    cancel = threading.Event()
+    store_dir = tmp_path / 'brain'
+    tools = LocalTools(manager=SimpleNamespace(store=SimpleNamespace(data_dir=store_dir), app_data_changed=SimpleNamespace(emit=lambda _: None), file_guard=SimpleNamespace(approve=lambda *a: False, fingerprint=lambda *a: 'fp', create=lambda *a: {}, mutation_path=lambda p: p)))
+
+    # Adding, updating, deleting tasks does NOT prompt or fail on guard.approve=False
+    task = tools.execute('add_task', {'title': 'Core sync', 'details': 'with team'}, cancel)
+    assert task['title'] == 'Core sync'
+
+    updated = tools.execute('update_task', {'id': task['id'], 'title': 'Core sync updated'}, cancel)
+    assert updated['title'] == 'Core sync updated'
+
+    deleted = tools.execute('delete_task', {'id': task['id']}, cancel)
+    assert deleted['deleted_at'] is not None
+
+    # Notes tools do NOT prompt or fail on guard.approve=False
+    note = tools.execute('add_note', {'title': 'Quick note', 'body': 'important idea'}, cancel)
+    assert note['title'] == 'Quick note'
+
+    updated_note = tools.execute('update_note', {'id': note['id'], 'title': 'Quick note v2'}, cancel)
+    assert updated_note['title'] == 'Quick note v2'
+
+    deleted_note = tools.execute('delete_note', {'id': note['id']}, cancel)
+    assert deleted_note['deleted'] is True
+
+
+def test_cua_parse_desktop_request_with_files():
+    from dock_twoo.brain.computer_actions import parse_desktop_request
+    # Pattern 1: open QuickTime Player and open a video from <path>
+    req = parse_desktop_request('open QuickTime Player and open a video from /Users/test/sample.mp4')
+    assert req is not None
+    assert req.app.lower() == 'quicktime player'
+    assert req.file_path == '/Users/test/sample.mp4'
+
+    # Pattern 2: open QuickTime Player and play /Users/test/sample.mp4
+    req = parse_desktop_request('open QuickTime Player and play /Users/test/sample.mp4')
+    assert req is not None
+    assert req.app.lower() == 'quicktime player'
+    assert req.file_path == '/Users/test/sample.mp4'
+
+    # Pattern 3: open <path> in QuickTime Player
+    req = parse_desktop_request('open /Users/test/sample.mp4 in QuickTime Player')
+    assert req is not None
+    assert req.app.lower() == 'quicktime player'
+    assert req.file_path == '/Users/test/sample.mp4'
+
+
+def test_cua_parse_media_command():
+    from dock_twoo.brain.computer_actions import parse_media_command
+    cmd = parse_media_command('increase volume')
+    assert cmd is not None
+    assert cmd.action == 'volume_up'
+    assert cmd.app is None
+
+    cmd = parse_media_command('increase volume on QuickTime Player')
+    assert cmd is not None
+    assert cmd.action == 'volume_up'
+    assert cmd.app.lower() == 'quicktime player'
+
+    cmd = parse_media_command('decrease the volume')
+    assert cmd is not None
+    assert cmd.action == 'volume_down'
+
+    cmd = parse_media_command('set volume to 80%')
+    assert cmd is not None
+    assert cmd.action == 'set_volume'
+    assert cmd.value == 80
+
+    cmd = parse_media_command('pause the video')
+    assert cmd is not None
+    assert cmd.action == 'pause'
+
+    cmd = parse_media_command('mute')
+    assert cmd is not None
+    assert cmd.action == 'mute'
+

@@ -35,7 +35,7 @@ class AttachedWindow(QWidget):
     window_closed = Signal(str)  # closed app_id
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
-        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
         from dock_twoo.brain.control_surfaces import protect_controls
         protect_controls(self)
         self.config = config
@@ -45,7 +45,8 @@ class AttachedWindow(QWidget):
         self._apps: Dict[str, BaseAttachedApp] = {}
 
         self._setup_ui()
-        ScreenManager.apply_window_levels(self)
+        ScreenManager.apply_window_levels(self, level=8)
+
 
     def _setup_ui(self) -> None:
         self.main_layout = QVBoxLayout(self)
@@ -135,13 +136,18 @@ class AttachedWindow(QWidget):
                 self.move(self.x(), max_bottom - self.height())
 
         self.raise_()
-        ScreenManager.apply_window_levels(self)
+        ScreenManager.apply_window_levels(self, level=8)
         self.activateWindow()
         self.update()
 
+    def raise_(self) -> None:
+        super().raise_()
+        ScreenManager.apply_window_levels(self, level=8)
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        ScreenManager.apply_window_levels(self)
+        ScreenManager.apply_window_levels(self, level=8)
+        self.raise_()
 
     def hide_window(self) -> None:
         """Dismiss the attached drawer."""
@@ -166,10 +172,10 @@ class AttachedWindow(QWidget):
         card_rect = QRectF(glow_pad, glow_pad, self.width() - 2 * glow_pad, self.height() - 2 * glow_pad)
         radius = self.config.attached_corner_radius
 
-        # A quiet edge shadow gives depth without the old luminous outline.
+        # 1. Ambient Glow matching Dock
         if self.config.glow_enabled:
-            glow_color = QColor(0, 0, 0)
-            max_alpha = 18 if is_dark else 9
+            glow_color = QColor(255, 255, 255) if is_dark else QColor(0, 0, 0)
+            max_alpha = 18 if is_dark else 12
             for step in range(glow_pad, 0, -2):
                 alpha = int(max_alpha * (1.0 - (step / glow_pad) ** 1.3))
                 glow_col = QColor(glow_color.red(), glow_color.green(), glow_color.blue(), alpha)
@@ -184,15 +190,17 @@ class AttachedWindow(QWidget):
         path = QPainterPath()
         path.addRoundedRect(card_rect, radius, radius)
 
-        # 2. Background acrylic fill
-        bg_col = paint_color(tokens.bg_color)
+        # 2. Background acrylic fill matching Dock's effective background color
+        dock_bg_str = self.config.get_effective_dock_bg() if is_dark else tokens.bg_color
+        bg_col = paint_color(dock_bg_str)
         bg_col.setAlphaF(self.config.attached_opacity)
         painter.setBrush(QBrush(bg_col))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPath(path)
 
-        rim_col = paint_color(tokens.border_color)
-        painter.setPen(QPen(rim_col, 1.0))
+        # 3. High-contrast luminous glass border matching Dock
+        rim_col = QColor(255, 255, 255, 75) if is_dark else QColor(0, 0, 0, 45)
+        painter.setPen(QPen(rim_col, 1.2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
         painter.end()
