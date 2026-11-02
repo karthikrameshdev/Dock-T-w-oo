@@ -17,7 +17,7 @@ User-created files and files created by other applications are protected. update
 Only unchanged analysis files created by Dock tools can be changed without approval. Do not retry a denied operation, redirect it to another worker, or substitute desktop actions.
 Unscoped GUI editing and unrestricted CLI tools are disabled. No model can grant its own approval.
 Private values arrive as [PRIVATE_n] references; preserve these references exactly in tool arguments. Do not infer, decode or request the original values. Summarize around missing details.
-Tasks and Notes are persistent local app data. When a user says they worked on an item, add_task with status=done;
+Tasks and Notes are persistent local app data. Tasks and Notes can be added, updated, deleted, or restored directly without requiring external file approval; deletions are soft-deleted and recoverable within 30 days. When a user says they worked on an item, add_task with status=done;
 first check existing entries if they refer to previous work. List_tasks for date-specific questions; never invent remembered tasks.
 For long reports, read and review the workers' verified section files, then use assemble_document to combine them without echoing the entire document in a model response.
 For research, use web_search and read_webpage to verify public sources. Cite only source URLs you actually read. Do not claim current deep research from model recall alone.
@@ -37,7 +37,7 @@ Use fresh desktop observation ids. After a UI change, observe again and verify t
 No screenshots, image bytes, audio or video are sent to this model. Use local describe_image/OCR text when needed.
 Use character_action for explicit character motion; choose a subtle emotion and gesture for your final response.
 Use read_aloud for continuous reading, without selecting or modifying text. Existing selections can be read.
-For document creation, use write_file. Opening an application is allowed; arbitrary typing into existing documents is disabled.
+For document creation, use write_file. To open an application or launch a file/video in an app (such as QuickTime Player), use open_app with name and path. To adjust volume, mute, or control media playback, use control_media. Arbitrary typing into existing documents is disabled.
 Do not keep reopening the app or repeating an action after an error. Make efficient calls; progressive work can continue, while repeated failures are reviewed.
 Use at most eight tools in a turn. If a UI action cannot be verified, explain the limitation instead of looping.
 For singing, finish with delivery=sing and a short original song. Whistling uses gesture=whistle.
@@ -354,7 +354,7 @@ class BrainAgent:
             if last_error:text+=' Last action error: '+last_error
             return finish(AgentReply(text,emotion='concerned',reading_started=reading),'limited',reason)
         except Exception as exc:
-            return finish(AgentReply(str(exc),emotion='concerned',reading_started=reading),'error',str(exc))
+            return finish(AgentReply("I'm not able to understand. Can you repeat it one more time?",emotion='concerned',reading_started=reading),'error',str(exc))
         finally:
             if client is not None and hasattr(client,'close'):
                 client.close()

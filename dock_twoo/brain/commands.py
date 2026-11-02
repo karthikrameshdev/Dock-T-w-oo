@@ -68,9 +68,9 @@ def get_process_memory_usage(app_query: str) -> Tuple[int, float]:
     return match_count, total_rss_kb / 1024.0
 
 
-def run_computer_action(app_name: str, message: Optional[str] = None):
+def run_computer_action(app_name: str, message: Optional[str] = None, file_path: Optional[str] = None):
     from dock_twoo.brain.computer_actions import run_desktop_request
-    return run_desktop_request(app_name, message)
+    return run_desktop_request(app_name, message, file_path=file_path)
 
 
 class VoicePerformance(str):
@@ -194,7 +194,7 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
     
     Returns spoken reply string if a dedicated voice command matched, or None to fall back to general LLM.
     """
-    from dock_twoo.brain.computer_actions import normalize_request, parse_desktop_request
+    from dock_twoo.brain.computer_actions import normalize_request, parse_desktop_request, parse_media_command, control_media, open_file_in_app
     original = normalize_request(user_text)
     text = original.lower()
     # Strip leading "brain" or "hey brain"
@@ -204,9 +204,18 @@ def handle_voice_command(user_text: str, manager: BrainManager, history: Optiona
             return manager.get_wake_greeting()
         return "Yeah, I'm here. Tell me."
 
+    # Direct media / volume controls
+    media_cmd = parse_media_command(user_text)
+    if media_cmd:
+        res = control_media(media_cmd.action, media_cmd.app, media_cmd.value)
+        return res.message
+
     companion = manager.companion
     desktop = parse_desktop_request(original)
     if desktop and desktop.app.lower() not in ('notes','vault','settings','console'):
+        if desktop.file_path:
+            res = open_file_in_app(desktop.app, desktop.file_path)
+            return res.message
         result = run_computer_action(desktop.app, desktop.text)
         if hasattr(result,'message'):return result.message
         return f"Opened {desktop.app} and entered your message." if result and desktop.text else f"Opening {desktop.app}." if result else f"Could not launch or control {desktop.app}."

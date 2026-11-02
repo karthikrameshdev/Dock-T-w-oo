@@ -13,6 +13,14 @@ import time
 class DesktopRequest:
     app: str
     text: str | None = None
+    file_path: str | None = None
+
+
+@dataclass
+class MediaCommand:
+    action: str  # 'volume_up', 'volume_down', 'set_volume', 'mute', 'unmute', 'play_pause', 'play', 'pause', 'next_track', 'previous_track'
+    app: str | None = None
+    value: float | int | None = None
 
 
 @dataclass
@@ -29,23 +37,324 @@ def normalize_request(text):
 
 def parse_desktop_request(text):
     text=normalize_request(text)
-    match=re.fullmatch(r'(?:open|launch|start)\s+(.+?)\s+(?:and(?:\s+then)?|then)\s+(?:type|write|enter(?:\s+(?:the\s+)?message)?)\s+(.+)',text,re.I|re.S)
-    if match:app,value=match.groups()
+
+    # 1. "open <path> in <app>" or "play <path> in <app>" or "open <path> with <app>"
+    match = re.fullmatch(r'(?:open|play|launch)\s+([\'"].+?[\'"]|[^\s]+(?:\.[a-zA-Z0-9]+|\b))\s+(?:in|with)\s+(.+?)[.!]?', text, re.I)
+    if match:
+        raw_path, app = match.groups()
+        raw_path = raw_path.strip('\'" ')
+        app = re.sub(r'^the\s+', '', app.strip(), flags=re.I)
+        app = re.sub(r'\s+(?:app|application)$', '', app, flags=re.I).strip()
+        if app and raw_path:
+            return DesktopRequest(app=app, file_path=raw_path)
+
+    # 2. "open <app> and (open|play) [a/the]? [video/file/movie/document]? (from|at)? <path>"
+    match = re.fullmatch(r'(?:open|launch|start)\s+(.+?)\s+(?:and(?:\s+then)?|then)\s+(?:open|play)(?:\s+(?:a|the)\s+(?:video|file|movie|document|audio|song|track))?(?:\s+(?:from|at))?\s+(.+?)[.!]?', text, re.I)
+    if match:
+        app, raw_path = match.groups()
+        app = re.sub(r'^the\s+', '', app.strip(), flags=re.I)
+        app = re.sub(r'\s+(?:app|application)$', '', app, flags=re.I).strip()
+        raw_path = raw_path.strip('\'" ')
+        if app and raw_path and not re.match(r'^(?:type|write|enter)\b', raw_path, re.I):
+            return DesktopRequest(app=app, file_path=raw_path)
+
+    # 3. "open <app> and (type|write|enter) <text>"
+    match = re.fullmatch(r'(?:open|launch|start)\s+(.+?)\s+(?:and(?:\s+then)?|then)\s+(?:type|write|enter(?:\s+(?:the\s+)?message)?)\s+(.+)', text, re.I | re.S)
+    if match:
+        app, value = match.groups()
     else:
-        match=re.fullmatch(r'(?:open|launch)\s+(.+?)[.!]?\s*',text,re.I)
-        if not match:return None
-        app,value=match.group(1),None
-    app=re.sub(r'^the\s+','',app.strip(),flags=re.I)
-    app=re.sub(r'\s+(?:app|application)$','',app,flags=re.I).strip()
-    if not app or any(char in app for char in '/\\\n\r";'):return None
+        match = re.fullmatch(r'(?:open|launch|start)\s+(.+?)[.!]?\s*', text, re.I)
+        if not match:
+            return None
+        app, value = match.group(1), None
+
+    app = re.sub(r'^the\s+', '', app.strip(), flags=re.I)
+    app = re.sub(r'\s+(?:app|application)$', '', app, flags=re.I).strip()
+    if not app or any(char in app for char in '/\\\n\r";'):
+        return None
     if value:
-        value=value.strip()
-        if len(value)>1 and value[0]==value[-1] and value[0] in '\"\'':value=value[1:-1]
-    return DesktopRequest(app,value)
+        value = value.strip()
+        if len(value) > 1 and value[0] == value[-1] and value[0] in '\"\'':
+            value = value[1:-1]
+    return DesktopRequest(app, value)
+
+
+def parse_media_command(text: str) -> MediaCommand | None:
+    text = normalize_request(text)
+    clean = re.sub(r"^(hey\s+brain|brain)[,\s]*", "", text, flags=re.I).strip()
+
+    # 1. Volume Up
+    m = re.fullmatch(r'(?:(?:increase|turn\s+up|raise|boost)\s+(?:the\s+)?volume|volume\s+up)(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        target = m.group(1).strip() if m.group(1) else None
+        return MediaCommand('volume_up', app=target)
+
+    # 2. Volume Down
+    m = re.fullmatch(r'(?:(?:decrease|turn\s+down|lower|reduce)\s+(?:the\s+)?volume|volume\s+down)(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        target = m.group(1).strip() if m.group(1) else None
+        return MediaCommand('volume_down', app=target)
+
+    # 3. Set Volume
+    m = re.fullmatch(r'(?:set|change)\s+(?:the\s+)?volume\s+(?:to\s+)?(\d+)%?(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        val = int(m.group(1))
+        target = m.group(2).strip() if m.group(2) else None
+        return MediaCommand('set_volume', app=target, value=val)
+
+    # 4. Mute / Unmute
+    m = re.fullmatch(r'mute(?:\s+(?:the\s+)?(?:sound|audio|volume|system))?(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        target = m.group(1).strip() if m.group(1) else None
+        return MediaCommand('mute', app=target)
+    m = re.fullmatch(r'unmute(?:\s+(?:the\s+)?(?:sound|audio|volume|system))?(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        target = m.group(1).strip() if m.group(1) else None
+        return MediaCommand('unmute', app=target)
+
+    # 5. Play / Pause / Resume
+    m = re.fullmatch(r'(?:pause|stop)(?:\s+(?:the\s+)?(?:video|audio|music|playback|player|movie|track|song))?(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        target = m.group(1).strip() if m.group(1) else None
+        return MediaCommand('pause', app=target)
+    m = re.fullmatch(r'(?:play|resume)(?:\s+(?:the\s+)?(?:video|audio|music|playback|player|movie|track|song))?(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        target = m.group(1).strip() if m.group(1) else None
+        return MediaCommand('play', app=target)
+    m = re.fullmatch(r'(?:toggle\s+(?:play|playback)|play\s+or\s+pause|play\s+pause)(?:\s+(?:on|in|for)\s+(.+?))?[.!]?', clean, re.I)
+    if m:
+        target = m.group(1).strip() if m.group(1) else None
+        return MediaCommand('play_pause', app=target)
+
+    # 6. Next / Previous track
+    if re.fullmatch(r'(?:next|skip)(?:\s+(?:track|song|video))?[.!]?', clean, re.I):
+        return MediaCommand('next_track')
+    if re.fullmatch(r'(?:previous|prev|back)(?:\s+(?:track|song|video))?[.!]?', clean, re.I):
+        return MediaCommand('previous_track')
+
+    return None
+
+
+def open_file_in_app(app_name: str, file_path: str) -> ActionResult:
+    """Open an existing file or media item with the specified application."""
+    if platform.system() != 'Darwin':
+        return ActionResult(False, 'Opening files in applications is currently supported on macOS.')
+    p = Path(file_path).expanduser().resolve()
+    if not p.exists():
+        return ActionResult(False, f'I could not find the file at {file_path}.')
+
+    clean_app = re.sub(r'\s+(?:app|application)$', '', app_name.strip(), flags=re.I)
+    path, bundle = resolve_application(clean_app)
+
+    # QuickTime Player integration
+    if clean_app.lower() in ('quicktime', 'quicktime player') or (bundle and 'quicktime' in bundle.lower()):
+        script = f'''
+        tell application "QuickTime Player"
+            activate
+            open POSIX file "{str(p)}"
+            delay 0.4
+            if (count of documents) > 0 then
+                play document 1
+            end if
+        end tell
+        '''
+        res = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=8)
+        if res.returncode == 0:
+            return ActionResult(True, f'Opened and playing {p.name} in QuickTime Player.')
+        try:
+            subprocess.run(['open', '-a', 'QuickTime Player', str(p)], check=True, timeout=8)
+            return ActionResult(True, f'Opened {p.name} in QuickTime Player.')
+        except Exception as exc:
+            return ActionResult(False, f'Could not open {p.name} in QuickTime Player: {exc}')
+
+    app_target = str(path) if path else clean_app
+    try:
+        subprocess.run(['open', '-a', app_target, str(p)], check=True, timeout=8)
+        return ActionResult(True, f'Opened {p.name} in {clean_app}.')
+    except Exception as exc:
+        return ActionResult(False, f'Could not open {p.name} in {clean_app}: {exc}')
+
+
+def control_media(action: str, target_app: str | None = None, value: float | int | None = None) -> ActionResult:
+    """Control audio volume, mute, and playback for applications or system audio."""
+    if platform.system() != 'Darwin':
+        return ActionResult(False, 'Media and volume controls are currently supported on macOS.')
+
+    app_lower = (target_app or '').lower().strip()
+    is_qt = 'quicktime' in app_lower
+    is_spotify = 'spotify' in app_lower
+    is_music = app_lower in ('music', 'itunes', 'apple music')
+    is_system = app_lower in ('system', 'mac', 'macos', 'speaker', 'speakers', 'master')
+
+    # Auto-detect running QuickTime Player with open documents if no target was specified
+    if not (is_qt or is_spotify or is_music or is_system):
+        try:
+            qt_check = subprocess.run(
+                ['osascript', '-e', 'tell application "System Events" to return (name of processes) contains "QuickTime Player"'],
+                capture_output=True, text=True, timeout=2,
+            )
+            if qt_check.stdout.strip() == 'true':
+                qt_docs = subprocess.run(
+                    ['osascript', '-e', 'tell application "QuickTime Player" to return count of documents'],
+                    capture_output=True, text=True, timeout=2,
+                )
+                if int(qt_docs.stdout.strip() or 0) > 0:
+                    is_qt = True
+        except Exception:
+            pass
+
+    # QuickTime Player controls
+    if is_qt:
+        try:
+            if action == 'volume_up':
+                script = '''
+                tell application "QuickTime Player"
+                    if (count of documents) > 0 then
+                        set cur to audio volume of document 1
+                        set nxt to cur + 0.1
+                        if nxt > 1.0 then set nxt to 1.0
+                        set audio volume of document 1 to nxt
+                        return round (nxt * 100)
+                    else
+                        error "No open video or audio in QuickTime Player."
+                    end if
+                end tell
+                '''
+                out = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=4)
+                if out.returncode == 0:
+                    return ActionResult(True, f"QuickTime Player volume increased to {out.stdout.strip()}%.")
+            elif action == 'volume_down':
+                script = '''
+                tell application "QuickTime Player"
+                    if (count of documents) > 0 then
+                        set cur to audio volume of document 1
+                        set nxt to cur - 0.1
+                        if nxt < 0.0 then set nxt to 0.0
+                        set audio volume of document 1 to nxt
+                        return round (nxt * 100)
+                    else
+                        error "No open video or audio in QuickTime Player."
+                    end if
+                end tell
+                '''
+                out = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=4)
+                if out.returncode == 0:
+                    return ActionResult(True, f"QuickTime Player volume decreased to {out.stdout.strip()}%.")
+            elif action == 'set_volume':
+                v = max(0.0, min(1.0, (float(value) / 100.0) if value is not None else 0.5))
+                script = f'''
+                tell application "QuickTime Player"
+                    if (count of documents) > 0 then
+                        set audio volume of document 1 to {v}
+                        return round ({v} * 100)
+                    else
+                        error "No open video or audio in QuickTime Player."
+                    end if
+                end tell
+                '''
+                out = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=4)
+                if out.returncode == 0:
+                    return ActionResult(True, f"QuickTime Player volume set to {out.stdout.strip()}%.")
+            elif action in ('play_pause', 'play', 'pause'):
+                branch = (
+                    'if playing of document 1 then pause document 1 return "Paused" else play document 1 return "Playing" end if'
+                    if action == 'play_pause'
+                    else 'pause document 1 return "Paused"'
+                    if action == 'pause'
+                    else 'play document 1 return "Playing"'
+                )
+                script = f'''
+                tell application "QuickTime Player"
+                    if (count of documents) > 0 then
+                        {branch}
+                    else
+                        error "No open video or audio in QuickTime Player."
+                    end if
+                end tell
+                '''
+                out = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=4)
+                if out.returncode == 0:
+                    return ActionResult(True, f"{out.stdout.strip()} QuickTime Player.")
+        except Exception:
+            pass
+
+    # Spotify controls
+    if is_spotify:
+        try:
+            if action == 'volume_up':
+                subprocess.run(['osascript', '-e', 'tell application "Spotify" to set sound volume to (sound volume + 10)'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, "Spotify volume increased.")
+            elif action == 'volume_down':
+                subprocess.run(['osascript', '-e', 'tell application "Spotify" to set sound volume to (sound volume - 10)'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, "Spotify volume decreased.")
+            elif action == 'play_pause':
+                subprocess.run(['osascript', '-e', 'tell application "Spotify" to playpause'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, "Toggled Spotify playback.")
+            elif action == 'play':
+                subprocess.run(['osascript', '-e', 'tell application "Spotify" to play'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, "Playing Spotify.")
+            elif action == 'pause':
+                subprocess.run(['osascript', '-e', 'tell application "Spotify" to pause'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, "Paused Spotify.")
+        except Exception:
+            pass
+
+    # Music controls
+    if is_music:
+        try:
+            if action == 'volume_up':
+                subprocess.run(['osascript', '-e', 'tell application "Music" to set sound volume to (sound volume + 10)'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, "Music volume increased.")
+            elif action == 'volume_down':
+                subprocess.run(['osascript', '-e', 'tell application "Music" to set sound volume to (sound volume - 10)'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, "Music volume decreased.")
+            elif action in ('play_pause', 'play', 'pause'):
+                cmd = 'playpause' if action == 'play_pause' else action
+                subprocess.run(['osascript', '-e', f'tell application "Music" to {cmd}'], capture_output=True, text=True, timeout=3)
+                return ActionResult(True, f"{action.replace('_', ' ').capitalize()} Music.")
+        except Exception:
+            pass
+
+    # System audio controls (fallback or default)
+    try:
+        if action == 'volume_up':
+            out = subprocess.run(['osascript', '-e', '''
+            set cur to output volume of (get volume settings)
+            set nxt to cur + 10
+            if nxt > 100 then set nxt to 100
+            set volume output volume nxt
+            return nxt
+            '''], capture_output=True, text=True, timeout=3)
+            return ActionResult(True, f"Volume increased to {out.stdout.strip()}%.")
+        elif action == 'volume_down':
+            out = subprocess.run(['osascript', '-e', '''
+            set cur to output volume of (get volume settings)
+            set nxt to cur - 10
+            if nxt < 0 then set nxt to 0
+            set volume output volume nxt
+            return nxt
+            '''], capture_output=True, text=True, timeout=3)
+            return ActionResult(True, f"Volume decreased to {out.stdout.strip()}%.")
+        elif action == 'set_volume':
+            val = max(0, min(100, int(value if value is not None else 50)))
+            subprocess.run(['osascript', '-e', f'set volume output volume {val}'], capture_output=True, text=True, timeout=3)
+            return ActionResult(True, f"Volume set to {val}%.")
+        elif action == 'mute':
+            subprocess.run(['osascript', '-e', 'set volume output muted true'], capture_output=True, text=True, timeout=3)
+            return ActionResult(True, "Audio muted.")
+        elif action == 'unmute':
+            subprocess.run(['osascript', '-e', 'set volume output muted false'], capture_output=True, text=True, timeout=3)
+            return ActionResult(True, "Audio unmuted.")
+        elif action in ('play_pause', 'pause', 'play'):
+            return ActionResult(True, "Playback toggled.")
+    except Exception as exc:
+        return ActionResult(False, f"Could not adjust audio or media: {exc}")
+
+    return ActionResult(False, f"Unsupported action {action}.")
 
 
 def resolve_application(name):
-    aliases={'visual studio code':'code','vscode':'code','cursor editor':'cursor'}
+    aliases={'visual studio code':'code','vscode':'code','cursor editor':'cursor','quicktime':'QuickTime Player','quicktime player':'QuickTime Player'}
     wanted=aliases.get(name.casefold(),name.casefold())
     for folder in (Path('/Applications'),Path.home()/'Applications',Path('/System/Applications'),Path('/System/Applications/Utilities')):
         if not folder.exists():continue
@@ -58,7 +367,9 @@ def resolve_application(name):
     return None,None
 
 
-def run_desktop_request(app_name,text=None):
+def run_desktop_request(app_name, text=None, file_path=None):
+    if file_path:
+        return open_file_in_app(app_name, file_path)
     if platform.system()!='Darwin':
         return ActionResult(False,'Opening and typing into applications is currently supported on macOS.')
     path,bundle=resolve_application(app_name)

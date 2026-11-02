@@ -251,6 +251,10 @@ class TasksAppWidget(BaseAttachedApp):
         layout.addWidget(self.editor_error)
         row = QHBoxLayout()
         row.addWidget(self._button('Cancel', self.show_overview))
+        self.delete_button = self._button('Delete', self.delete_task)
+        self.delete_button.setProperty('role', 'danger')
+        self.delete_button.hide()
+        row.addWidget(self.delete_button)
         self.save_button = self._button('Save task', self.save_task, True)
         row.addWidget(self.save_button, 1)
         layout.addLayout(row)
@@ -382,6 +386,7 @@ class TasksAppWidget(BaseAttachedApp):
 
     def new_task(self):
         self._editing_id = None
+        self.delete_button.hide()
         self.entry.clear()
         self.details.clear()
         self.editor_date.setDate(self.date.date() if self.period.currentData() == 'date' else QDate.currentDate())
@@ -398,6 +403,7 @@ class TasksAppWidget(BaseAttachedApp):
         except ValueError as exc:
             self.stats.setText(str(exc)); return
         self._editing_id = task['id']
+        self.delete_button.show()
         self.entry.setText(task['title'])
         self.details.setPlainText(task['details'])
         self.editor_date.setDate(QDate.fromString(task['day'], 'yyyy-MM-dd'))
@@ -407,6 +413,16 @@ class TasksAppWidget(BaseAttachedApp):
         self.set_nav_header('Task details', True, self.show_overview)
         self.set_subtitle('Review or update this work entry.')
         self.stack.setCurrentWidget(self.editor)
+
+    def delete_task(self):
+        if not self._editing_id:
+            return
+        try:
+            self.store.delete(self._editing_id, soft=True)
+            self._signature = ''
+            self.show_overview()
+        except (ValueError, OSError) as exc:
+            self.editor_error.setText(str(exc))
 
     def save_task(self):
         try:

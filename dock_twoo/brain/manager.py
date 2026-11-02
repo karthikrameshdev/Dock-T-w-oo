@@ -581,18 +581,20 @@ class BrainManager(QObject, BrainSessions, AssistantLifecycle):
             local_done("Reading stopped.")
             return
         if not user_text:
-            self.activity.finish(run_id,"error",reason="Speech could not be transcribed.")
-            # Real speech with no usable transcript gets a clarification only
-            # after endpointing; idle silence never reaches this path.
-            if self.in_conversation_session:
-                if self.store.setting("voice_reply", True):
-                    self._awaiting_reply = True
-                    self.speech.start("Hey Buddy, I'm sorry, I couldn't understand that. Could you repeat or rephrase it?")
-                else:
-                    self._finish_turn()
+            self.activity.finish(run_id, "error", reason="Speech could not be transcribed.")
+            clarification = "I'm not able to understand. Can you repeat it one more time?"
+            self.in_conversation_session = True
+            self.status_changed.emit(clarification)
+            if hasattr(self, 'notifications'):
+                self.notifications.show(clarification)
+            self._publish_response(clarification)
+            if self.store.setting("voice_reply", True):
+                self._awaiting_reply = True
+                self.speech.start(clarification)
             else:
                 self._finish_turn()
             return
+
 
         # Local session exit; model requests are launched independently by the scheduler.
         self.in_conversation_session = False
@@ -630,8 +632,8 @@ class BrainManager(QObject, BrainSessions, AssistantLifecycle):
             except InterruptedError:
                 pass
             except Exception as exc:
-                reply = 'I could not complete the request. ' + str(exc)
-                self.activity.finish(turn.run_id, 'error', reply)
+                reply = "I'm not able to understand. Can you repeat it one more time?"
+                self.activity.finish(turn.run_id, 'error', f'Turn failed: {exc}')
             finally:
                 proxy.release_desktop()
             def completed():

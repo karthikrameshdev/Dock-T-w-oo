@@ -30,7 +30,8 @@ TOOLS=[
  tool('run_command','Run guarded portable commands: pwd, ls/dir, cat/type, mkdir [-p], touch, cp, rm/del. Supply argv, never a shell string. Unsupported programs fail closed.',{'argv':{'type':'array','items':S,'minItems':1,'maxItems':50},'cwd':S},['argv']),
  tool('update_file','Replace file contents. Existing user files require a one-time exact-path approval; unchanged agent-created analysis files can be edited automatically.',{'path':S,'text':S},['path','text']),
  tool('delete_file','Delete a single regular file. User files require native approval. Never retry a denied request.',{'path':S},['path']),
- tool('open_app','Open an installed app. For open-and-type requests supply text in this same call; supported editors get a new scratch document.',{'name':S,'text':S},['name']),
+ tool('open_app','Open an installed app. Optionally specify path to open a media/document file with it.',{'name':S,'path':S,'text':S},['name']),
+ tool('control_media','Control media playback and audio volume for applications (like QuickTime Player, Music, Spotify) or the system.',{'action':{'type':'string','enum':['volume_up','volume_down','set_volume','mute','unmute','play_pause','play','pause','next_track','previous_track']},'app':S,'value':I},['action']),
  tool('open_url','Open a user-requested HTTPS web page in the browser.',{'url':S},['url']),
  tool('observe_desktop','Get a fresh text accessibility tree with control ids; no screenshot is uploaded.'),
  tool('click','Click a control from the latest observation; observe again afterwards.',{'observation':S,'control':S},['observation','control']),
@@ -51,8 +52,13 @@ TOOLS=[
  tool('add_task','Record a work item in the persistent Tasks app. Repeated identical items on the same day are deduplicated.',{'title':S,'details':S,'date':S,'status':{'type':'string','enum':['todo','in_progress','done']}},['title']),
  tool('list_tasks','Query the work log by ISO date or date range; the final answer is also displayed in Tasks. Use current local date for today/yesterday and include the year for specific dates. Paginate before claiming a complete summary.',{'date':S,'start':S,'end':S,'query':S,'offset':I,'status':{'type':'string','enum':['todo','in_progress','done']}}),
  tool('update_task','Change a recorded task by its returned id.',{'id':S,'title':S,'details':S,'status':S,'day':S},['id']),
+ tool('delete_task','Soft-delete a recorded task by id. Retained in trash with 30-day recovery.',{'id':S},['id']),
+ tool('restore_task','Restore a soft-deleted task by id.',{'id':S},['id']),
  tool('add_note','Create a note in the existing Notes application.',{'title':S,'body':S},['title','body']),
  tool('list_notes','Read existing Notes, optionally filtering by text.',{'query':S}),
+ tool('update_note','Change an existing note title or body by id.',{'id':S,'title':S,'body':S},['id']),
+ tool('delete_note','Soft-delete a note by id. Retained in trash with 30-day recovery.',{'id':S},['id']),
+ tool('restore_note','Restore a soft-deleted note by id.',{'id':S},['id']),
  tool('keep_awake','Enable or disable prevention of idle display/system sleep. Manual locks remain possible.',{'enabled':{'type':'boolean'}},['enabled']),
  tool('open_dock_app','Open Dock Notes, Tasks, Vault, Dashboard, Live Trail (activity), or its Settings/Control console.',{'app':{'type':'string','enum':['notes','tasks','scheduler','vault','settings','brain','dashboard','activity']}},['app']),
  tool('finish','Finish the task with the spoken answer and an appropriate reaction. Only claim actions confirmed by tool results.',
@@ -68,7 +74,7 @@ def tools_for(character_id):
     tools = copy.deepcopy([t for t in TOOLS if t['function']['name'] not in {'click','type_text','press_key','drag'}])
     for entry in tools:
         if entry['function']['name']=='open_app':
-            entry['function']['description']='Open an installed application. To create text, use write_file for a new analysis document; automatic typing into another application is unavailable.'
+            entry['function']['description']='Open an installed application, optionally opening a file or video with it. Automatic typing into another application is unavailable.'
             entry['function']['parameters']['properties'].pop('text',None)
     delegation = copy.deepcopy(DELEGATE_TOOL)
     delegation['function']['parameters']['properties']['tasks']['items']['properties']['character_id']['enum'] = [c['id'] for c in characters() if c['id'] != character_id]
@@ -244,21 +250,6 @@ class LocalTools:
             return {**self.guard.create(output,text),'sections':sections}
         if name=='write_file':
             return self.guard.create(self.mutation_path(args['path']),args['text'])
-        if name in ('update_task','delete_reminder','set_reminder_enabled'):
-            if name=='update_task':
-                from dock_twoo.tasks import TaskStore
-                store=TaskStore(self.manager.store.data_dir.parent/'tasks')
-                item=store.get(args['id'])
-            else:
-                store=self.manager.reminders.store
-                item=next((r for r in store.list() if r['id']==args['id']),None)
-                if item is None:raise ValueError('The reminder was not found.')
-            path=store.path.resolve();before=self.guard.fingerprint(path)
-            summary=f"{name.replace('_',' ').capitalize()}: {item.get('title','')} (record {args['id']})."
-            if not self.guard.approve or not self.guard.approve('delete record' if name=='delete_reminder' else 'update record',str(path),summary,cancel):
-                raise PermissionError('Record change denied or expired. Do not retry.')
-            if cancel.is_set():raise InterruptedError('Record change stopped.')
-            if self.guard.fingerprint(path)!=before:raise PermissionError('Records changed while awaiting approval. Request approval again.')
         if name in ('create_reminder','list_reminders','delete_reminder','set_reminder_enabled'):
             if self.manager is None:raise RuntimeError('Dock must be running to manage reminders.')
             store=self.manager.reminders.store
@@ -271,18 +262,31 @@ class LocalTools:
             else:result=store.set_enabled(**args)
             self.manager.app_data_changed.emit('scheduler')
             return result
-        if name in ('add_task','list_tasks','update_task','add_note','list_notes'):
+        if name in ('add_task','list_tasks','update_task','delete_task','restore_task','add_note','list_notes','update_note','delete_note','restore_note'):
             from dock_twoo.tasks import TaskStore,NotesService
             root=self.manager.store.data_dir.parent if self.manager else None
             if name.endswith('task') or name=='list_tasks':
                 store=TaskStore(root/'tasks' if root else None)
-                if name=='add_task':return store.add(**args)
-                if name=='update_task':return store.update(**args)
-                return store.list(**args)
+                if name=='add_task':result=store.add(**args)
+                elif name=='update_task':result=store.update(**args)
+                elif name=='delete_task':result=store.delete(**args,soft=True)
+                elif name=='restore_task':result=store.restore(**args)
+                else:result=store.list(**args)
+                if self.manager:self.manager.app_data_changed.emit('tasks')
+                return result
             notes=NotesService(root/'notes' if root else None)
-            result=notes.add(**args) if name=='add_note' else notes.list(**args)
-            if self.manager and name=='add_note':self.manager.app_data_changed.emit('notes')
+            if name=='add_note':result=notes.add(**args)
+            elif name=='update_note':result=notes.update(**args)
+            elif name=='delete_note':result=notes.delete(**args,soft=True)
+            elif name=='restore_note':result=notes.restore(**args)
+            else:result=notes.list(**args)
+            if self.manager:self.manager.app_data_changed.emit('notes')
             return result
+        if name=='control_media':
+            from dock_twoo.brain.computer_actions import control_media
+            result=control_media(action=args['action'],target_app=args.get('app'),value=args.get('value'))
+            if not result:raise RuntimeError(result.message)
+            return {'result':result.message,'verified':True}
         if name=='keep_awake':
             from dock_twoo.keep_awake import get_keep_awake
             return get_keep_awake().set_enabled(args['enabled'])
@@ -300,6 +304,11 @@ class LocalTools:
                 import platform
                 if platform.system()!='Windows':raise RuntimeError('Windows Settings is available on a Windows computer. This computer runs '+platform.system()+'.')
                 os.startfile('ms-settings:');return {'opened':'Windows Settings'}
+            if args.get('path'):
+                from dock_twoo.brain.computer_actions import open_file_in_app
+                res=open_file_in_app(args['name'],args['path'])
+                if not res:raise RuntimeError(res.message)
+                return {'result':res.message,'verified':True}
             if args.get('text'):
                 raise PermissionError('Automatic typing into another application cannot guarantee a new document. Create a new analysis document with write_file instead, then open it yourself.')
             from dock_twoo.brain.computer_actions import run_desktop_request
