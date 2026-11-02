@@ -53,7 +53,7 @@ def get_workspace_tokens(config):
         border_color='rgba(255, 255, 255, 0.10)' if dark else '#dce3ed',
         text_primary='#ededf2' if dark else '#1c293c',
         text_secondary='#90909c' if dark else '#62748b',
-        accent_color='#79b5ff' if dark else '#2269cf',
+        accent_color='#3b82f6' if dark else '#2269cf',
         surface_alt='#141416' if dark else '#edf1f7',
         accent_fill='rgba(255, 255, 255, 0.08)' if dark else '#e7f0ff',
         accent_text='#ffffff' if dark else '#ffffff',

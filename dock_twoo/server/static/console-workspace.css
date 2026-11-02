@@ -1,23 +1,23 @@
 /* Console chrome shares the native drawers' typography, surfaces and controls. */
 :root {
-  --bg-color: #131a24;
-  --card-bg: #1b2533;
-  --card-border: #2d394a;
-  --card-hover: #243244;
-  --text-main: #e9eef6;
-  --text-muted: #9baac0;
-  --accent: #79b5ff;
-  --accent-hover: #9ac8ff;
-  --accent-glow: transparent;
-  --accent-soft: #243d5c;
-  --accent-ink: #11243c;
-  --field-bg: #17202c;
+  --bg-color: #111113;
+  --card-bg: #18181c;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-hover: rgba(255, 255, 255, 0.05);
+  --text-main: #ededf2;
+  --text-muted: #8e8e99;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-glow: rgba(59, 130, 246, 0.25);
+  --accent-soft: rgba(59, 130, 246, 0.15);
+  --accent-ink: #ffffff;
+  --field-bg: #141416;
   --success: #75d6b0;
   --danger: #f7a3a8;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
   --radius-md: 10px;
   --radius-sm: 8px;
-  --shadow-card: 0 3px 12px #0000000c;
+  --shadow-card: 0 3px 12px rgba(0, 0, 0, 0.25);
   color-scheme: dark;
 }
 body.theme-light {
@@ -52,8 +52,8 @@ body {font-size:14px;line-height:1.5;}
 .search-box input {min-height:24px;font:inherit;font-size:13px;}
 .header-actions {gap:8px;flex-wrap:wrap;justify-content:flex-end;}
 .btn {min-height:40px;justify-content:center;gap:8px;padding:9px 14px;font-weight:550;border-radius:9px;transition:background .12s,border-color .12s,color .12s;}
-.btn-primary {background:var(--accent);border:1px solid var(--accent);color:var(--accent-ink);box-shadow:none;}
-.btn-primary:hover {background:var(--accent-hover);box-shadow:none;transform:none;}
+.btn-primary {background:#2563eb;background-image:linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);border:1px solid rgba(255, 255, 255, 0.15);color:#ffffff;box-shadow:0 1px 2px rgba(0,0,0,0.25);}
+.btn-primary:hover {background:#3b82f6;background-image:linear-gradient(180deg, #4b90ff 0%, #3071ee 100%);border-color:rgba(255, 255, 255, 0.3);color:#ffffff;box-shadow:none;transform:none;}
 .btn-secondary,.theme-light .btn-secondary {background:var(--card-bg);border:1px solid var(--card-border);color:var(--text-main);}
 .btn-secondary:hover,.theme-light .btn-secondary:hover {background:var(--card-hover);border-color:var(--text-muted);transform:none;}
 .btn-danger {background:transparent;color:var(--danger);border:1px solid var(--card-border);}

@@ -45,7 +45,7 @@ class AttachedWindow(QWidget):
         self._apps: Dict[str, BaseAttachedApp] = {}
 
         self._setup_ui()
-        ScreenManager.apply_window_levels(self, level=8)
+        ScreenManager.apply_window_levels(self, 8)
 
 
     def _setup_ui(self) -> None:
@@ -136,17 +136,17 @@ class AttachedWindow(QWidget):
                 self.move(self.x(), max_bottom - self.height())
 
         self.raise_()
-        ScreenManager.apply_window_levels(self, level=8)
+        ScreenManager.apply_window_levels(self, 8)
         self.activateWindow()
         self.update()
 
     def raise_(self) -> None:
         super().raise_()
-        ScreenManager.apply_window_levels(self, level=8)
+        ScreenManager.apply_window_levels(self, 8)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        ScreenManager.apply_window_levels(self, level=8)
+        ScreenManager.apply_window_levels(self, 8)
         self.raise_()
 
     def hide_window(self) -> None:

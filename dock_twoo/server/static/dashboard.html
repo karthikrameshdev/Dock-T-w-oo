@@ -1,13 +1,36 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Dock2 · Usage Dashboard</title>
-  <link rel="stylesheet" href="/usage.css"><link rel="stylesheet" href="/controls.css">
+  <link rel="stylesheet" href="/workspace.css">
+  <link rel="stylesheet" href="/usage.css">
+  <link rel="stylesheet" href="/controls.css">
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get('embedded') === '1') {
+      document.documentElement.classList.add('workspace-embedded');
+    }
+    if (params.get('theme') === 'light') {
+      document.documentElement.classList.add('usage-light', 'theme-light');
+    }
+  </script>
 </head>
 <body class="workspace-page">
+  <script>
+    if (new URLSearchParams(location.search).get('embedded') === '1') {
+      document.body.classList.add('workspace-embedded');
+    }
+    if (new URLSearchParams(location.search).get('theme') === 'light') {
+      document.body.classList.add('usage-light', 'theme-light');
+    }
+  </script>
   <main id="usage" aria-label="Agent model usage dashboard"></main>
-  <script src="/controls.js"></script><script src="/usage.js"></script>
-  <script>if(new URLSearchParams(location.search).get('theme')==='light')document.body.classList.add('usage-light','theme-light');BrainUsage.mount(document.getElementById('usage'));</script>
+  <script src="/controls.js"></script>
+  <script src="/usage.js"></script>
+  <script>
+    BrainUsage.mount(document.getElementById('usage'));
+  </script>
 </body>
 </html>
