@@ -211,6 +211,7 @@ class DockWindow(QWidget):
         self._icon_buttons: Dict[str, DockIconButton] = {}
         self.attached_window = AttachedWindow(self.config)
         self.attached_window.window_closed.connect(self._on_attached_closed)
+        self.attached_window.window_shown.connect(self._raise_companion_above)
         self.brain_manager = get_brain_manager()
         self.brain_manager.app_open_requested.connect(self._open_voice_app)
         self.brain_manager.tasks_view_requested.connect(self._show_task_summary)
@@ -541,12 +542,28 @@ class DockWindow(QWidget):
         if hasattr(self, "margin_manager"):
             self.margin_manager.update_dock_geometry(self.geometry())
 
+    def _raise_companion_above(self) -> None:
+        """Ensure mini agent companion stays topmost above the dock and attached drawer window."""
+        if hasattr(self, "brain_manager") and hasattr(self.brain_manager, "companion_for"):
+            try:
+                comp = self.brain_manager.companion_for(self.screen_id)
+                if comp and comp.isVisible():
+                    comp.raise_()
+            except Exception:
+                pass
+
+    def raise_(self) -> None:
+        super().raise_()
+        ScreenManager.apply_window_levels(self, 8)
+        self._raise_companion_above()
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.reposition_dock()
         ScreenManager.apply_window_levels(self)
         if hasattr(self, "attached_window"):
             ScreenManager.apply_window_levels(self.attached_window)
+        self._raise_companion_above()
         if hasattr(self, "margin_manager"):
             self.margin_manager.update_dock_geometry(self.geometry())
             self.margin_manager.start()

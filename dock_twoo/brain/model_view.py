@@ -148,7 +148,7 @@ class CharacterView(QWebEngineView):
             self.snapshot.setGeometry(self.geometry())
             self.snapshot.show()
             from dock_twoo.brain.mascot import pin_native
-            pin_native(self.snapshot)
+            pin_native(self.snapshot, level=10)
             self.timer.stop(); self._epoch += 1; self._sync_pending = False
             self.hide(); self.page().setVisible(False)
             self.page().setLifecycleState(QWebEnginePage.LifecycleState.Frozen)
@@ -227,7 +227,7 @@ class CharacterView(QWebEngineView):
             QTimer.singleShot(0, self, self._load)
         if self.detached:
             from dock_twoo.brain.mascot import pin_native, mac_window
-            pin_native(self, level=8)
+            pin_native(self, level=10)
             # Cocoa's native WebEngine surface can keep accepting input despite
             # the Qt flag. Match the existing click-through reading guide there.
             import platform
@@ -241,7 +241,7 @@ class CharacterView(QWebEngineView):
         super().raise_()
         if self.detached:
             from dock_twoo.brain.mascot import pin_native, mac_window
-            pin_native(self, level=8)
+            pin_native(self, level=10)
             import platform
             if platform.system() == 'Darwin':
                 import ctypes

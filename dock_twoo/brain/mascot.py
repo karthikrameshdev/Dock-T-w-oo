@@ -66,7 +66,7 @@ def mac_window(widget):
         return None, None
 
 
-def pin_native(widget, level=8):
+def pin_native(widget, level=10):
     """Keep the mini agent permanently floating above all windows across desktop spaces without auto-hiding."""
     if QApplication.platformName() == "offscreen":
         return
@@ -74,7 +74,7 @@ def pin_native(widget, level=8):
         window, message = mac_window(widget)
         if not window or not message:
             return
-        # Modal panel / status window level (8) keeps this above ordinary apps (layer 0) without blocking system notifications.
+        # Level 10 keeps the mini agent strictly above Dock T(w)oo and attached drawer windows (level 8) and ordinary apps (level 0).
         message(None, window, "setLevel:", (ctypes.c_long, level))
         behavior = message(ctypes.c_ulong, window, "collectionBehavior") or 0
         # Exclude from transient behavior
@@ -134,7 +134,7 @@ class ReadingGuide(QWidget):
         self.setGeometry(bounds.adjusted(-3, -1, 3, 4))
         self.progress = 0.0
         self.show()
-        pin_native(self)
+        pin_native(self, level=10)
         if platform.system() == 'Darwin' and QApplication.platformName() != 'offscreen':
             window, message = mac_window(self)
             if window and message:
@@ -397,7 +397,7 @@ class Companion(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        pin_native(self, level=8)
+        pin_native(self, level=10)
         self.apply_input_mask()
         if not self.reduced_motion:
             self.activity_timer.start()
@@ -416,7 +416,7 @@ class Companion(QWidget):
 
     def raise_(self) -> None:
         super().raise_()
-        pin_native(self, level=8)
+        pin_native(self, level=10)
         if getattr(self, 'model_view', None):
             self.model_view.raise_()
 
@@ -467,7 +467,7 @@ class Companion(QWidget):
                 default_y = int(area.bottom()) - self.height() - 50
             self.move(default_x, default_y)
         self.home = self.pos()
-        pin_native(self)
+        pin_native(self, level=10)
 
 
     @property
@@ -1296,6 +1296,7 @@ class Companion(QWidget):
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            self.raise_()
             self.stop_motion()
             self.press_point = event.globalPosition().toPoint()
             self.origin = self.press_point - self.pos()
@@ -1330,6 +1331,7 @@ class Companion(QWidget):
                 positions[getattr(self, 'actor_id', self.screen_id)] = [self.pos().x(), self.pos().y()]
                 self.store.set_setting("companion_positions", positions)
                 self.home = self.pos()
+                self.raise_()
 
     def cancel_pointer_capture(self):
         self.origin = None

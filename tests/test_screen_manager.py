@@ -147,3 +147,34 @@ def test_attached_window_geometry_top_and_bottom(qapp):
     # In QRect, bottom() is top + height - 1, so the empty gap is dock.top() - attached.bottom() - 1
     assert dock_bottom.top() - attached_bottom.bottom() - 1 == 12
 
+
+def test_window_level_hierarchy_contract(qapp):
+    """Verify the strict 3-tier window hierarchy:
+    Tier 1: Mini Agent (Companion/CharacterView) @ level 10
+    Tier 2: Dock T(w)oo bar & attached drawer @ level 8
+    Tier 3: Standard OS application windows @ level 0
+    """
+    import inspect
+    from dock_twoo.brain.mascot import pin_native
+    from dock_twoo.os_integration.screen_manager import ScreenManager
+    from dock_twoo.ui.attached_window import AttachedWindow
+
+    pin_sig = inspect.signature(pin_native)
+    screen_sig = inspect.signature(ScreenManager.apply_window_levels)
+
+    mini_agent_level = pin_sig.parameters["level"].default
+    dock_level = screen_sig.parameters["level"].default
+
+    assert mini_agent_level == 10, f"Mini agent default window level must be 10, got {mini_agent_level}"
+    assert dock_level == 8, f"Dock/Attached drawer default window level must be 8, got {dock_level}"
+    assert mini_agent_level > dock_level > 0, "Mini agent must strictly sit above Dock and AttachedWindow"
+
+    # AttachedWindow must emit window_shown signal on raise
+    cfg = DockConfig()
+    win = AttachedWindow(cfg)
+    signals_received = []
+    win.window_shown.connect(lambda: signals_received.append(True))
+    win.raise_()
+    assert len(signals_received) == 1, "AttachedWindow.raise_() must emit window_shown signal"
+
+
