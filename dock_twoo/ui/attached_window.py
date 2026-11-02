@@ -33,6 +33,7 @@ class AttachedWindow(QWidget):
     """The attached application window that always stays pinned right next to the dock."""
 
     window_closed = Signal(str)  # closed app_id
+    window_shown = Signal()
 
     def __init__(self, config: DockConfig, parent: Optional[QWidget] = None):
         super().__init__(parent, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
@@ -143,6 +144,7 @@ class AttachedWindow(QWidget):
     def raise_(self) -> None:
         super().raise_()
         ScreenManager.apply_window_levels(self, 8)
+        self.window_shown.emit()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
